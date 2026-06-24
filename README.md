@@ -107,8 +107,8 @@ finsage_ai/
 - [ ] First 2 agents (Income Classifier, Deduction Hunter)
 - [ ] LangGraph orchestrator
 - [ ] Govt Benefits agent + live search
-- [ ] Tax Strategy & Compliance agents
-- [ ] Report generation & Health Score
+- [x] Tax Strategy & Compliance agents
+- [x] Report generation & Health Score
 
 ### Phase 2 (Weeks 4–6): Full Suite
 - All 12 agents
@@ -145,6 +145,11 @@ finsage_ai/
 | `WS` | `/ws/agent-stream/{session_id}` | Live agent activity stream |
 | `GET` | `/api/v1/reports` | Get generated reports |
 | `GET` | `/api/v1/schemes` | Browse govt schemes |
+| `POST` | `/api/v1/compliance/report` | Compliance assessment & audit readiness |
+| `POST` | `/api/v1/compliance/filing` | Step-by-step ITR filing guidance |
+| `POST` | `/api/v1/compliance/calculator` | Advanced tax calculation |
+| `GET` | `/api/v1/compliance/audit-history` | Fetch compliance history |
+| `GET` | `/api/v1/compliance/itr-status` | Track current FY ITR filing status |
 | `GET` | `/health` | Health check |
 
 ---

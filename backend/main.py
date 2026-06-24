@@ -168,13 +168,14 @@ app.add_middleware(
 )
 
 # Include routes
-from backend.api import auth, chat, websocket, benefits
+from backend.api import auth, chat, websocket, benefits, compliance
 
 app.include_router(auth.router, tags=["Authentication"])
 app.include_router(chat.router, tags=["Chat"])
 app.include_router(websocket.router, tags=["WebSocket"])
 app.include_router(knowledge.router, tags=["Knowledge Base"])
 app.include_router(benefits.router)
+app.include_router(compliance.router)
 # Health check endpoint
 @app.get("/health")
 async def health_check():

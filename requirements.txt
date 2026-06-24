@@ -44,6 +44,7 @@ PyJWT>=2.8.0
 python-dotenv==1.0.0
 loguru==0.7.2
 PyMuPDF==1.23.8
+reportlab>=4.0.0
 python-dateutil==2.8.2
 pytz==2023.3
 requests==2.31.0

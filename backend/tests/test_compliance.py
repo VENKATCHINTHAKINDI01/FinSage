@@ -99,3 +99,88 @@ def test_compliance_intent_routing():
     """Test that COMPLIANCE_CHECK intent is routed to compliance_checker_agent."""
     agents = _get_agents_for_intent(Intent.COMPLIANCE_CHECK)
     assert "compliance_checker_agent" in agents
+
+
+def test_compliance_endpoints():
+    """Test the newly added compliance, filing and calculator API endpoints."""
+    from fastapi.testclient import TestClient
+    from unittest.mock import AsyncMock, MagicMock
+    from backend.main import app
+    from backend.security.dependencies import get_current_user
+    from backend.db.postgres import get_session
+
+    class MockUser:
+        id = "user-123"
+        email = "test@example.com"
+        full_name = "Test User"
+        age = 35
+        employment_type = "salaried"
+        annual_income = 600000
+        tds_paid = 50000
+        deductions = {"80C": 150000}
+        gst_registered = False
+        advance_tax_paid = 10000
+        turnover = 0
+        has_capital_gains = False
+        calculated_tax = 0
+        form_16_tds = 0
+
+    def mock_get_current_user():
+        return MockUser()
+
+    async def mock_get_session():
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = []
+        mock_result.scalar_one_or_none.return_value = None
+        mock_session.execute.return_value = mock_result
+        yield mock_session
+
+    app.dependency_overrides[get_current_user] = mock_get_current_user
+    app.dependency_overrides[get_session] = mock_get_session
+
+    with TestClient(app) as client:
+        # 1. Test POST /report
+        res = client.post("/api/v1/compliance/report", json={})
+        assert res.status_code == 200
+        data = res.json()
+        assert data["success"] is True
+        assert "compliance_score" in data
+        assert "audit_ready" in data
+        
+        # 2. Test POST /filing
+        res = client.post("/api/v1/compliance/filing", json={})
+        assert res.status_code == 200
+        data = res.json()
+        assert data["success"] is True
+        assert "recommended_form" in data
+        assert "step_by_step_guide" in data
+        
+        # 3. Test POST /calculator
+        res = client.post("/api/v1/compliance/calculator", json={
+            "income_sources": {"salary_income": 600000},
+            "deductions": {"80C": 150000},
+            "capital_gains": {"ltcg": 50000, "stcg": 20000},
+            "losses": {}
+        })
+        assert res.status_code == 200
+        data = res.json()
+        assert data["success"] is True
+        assert "gross_income" in data
+        assert "effective_tax_rate" in data
+
+        # 4. Test GET /audit-history
+        res = client.get("/api/v1/compliance/audit-history")
+        assert res.status_code == 200
+        data = res.json()
+        assert data["success"] is True
+        assert "history" in data
+
+        # 5. Test GET /itr-status
+        res = client.get("/api/v1/compliance/itr-status")
+        assert res.status_code == 200
+        data = res.json()
+        assert data["success"] is True
+        assert "message" in data or "status" in data
+
+    app.dependency_overrides.clear()

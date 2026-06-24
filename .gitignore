@@ -85,4 +85,5 @@ docker-compose.override.yml
 *.pdf  # Don't commit PDFs to avoid bloat
 uploads/
 temp_docs/
+# Generated reports and exports cache
 exports/
