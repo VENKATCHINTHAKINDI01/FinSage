@@ -11,7 +11,12 @@ from backend.db.crud.recommendations import (
 )
 from backend.services.health_scorer import FinancialHealthScorer
 from backend.services.report_generator import ReportGeneratorService
-from backend.services.notification import NotificationService
+from backend.services.notification import (
+    NotificationService,
+    send_tax_deadline_reminder,
+    send_financial_health_report,
+    send_weekly_tax_tip
+)
 from backend.services.alert_service import AlertService
 from backend.services.document_service import DocumentService
 from sqlalchemy import delete
@@ -273,4 +278,75 @@ async def test_calculate_health_score_new_api(db_session):
     db_record = result_dict["db_record"]
     assert db_record.id is not None
     assert db_record.overall_score == result["overall_score"]
+
+
+@pytest.mark.asyncio
+async def test_notification_service_new_api(db_session):
+    service = NotificationService(db_session)
+    
+    # Test set_user_preferences
+    pref_res = await service.set_user_preferences(
+        user_id=TEST_USER_ID,
+        channel="email",
+        enabled=True,
+        frequency="daily",
+        preferred_time="09:30:00"
+    )
+    assert pref_res["success"] is True
+    assert pref_res["channel"] == "email"
+    assert pref_res["enabled"] is True
+    
+    # Test get_user_preferences
+    get_res = await service.get_user_preferences(TEST_USER_ID)
+    assert get_res["success"] is True
+    assert "email" in get_res["preferences"]
+    assert get_res["preferences"]["email"]["enabled"] is True
+    assert get_res["preferences"]["email"]["frequency"] == "daily"
+    
+    # Test send_email
+    email_res = await service.send_email(
+        recipient_email="user@test.com",
+        subject="Test SMTP Send",
+        message="Hello body text",
+        html_content="<p>Hello body HTML</p>",
+        user_id=TEST_USER_ID
+    )
+    assert "success" in email_res
+    assert email_res["channel"] == "email"
+    
+    # Test send_telegram
+    tele_res = await service.send_telegram(
+        telegram_id="987654321",
+        message="Hello Telegram",
+        user_id=TEST_USER_ID
+    )
+    assert tele_res["success"] is True
+    assert tele_res["channel"] == "telegram"
+    
+    # Test send_bulk_notification
+    bulk_res = await service.send_bulk_notification(
+        notification_type="tax_deadline",
+        message="This is a bulk test reminder",
+        subject="Bulk Reminder"
+    )
+    assert bulk_res["success"] is True
+    assert bulk_res["sent"] >= 0
+    
+    # Test get_notification_history (handles coroutine since session is AsyncSession)
+    history_coro = service.get_notification_history(TEST_USER_ID, limit=5)
+    history = await history_coro
+    assert isinstance(history, list)
+    assert len(history) > 0
+    assert history[0]["channel"] in ("email", "telegram")
+    
+    # Test template helpers
+    deadline_res = await send_tax_deadline_reminder(service, "test@finsage.ai", TEST_USER_ID, 5)
+    assert "success" in deadline_res
+    
+    health_res = await send_financial_health_report(service, "test@finsage.ai", TEST_USER_ID, 85)
+    assert "success" in health_res
+    
+    tip_res = await send_weekly_tax_tip(service, "test@finsage.ai", TEST_USER_ID, "Save tax by investing in NPS!")
+    assert "success" in tip_res
+
 
