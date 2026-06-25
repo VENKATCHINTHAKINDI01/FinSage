@@ -137,12 +137,26 @@ async def lifespan(app: FastAPI):
     await get_india_tax_data()
     logger.info("🇮🇳 India Tax Data Fetcher initialized in lifespan")
     
+    # Initialize Step 10 Scheduler
+    from backend.services.scheduler import init_scheduler
+    scheduler_result = init_scheduler()
+    if scheduler_result["success"]:
+        logger.info(f"✅ Scheduler initialized with {scheduler_result['jobs_scheduled']} jobs")
+    else:
+        logger.error(f"❌ Failed to initialize scheduler: {scheduler_result.get('error')}")
+    
     logger.info(f"Registered agents: {list(orchestrator.agents.keys())}")
     
     yield
     
     # Shutdown
     logger.info("🛑 Shutting down FinSage AI")
+    # Shutdown scheduler
+    from backend.services.scheduler import get_scheduler
+    scheduler = get_scheduler()
+    if scheduler:
+        scheduler.shutdown_scheduler()
+        logger.info("✅ Scheduler shut down successfully")
     # TODO: Close database pool
     # TODO: Close Redis connection
     # TODO: Close Qdrant connection
@@ -168,7 +182,7 @@ app.add_middleware(
 )
 
 # Include routes
-from backend.api import auth, chat, websocket, benefits, compliance
+from backend.api import auth, chat, websocket, benefits, compliance, reports, notifications
 
 app.include_router(auth.router, tags=["Authentication"])
 app.include_router(chat.router, tags=["Chat"])
@@ -176,6 +190,8 @@ app.include_router(websocket.router, tags=["WebSocket"])
 app.include_router(knowledge.router, tags=["Knowledge Base"])
 app.include_router(benefits.router)
 app.include_router(compliance.router)
+app.include_router(reports.router)
+app.include_router(notifications.router)
 # Health check endpoint
 @app.get("/health")
 async def health_check():
