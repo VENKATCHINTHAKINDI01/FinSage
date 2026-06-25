@@ -154,12 +154,14 @@ class ReportGenerator:
         self.db = db
         self.logger = logging.getLogger(f"service.{self.name}")
         
-        # Workspace-relative default report directory
-        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        self.report_dir = os.path.join(base_dir, "exports")
-        
-        # Create report directory if not exists
-        os.makedirs(self.report_dir, exist_ok=True)
+        # Workspace-relative default report directory with a fallback to /tmp
+        try:
+            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            self.report_dir = os.path.join(base_dir, "exports")
+            os.makedirs(self.report_dir, exist_ok=True)
+        except Exception:
+            self.report_dir = "/tmp/finsage_reports"
+            os.makedirs(self.report_dir, exist_ok=True)
     
     def set_db(self, db: Session):
         """Set database session."""
@@ -359,7 +361,7 @@ class ReportGenerator:
                 'CustomTitle',
                 parent=styles['Heading1'],
                 fontSize=24,
-                textColor=colors.HexColor('#1a5490'),
+                textColor=colors.HexColor('#0F172A'),  # Sleek Dark Slate
                 spaceAfter=30,
                 alignment=1  # Center
             )
@@ -368,7 +370,8 @@ class ReportGenerator:
             
             # Compliance Score Card
             score = data.get("compliance_score", 0)
-            audit_ready = "✓ YES" if data.get("audit_ready") else "✗ NO"
+            # Use ASCII-compatible strings instead of unicode checkmarks to prevent rendering crash in default Helvetica
+            audit_ready = "[YES] Ready" if data.get("audit_ready") else "[NO] Not Ready"
             
             card_data = [
                 ["Compliance Score", f"{score}/100"],
@@ -378,14 +381,14 @@ class ReportGenerator:
             
             card_table = Table(card_data, colWidths=[3*inch, 2*inch])
             card_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#f0f0f0')),
-                ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
+                ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#F8FAFC')),  # Off-white / light slate
+                ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor('#1E293B')),
                 ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
                 ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
                 ('FONTSIZE', (0, 0), (-1, -1), 12),
                 ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
                 ('TOPPADDING', (0, 0), (-1, -1), 12),
-                ('GRID', (0, 0), (-1, -1), 1, colors.black)
+                ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#E2E8F0'))  # Modern light grey border
             ]))
             
             elements.append(card_table)
@@ -395,9 +398,12 @@ class ReportGenerator:
             elements.append(Paragraph("Red Flags Detected", styles['Heading2']))
             red_flags = data.get("red_flags", [])
             
-            for flag in red_flags:
-                flag_text = f"• {flag.get('flag', 'Unknown')}"
-                elements.append(Paragraph(flag_text, styles['Normal']))
+            if red_flags:
+                for flag in red_flags:
+                    flag_text = f"- {flag.get('flag', 'Unknown')}"
+                    elements.append(Paragraph(flag_text, styles['Normal']))
+            else:
+                elements.append(Paragraph("No red flags detected.", styles['Normal']))
             
             elements.append(Spacer(1, 0.3 * inch))
             
@@ -405,9 +411,12 @@ class ReportGenerator:
             elements.append(Paragraph("Recommendations", styles['Heading2']))
             recommendations = data.get("recommendations", [])
             
-            for rec in recommendations:
-                rec_text = f"• {rec}"
-                elements.append(Paragraph(rec_text, styles['Normal']))
+            if recommendations:
+                for rec in recommendations:
+                    rec_text = f"- {rec}"
+                    elements.append(Paragraph(rec_text, styles['Normal']))
+            else:
+                elements.append(Paragraph("No recommendations needed.", styles['Normal']))
             
             # Build PDF
             doc.build(elements)
@@ -436,15 +445,15 @@ class ReportGenerator:
                 'CustomTitle',
                 parent=styles['Heading1'],
                 fontSize=24,
-                textColor=colors.HexColor('#1a5490'),
+                textColor=colors.HexColor('#0F172A'),
                 spaceAfter=30,
                 alignment=1
             )
             elements.append(Paragraph("FINANCIAL HEALTH REPORT", title_style))
             elements.append(Spacer(1, 0.3 * inch))
             
-            # Overall Score
-            score_color = colors.green if score >= 80 else (colors.orange if score >= 60 else colors.red)
+            # Overall Score - Curated harmonious HSL hex colors instead of pure red/green/orange
+            score_color = colors.HexColor('#10B981') if score >= 80 else (colors.HexColor('#F59E0B') if score >= 60 else colors.HexColor('#EF4444'))
             
             score_table = Table([
                 ["Overall Health Score", f"{score}/100"]
@@ -477,14 +486,14 @@ class ReportGenerator:
             
             factors_table = Table(factors_data, colWidths=[2.5*inch, 1.5*inch, 1.5*inch])
             factors_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1a5490')),
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1E293B')),  # Sleek slate header
                 ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
                 ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
                 ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
                 ('FONTSIZE', (0, 0), (-1, -1), 11),
                 ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
                 ('TOPPADDING', (0, 0), (-1, -1), 10),
-                ('GRID', (0, 0), (-1, -1), 1, colors.black)
+                ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#CBD5E1'))
             ]))
             
             elements.append(factors_table)
@@ -515,7 +524,7 @@ class ReportGenerator:
                 'CustomTitle',
                 parent=styles['Heading1'],
                 fontSize=24,
-                textColor=colors.HexColor('#1a5490'),
+                textColor=colors.HexColor('#0F172A'),
                 spaceAfter=30,
                 alignment=1
             )
@@ -526,23 +535,23 @@ class ReportGenerator:
             elements.append(Paragraph("Financial Overview", styles['Heading2']))
             
             summary_data = [
-                ["Gross Income", f"₹{data.get('gross_income', 0):,.0f}"],
-                ["Deductions", f"₹{data.get('total_deductions', 0):,.0f}"],
-                ["Taxable Income", f"₹{data.get('taxable_income', 0):,.0f}"],
-                ["Total Tax Liability", f"₹{data.get('total_tax_liability', 0):,.0f}"],
+                ["Gross Income", f"INR {data.get('gross_income', 0):,.0f}"],
+                ["Deductions", f"INR {data.get('total_deductions', 0):,.0f}"],
+                ["Taxable Income", f"INR {data.get('taxable_income', 0):,.0f}"],
+                ["Total Tax Liability", f"INR {data.get('total_tax_liability', 0):,.0f}"],
                 ["Effective Tax Rate", f"{data.get('effective_rate', 0):.2f}%"]
             ]
             
             summary_table = Table(summary_data, colWidths=[3*inch, 2*inch])
             summary_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#f0f0f0')),
-                ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
+                ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#F8FAFC')),
+                ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor('#1E293B')),
                 ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
                 ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
                 ('FONTSIZE', (0, 0), (-1, -1), 11),
                 ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
                 ('TOPPADDING', (0, 0), (-1, -1), 12),
-                ('GRID', (0, 0), (-1, -1), 1, colors.black)
+                ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#CBD5E1'))
             ]))
             
             elements.append(summary_table)
