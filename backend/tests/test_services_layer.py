@@ -350,3 +350,36 @@ async def test_notification_service_new_api(db_session):
     assert "success" in tip_res
 
 
+@pytest.mark.asyncio
+async def test_scheduler_service(db_session):
+    from backend.services.scheduler import init_scheduler, get_scheduler
+    
+    # Initialize the global scheduler
+    init_res = init_scheduler(db_session)
+    assert init_res["success"] is True
+    assert init_res["jobs_scheduled"] == 5
+    assert init_res["scheduler_running"] is True
+    
+    scheduler = get_scheduler()
+    assert scheduler is not None
+    assert scheduler.db == db_session
+    
+    # Check status of scheduled jobs
+    status = scheduler.get_job_status()
+    assert status["scheduler_running"] is True
+    assert status["total_jobs"] == 5
+    
+    # Verify specific jobs exist by ID
+    job_ids = [job["id"] for job in status["jobs"]]
+    assert "tax_deadline_reminder" in job_ids
+    assert "weekly_tax_tips" in job_ids
+    
+    # Trigger execution of weekly tax tips job to verify DB logging
+    scheduler._weekly_tax_tips()
+    
+    # Shutdown scheduler
+    shutdown_res = scheduler.shutdown_scheduler()
+    assert shutdown_res["success"] is True
+
+
+
