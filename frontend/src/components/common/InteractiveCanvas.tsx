@@ -8,7 +8,24 @@ interface Particle {
   vx: number;
   vy: number;
   phase: number;
+  colorIndex: number;
 }
+
+const colorPaletteDark = [
+  'rgba(99, 102, 241, 0.5)',  // Indigo
+  'rgba(245, 158, 11, 0.5)', // Amber
+  'rgba(16, 185, 129, 0.5)', // Emerald
+  'rgba(6, 182, 212, 0.5)',  // Cyan
+  'rgba(244, 63, 94, 0.5)',  // Rose
+];
+
+const colorPaletteLight = [
+  'rgba(79, 70, 229, 0.35)',   // Indigo Deep
+  'rgba(217, 119, 6, 0.35)',   // Amber Deep
+  'rgba(5, 150, 105, 0.35)',   // Emerald Deep
+  'rgba(8, 145, 178, 0.35)',   // Cyan Deep
+  'rgba(225, 29, 72, 0.35)',   // Rose Deep
+];
 
 export const InteractiveCanvas: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -29,7 +46,7 @@ export const InteractiveCanvas: React.FC = () => {
       const height = (canvas.height = window.innerHeight);
 
       particles = [];
-      const spacing = 40; // Spacing between dots
+      const spacing = 35; // Dense grid spacing
       const cols = Math.floor(width / spacing) + 2;
       const rows = Math.floor(height / spacing) + 2;
 
@@ -37,6 +54,10 @@ export const InteractiveCanvas: React.FC = () => {
         for (let j = 0; j < rows; j++) {
           const x = i * spacing;
           const y = j * spacing;
+          
+          // Patterned or randomized color selection
+          const colorIndex = (i + j) % colorPaletteDark.length;
+
           particles.push({
             x,
             y,
@@ -45,6 +66,7 @@ export const InteractiveCanvas: React.FC = () => {
             vx: 0,
             vy: 0,
             phase: Math.random() * Math.PI * 2,
+            colorIndex,
           });
         }
       }
@@ -74,47 +96,43 @@ export const InteractiveCanvas: React.FC = () => {
     init();
 
     let time = 0;
-    const spring = 0.03;
-    const damping = 0.85;
-    const repulsionRadius = 120;
-    const repulsionStrength = 0.8;
+    const spring = 0.04;
+    const damping = 0.82;
+    const repulsionRadius = 130;
+    const repulsionStrength = 0.9;
+    const connectionRadius = 50;
 
     const animate = () => {
-      time += 0.015;
+      time += 0.012;
       
-      // Clear canvas
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Detect theme dynamically from class on <html>
       const isDark = document.documentElement.classList.contains('dark');
-      ctx.fillStyle = isDark ? 'rgba(226, 232, 240, 0.22)' : 'rgba(26, 84, 144, 0.16)';
+      const activePalette = isDark ? colorPaletteDark : colorPaletteLight;
 
+      // Update particle physics first
       particles.forEach((p) => {
-        // Subtle ambient wave behavior using sine waves
-        const waveY = Math.sin(p.originX * 0.005 + time + p.phase) * 8;
-        const waveX = Math.cos(p.originY * 0.005 + time + p.phase) * 8;
+        const waveY = Math.sin(p.originX * 0.006 + time + p.phase) * 6;
+        const waveX = Math.cos(p.originY * 0.006 + time + p.phase) * 6;
 
         const targetX = p.originX + waveX;
         const targetY = p.originY + waveY;
 
-        // Interaction with mouse
         if (mouse.active) {
           const dx = p.x - mouse.x;
           const dy = p.y - mouse.y;
           const dist = Math.sqrt(dx * dx + dy * dy);
 
           if (dist < repulsionRadius) {
-            // Force calculation (stronger repulsion closer to mouse)
             const force = (repulsionRadius - dist) / repulsionRadius;
             const angle = Math.atan2(dy, dx);
-            const targetVx = Math.cos(angle) * force * repulsionStrength * 10;
-            const targetVy = Math.sin(angle) * force * repulsionStrength * 10;
+            const targetVx = Math.cos(angle) * force * repulsionStrength * 8;
+            const targetVy = Math.sin(angle) * force * repulsionStrength * 8;
             p.vx += targetVx;
             p.vy += targetVy;
           }
         }
 
-        // Spring system towards target coordinate
         const ax = (targetX - p.x) * spring;
         const ay = (targetY - p.y) * spring;
 
@@ -123,11 +141,68 @@ export const InteractiveCanvas: React.FC = () => {
 
         p.x += p.vx;
         p.y += p.vy;
+      });
 
-        // Render dot
+      // Draw connection lines between nearby particles that are near the cursor
+      if (mouse.active) {
+        ctx.lineWidth = 0.5;
+        for (let i = 0; i < particles.length; i++) {
+          const pi = particles[i];
+          const dxMouse = pi.x - mouse.x;
+          const dyMouse = pi.y - mouse.y;
+          const distMouse = dxMouse * dxMouse + dyMouse * dyMouse;
+          
+          // Only process connections if the particle is near the mouse
+          if (distMouse < repulsionRadius * repulsionRadius) {
+            for (let j = i + 1; j < particles.length; j++) {
+              const pj = particles[j];
+              const dx = pi.x - pj.x;
+              const dy = pi.y - pj.y;
+              const dist = dx * dx + dy * dy;
+
+              if (dist < connectionRadius * connectionRadius) {
+                const distance = Math.sqrt(dist);
+                const alpha = (1 - distance / connectionRadius) * 0.15;
+                ctx.strokeStyle = isDark 
+                  ? `rgba(255, 255, 255, ${alpha})` 
+                  : `rgba(26, 84, 144, ${alpha})`;
+                
+                ctx.beginPath();
+                ctx.moveTo(pi.x, pi.y);
+                ctx.lineTo(pj.x, pj.y);
+                ctx.stroke();
+              }
+            }
+          }
+        }
+      }
+
+      // Draw particles
+      particles.forEach((p) => {
+        let alphaMultiplier = 1;
+        let size = 1.3;
+
+        if (mouse.active) {
+          const dx = p.x - mouse.x;
+          const dy = p.y - mouse.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+
+          if (dist < 100) {
+            // Light up and enlarge particles near cursor
+            alphaMultiplier = 1.6;
+            size = 2.0 - (dist / 100) * 0.7;
+          }
+        }
+
+        const baseColor = activePalette[p.colorIndex];
+        
+        // Adjust alpha based on distance multipliers
+        ctx.fillStyle = baseColor.replace(/[\d.]+\)$/, (val) => {
+          const numericVal = parseFloat(val);
+          return `${Math.min(0.9, numericVal * alphaMultiplier)})`;
+        });
+
         ctx.beginPath();
-        // Slightly larger dot if mouse is near
-        const size = mouse.active && Math.abs(p.x - mouse.x) < 80 && Math.abs(p.y - mouse.y) < 80 ? 2 : 1.2;
         ctx.arc(p.x, p.y, size, 0, Math.PI * 2);
         ctx.fill();
       });

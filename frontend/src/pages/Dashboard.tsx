@@ -46,7 +46,7 @@ export const Dashboard: React.FC = () => {
     navigate('/login');
   };
 
-  const username = user?.fullName || 'Ameer Sohail';
+  const username = user?.fullName || 'Vyas';
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-body relative overflow-hidden transition-colors duration-300">

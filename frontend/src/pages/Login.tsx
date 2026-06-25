@@ -69,7 +69,7 @@ export const Login: React.FC = () => {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full px-4 py-3 bg-white/90 dark:bg-slate-950/80 border border-slate-250 dark:border-slate-800 rounded-xl focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-600 input-glow transition-all duration-200"
-              placeholder="name@example.com"
+            placeholder="vyas@example.com"
             />
           </div>
           <div className="space-y-1">
