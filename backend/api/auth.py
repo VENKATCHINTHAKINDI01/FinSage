@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import logging
 
 from backend.db.postgres import get_session
+from backend.security.dependencies import get_current_user
 from backend.db.crud.users import create_user, get_user_by_email, user_exists
 from backend.db.crud.sessions import create_session
 from backend.models import (
@@ -262,6 +263,16 @@ async def refresh_token(
         token_type="bearer",
         expires_in=settings.auth.access_token_expire_minutes * 60,
     )
+
+
+@router.get("/me", response_model=UserResponse)
+async def get_me(
+    current_user: UserResponse = Depends(get_current_user),
+) -> UserResponse:
+    """
+    Get current authenticated user details.
+    """
+    return current_user
 
 
 # Helper import needed

@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAppDispatch } from '../store/store';
-import { loginSuccess } from '../store/slices/authSlice';
+import { loginSuccess, loginStart, loginFailure } from '../store/slices/authSlice';
+import api from '../services/api';
 import InteractiveCanvas from '../components/common/InteractiveCanvas';
 import ThemeToggle from '../components/common/ThemeToggle';
 import { ArrowLeft } from 'lucide-react';
@@ -15,7 +16,9 @@ export const Register: React.FC = () => {
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -24,15 +27,40 @@ export const Register: React.FC = () => {
       return;
     }
 
-    if (fullName && email && password) {
-      // Mock successful registration & login
-      const mockToken = "mock-jwt-token-123";
-      const mockUser = { id: "user-123", email, fullName };
-      
-      sessionStorage.setItem('token', mockToken);
-      dispatch(loginSuccess({ token: mockToken, user: mockUser }));
-      
+    setLoading(true);
+    dispatch(loginStart());
+
+    try {
+      // 1. Post to registration
+      await api.post('/auth/register', {
+        email,
+        full_name: fullName,
+        password,
+      });
+
+      // 2. Automatically log in after registration
+      const loginResponse = await api.post('/auth/login', {
+        email,
+        password,
+      });
+      const { access_token } = loginResponse.data;
+
+      // Persist access token in session storage
+      sessionStorage.setItem('token', access_token);
+
+      // 3. Fetch authenticated user profile details from /me
+      const profileResponse = await api.get('/auth/me');
+      const user = profileResponse.data;
+
+      // Dispatch success
+      dispatch(loginSuccess({ token: access_token, user }));
       navigate('/dashboard', { replace: true });
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.detail || 'Failed to create account. Please verify password strength.';
+      setError(errorMsg);
+      dispatch(loginFailure(errorMsg));
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -124,9 +152,10 @@ export const Register: React.FC = () => {
           
           <button 
             type="submit"
-            className="w-full py-3 bg-gradient-to-r from-primary to-primary-dark hover:from-primary-dark hover:to-primary text-white font-bold rounded-xl shadow-lg shadow-primary/10 hover:shadow-primary/20 transition-all duration-300 transform hover:-translate-y-0.5 mt-3 cursor-pointer"
+            disabled={loading}
+            className="w-full py-3 bg-gradient-to-r from-primary to-primary-dark hover:from-primary-dark hover:to-primary text-white font-bold rounded-xl shadow-lg shadow-primary/10 hover:shadow-primary/20 transition-all duration-300 transform hover:-translate-y-0.5 mt-3 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Create Account
+            {loading ? 'Creating Account...' : 'Create Account'}
           </button>
         </form>
 

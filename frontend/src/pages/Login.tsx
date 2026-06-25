@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAppDispatch } from '../store/store';
-import { loginSuccess } from '../store/slices/authSlice';
+import { loginSuccess, loginStart, loginFailure } from '../store/slices/authSlice';
+import api from '../services/api';
 import InteractiveCanvas from '../components/common/InteractiveCanvas';
 import ThemeToggle from '../components/common/ThemeToggle';
 import { ArrowLeft } from 'lucide-react';
@@ -15,17 +16,39 @@ export const Login: React.FC = () => {
 
   const from = location.state?.from?.pathname || '/dashboard';
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (email && password) {
-      // Mock successful login
-      const mockToken = "mock-jwt-token-123";
-      const mockUser = { id: "user-123", email, fullName: "Demo User" };
-      
-      sessionStorage.setItem('token', mockToken);
-      dispatch(loginSuccess({ token: mockToken, user: mockUser }));
-      
+    setError('');
+    setLoading(true);
+    dispatch(loginStart());
+
+    try {
+      // 1. Call login endpoint
+      const loginResponse = await api.post('/auth/login', {
+        email,
+        password,
+      });
+      const { access_token } = loginResponse.data;
+
+      // Persist access token in session storage
+      sessionStorage.setItem('token', access_token);
+
+      // 2. Fetch authenticated user profile details from /me
+      const profileResponse = await api.get('/auth/me');
+      const user = profileResponse.data;
+
+      // Dispatch success
+      dispatch(loginSuccess({ token: access_token, user }));
       navigate(from, { replace: true });
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.detail || 'Invalid email or password';
+      setError(errorMsg);
+      dispatch(loginFailure(errorMsg));
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -59,6 +82,12 @@ export const Login: React.FC = () => {
           <h2 className="text-3xl font-black text-slate-950 dark:text-white">Welcome Back</h2>
           <p className="text-slate-500 dark:text-slate-400 text-sm">Sign in to your FinSage AI account</p>
         </div>
+
+        {error && (
+          <div className="p-3 bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 text-sm rounded-xl text-center font-medium">
+            {error}
+          </div>
+        )}
         
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1">
@@ -86,9 +115,10 @@ export const Login: React.FC = () => {
           
           <button 
             type="submit"
-            className="w-full py-3.5 bg-gradient-to-r from-primary to-primary-dark hover:from-primary-dark hover:to-primary text-white font-bold rounded-xl shadow-lg shadow-primary/10 hover:shadow-primary/20 transition-all duration-300 transform hover:-translate-y-0.5 mt-2 cursor-pointer"
+            disabled={loading}
+            className="w-full py-3.5 bg-gradient-to-r from-primary to-primary-dark hover:from-primary-dark hover:to-primary text-white font-bold rounded-xl shadow-lg shadow-primary/10 hover:shadow-primary/20 transition-all duration-300 transform hover:-translate-y-0.5 mt-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Log In
+            {loading ? 'Logging In...' : 'Log In'}
           </button>
         </form>
 
