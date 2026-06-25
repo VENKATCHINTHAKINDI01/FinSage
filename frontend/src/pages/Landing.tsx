@@ -40,7 +40,7 @@ export const Landing: React.FC = () => {
       <main className="relative z-10 flex-1 flex flex-col items-center justify-center max-w-7xl w-full mx-auto px-6 py-12 text-center space-y-12">
         <div className="max-w-4xl space-y-6">
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-slate-200/50 dark:bg-slate-900/60 border border-slate-300/40 dark:border-slate-800 text-secondary dark:text-secondary text-xs font-semibold uppercase tracking-wider mb-2 backdrop-blur-md">
-            ✨ India's Advanced Agentic Tax Copilot
+            ✨ India’s Advanced Agentic Tax & Revenue Optimization Platform
           </div>
           
           <h1 className="text-5xl sm:text-6xl md:text-8xl font-black tracking-tight leading-none">
@@ -54,7 +54,7 @@ export const Landing: React.FC = () => {
           </h1>
           
           <p className="text-base sm:text-lg md:text-xl text-slate-600 dark:text-slate-400 max-w-2xl mx-auto leading-relaxed">
-            Autonomous agentic intelligence tailored for Indian tax compliance, deduction audits, ITR filing steps, and multi-source financial score indexing.
+            Autonomous agentic intelligence tailored for Indian tax compliance, deduction audits, ITR filing steps, and multi-source financial score indexing and maximization.
           </p>
         </div>
 
@@ -114,7 +114,7 @@ export const Landing: React.FC = () => {
 
       {/* Footer */}
       <footer className="relative z-10 w-full max-w-7xl mx-auto px-6 py-6 border-t border-slate-200/50 dark:border-slate-900 text-center text-xs text-slate-500 dark:text-slate-600">
-        © 2026 FinSage AI Inc. Designed with premium anti-gravity styling and agentic intelligence.
+        © 2026 FinSage AI Inc. Developed by Venkat Chinthakindi.
       </footer>
     </div>
   );
