@@ -288,6 +288,7 @@ async def init_tools():
 
 if __name__ == "__main__":
     import uvicorn
+    # Trigger reload
     uvicorn.run(
         "backend.main:app",
         host="0.0.0.0",
