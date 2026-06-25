@@ -14,9 +14,26 @@
   --font-body: 'Inter', sans-serif;
 }
 
+/* Enable class-based dark mode in Tailwind v4 */
+@variant dark (&:where(.dark, .dark *));
+
 @layer base {
+  :root {
+    --tooltip-bg: #ffffff;
+    --tooltip-border: #e2e8f0;
+    --tooltip-text: #0f172a;
+    --chart-axis: #64748b;
+  }
+  
+  .dark {
+    --tooltip-bg: #0f172a;
+    --tooltip-border: #1e293b;
+    --tooltip-text: #ffffff;
+    --chart-axis: #94a3b8;
+  }
+
   body {
-    @apply bg-slate-950 text-slate-100 font-body antialiased selection:bg-primary/30 selection:text-white;
+    @apply bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 font-body antialiased transition-colors duration-300 selection:bg-primary/30 selection:text-white;
   }
 
   h1, h2, h3, h4, h5, h6 {
@@ -31,9 +48,34 @@
 }
 
 ::-webkit-scrollbar-track {
-  @apply bg-slate-950;
+  @apply bg-slate-100 dark:bg-slate-950 transition-colors duration-300;
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-slate-800 rounded-full hover:bg-slate-700 transition-colors;
+  @apply bg-slate-300 dark:bg-slate-800 rounded-full hover:bg-slate-400 dark:hover:bg-slate-700 transition-colors;
+}
+
+/* Floating animation for gradients */
+@keyframes float {
+  0% {
+    transform: translateY(0px) scale(1);
+  }
+  50% {
+    transform: translateY(-20px) scale(1.05);
+  }
+  100% {
+    transform: translateY(0px) scale(1);
+  }
+}
+
+.animate-float {
+  animation: float 8s ease-in-out infinite;
+}
+
+/* Neon input glow styling */
+.input-glow:focus {
+  box-shadow: 0 0 15px rgba(26, 84, 144, 0.25);
+}
+.dark .input-glow:focus {
+  box-shadow: 0 0 20px rgba(26, 84, 144, 0.45);
 }
