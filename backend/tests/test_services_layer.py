@@ -232,3 +232,45 @@ async def test_document_service(db_session):
     # Query history list
     history = await service.get_user_audit_history(TEST_USER_ID)
     assert len(history) > 0
+
+
+@pytest.mark.asyncio
+async def test_calculate_health_score_new_api(db_session):
+    # Test set_db method
+    scorer = FinancialHealthScorer()
+    assert scorer.db is None
+    scorer.set_db(db_session)
+    assert scorer.db == db_session
+    
+    financial_data = {
+        "effective_tax_rate": 15,
+        "tds_mismatch": False,
+        "optimization_done": True,
+        "total_deductions": 750000,
+        "deduction_count": 4,
+        "compliance_score": 85,
+        "red_flags": 1,
+        "audit_ready": True,
+        "missing_documents": 1,
+        "life_insurance": True,
+        "mutual_funds": True,
+        "ppf": True,
+        "investment_options_available": 5
+    }
+    
+    result_dict = await scorer.calculate_health_score(TEST_USER_ID, financial_data)
+    assert result_dict["success"] is True
+    result = result_dict["result"]
+    assert 0 <= result["overall_score"] <= 100
+    assert "health_status" in result
+    assert "breakdown" in result
+    assert "trend" in result
+    assert "recommendations" in result
+    assert "score_date" in result
+    assert "action_items" in result
+    assert "db_record" in result_dict
+    
+    db_record = result_dict["db_record"]
+    assert db_record.id is not None
+    assert db_record.overall_score == result["overall_score"]
+
