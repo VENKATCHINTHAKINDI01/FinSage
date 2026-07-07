@@ -51,57 +51,75 @@ class UserFinancialDataTool:
     async def get_user_profile(self, user_id: str) -> Dict[str, Any]:
         """
         Get complete user financial profile.
-        
-        Returns:
-            {
-                "user_id": "...",
-                "email": "...",
-                "basic_info": {...},
-                "financial_profile": {...},
-                "previous_analyses": [...]
-            }
         """
         try:
-            # TODO: Query from database
-            # from backend.db.orm_models import User, FinancialProfile
-            # user = await db.query(User).filter(User.id == user_id).first()
-            # profile = await db.query(FinancialProfile).filter(...).first()
+            from sqlalchemy import select
+            from backend.db.orm_models import FinancialProfile, User
+            
+            # Fetch user
+            stmt_user = select(User).where(User.id == user_id)
+            res_user = await self.db.execute(stmt_user)
+            user_rec = res_user.scalar_one_or_none()
+            email = user_rec.email if user_rec else "user@example.com"
+            full_name = user_rec.full_name if user_rec else "User"
+
+            # Fetch profile
+            stmt_profile = select(FinancialProfile).where(FinancialProfile.user_id == user_id)
+            res_profile = await self.db.execute(stmt_profile)
+            profile_rec = res_profile.scalar_one_or_none()
+            
+            profile_data = profile_rec.profile_data if (profile_rec and profile_rec.profile_data) else {}
+            
+            annual_income = float(profile_rec.annual_income) if profile_rec else 0.0
+            employment_type = profile_rec.employment_type if profile_rec else "individual"
             
             return {
-                "user_id": user_id,
-                "email": "user@example.com",
-                "basic_info": {
-                    "age": 35,
-                    "category": "individual",
-                    "employment_type": "salaried"
-                },
-                "financial_profile": {
-                    "annual_income": 500000,
-                    "employment_income": 500000,
-                    "other_income": 0,
-                    "investments": {
-                        "elss": 100000,
-                        "ppf": 150000,
-                        "nps": 50000,
-                        "mutual_funds": 200000
+                "success": True,
+                "result": {
+                    "user_id": user_id,
+                    "email": email,
+                    "full_name": full_name,
+                    "basic_info": {
+                        "age": profile_data.get("age") or 35,
+                        "category": profile_data.get("filingStatus") or "individual",
+                        "employment_type": employment_type
                     },
-                    "loans": {
-                        "home_loan": 2000000,
-                        "education_loan": 0
+                    "financial_profile": {
+                        "annual_income": annual_income,
+                        "employment_income": float(profile_data.get("salaryCtc", annual_income)),
+                        "other_income": float(profile_data.get("otherIncome", 0.0)),
+                        "investments": {
+                            "elss": float(profile_data.get("elss", 0.0)),
+                            "ppf": float(profile_data.get("ppf", 0.0)),
+                            "nps": float(profile_data.get("npsEmployee", 0.0)),
+                            "mutual_funds": float(profile_data.get("mutualFundValue", 0.0)),
+                            "lic": float(profile_data.get("lic", 0.0)),
+                            "ulip": float(profile_data.get("ulip", 0.0)),
+                            "fd5yr": float(profile_data.get("fd5yr", 0.0)),
+                            "nsc": float(profile_data.get("nsc", 0.0)),
+                            "sukanya": float(profile_data.get("sukanyaSamriddhi", 0.0))
+                        },
+                        "loans": {
+                            "home_loan": float(profile_data.get("homeLoanPrincipal", 0.0)),
+                            "home_loan_interest": float(profile_data.get("homeLoanInterest", 0.0)),
+                            "ev_loan_interest": float(profile_data.get("evLoanInterest", 0.0)),
+                            "education_loan": float(profile_data.get("eduLoanInterest", 0.0))
+                        },
+                        "insurance": {
+                            "health_insurance": float(profile_data.get("healthInsuranceSelf", 0.0)) > 0 or float(profile_data.get("healthInsuranceParents", 0.0)) > 0,
+                            "health_insurance_self": float(profile_data.get("healthInsuranceSelf", 0.0)),
+                            "health_insurance_parents": float(profile_data.get("healthInsuranceParents", 0.0)),
+                            "life_insurance": float(profile_data.get("lic", 0.0))
+                        },
+                        "real_estate": {
+                            "properties": 1 if profile_data.get("hasProperty") else 0,
+                            "rental_income": float(profile_data.get("rentalIncome", 0.0))
+                        },
+                        "financial_year": "2025-26"
                     },
-                    "insurance": {
-                        "health_insurance": True,
-                        "life_insurance": 500000,
-                        "insurance_premium": 50000
-                    },
-                    "real_estate": {
-                        "properties": 1,
-                        "rental_income": 0
-                    },
-                    "financial_year": "2024-25"
-                },
-                "previous_analyses": [],
-                "last_updated": datetime.utcnow().isoformat()
+                    "profile_data": profile_data,
+                    "last_updated": profile_rec.updated_at.isoformat() if (profile_rec and profile_rec.updated_at) else datetime.utcnow().isoformat()
+                }
             }
         
         except Exception as e:
@@ -160,33 +178,78 @@ class UserFinancialDataTool:
     async def get_user_deductions(self, user_id: str) -> Dict[str, Any]:
         """Get user's claimed deductions."""
         try:
+            from sqlalchemy import select
+            from backend.db.orm_models import FinancialProfile
+            
+            stmt = select(FinancialProfile).where(FinancialProfile.user_id == user_id)
+            res = await self.db.execute(stmt)
+            profile_rec = res.scalar_one_or_none()
+            
+            profile_data = profile_rec.profile_data if (profile_rec and profile_rec.profile_data) else {}
+            
+            c_80c = float(profile_data.get("ppf", 0)) + float(profile_data.get("elss", 0)) + float(profile_data.get("lic", 0)) + float(profile_data.get("ulip", 0)) + float(profile_data.get("fd5yr", 0)) + float(profile_data.get("nsc", 0)) + float(profile_data.get("sukanyaSamriddhi", 0)) + float(profile_data.get("homeLoanPrincipal", 0))
+            c_80d = float(profile_data.get("healthInsuranceSelf", 0)) + float(profile_data.get("healthInsuranceParents", 0))
+            c_nps = float(profile_data.get("npsEmployee", 0)) + float(profile_data.get("npsEmployer", 0))
+            
             return {
-                "user_id": user_id,
-                "deductions": {
-                    "80C": {
-                        "claimed": 150000,
-                        "limit": 150000,
-                        "items": [
-                            {"type": "ELSS", "amount": 100000},
-                            {"type": "Life Insurance", "amount": 50000}
-                        ]
+                "success": True,
+                "result": {
+                    "user_id": user_id,
+                    "deductions": {
+                        "80C": {
+                            "claimed": c_80c,
+                            "limit": 150000,
+                            "items": [
+                                {"type": "PPF", "amount": float(profile_data.get("ppf", 0))},
+                                {"type": "ELSS", "amount": float(profile_data.get("elss", 0))},
+                                {"type": "LIC Premium", "amount": float(profile_data.get("lic", 0))},
+                                {"type": "ULIP", "amount": float(profile_data.get("ulip", 0))},
+                                {"type": "5-Year FD", "amount": float(profile_data.get("fd5yr", 0))},
+                                {"type": "NSC", "amount": float(profile_data.get("nsc", 0))},
+                                {"type": "Sukanya Samriddhi", "amount": float(profile_data.get("sukanyaSamriddhi", 0))},
+                                {"type": "Home Loan Principal", "amount": float(profile_data.get("homeLoanPrincipal", 0))}
+                            ]
+                        },
+                        "80D": {
+                            "claimed": c_80d,
+                            "limit": 75000,
+                            "items": [
+                                {"type": "Health Insurance (Self)", "amount": float(profile_data.get("healthInsuranceSelf", 0))},
+                                {"type": "Health Insurance (Parents)", "amount": float(profile_data.get("healthInsuranceParents", 0))}
+                            ]
+                        },
+                        "NPS": {
+                            "claimed": c_nps,
+                            "limit": 200000,
+                            "items": [
+                                {"type": "NPS Employee Contribution", "amount": float(profile_data.get("npsEmployee", 0))},
+                                {"type": "NPS Employer Contribution", "amount": float(profile_data.get("npsEmployer", 0))}
+                            ]
+                        },
+                        "Sec24b": {
+                            "claimed": float(profile_data.get("homeLoanInterest", 0)),
+                            "limit": 200000,
+                            "items": [
+                                {"type": "Home Loan Interest", "amount": float(profile_data.get("homeLoanInterest", 0))}
+                            ]
+                        },
+                        "80E": {
+                            "claimed": float(profile_data.get("eduLoanInterest", 0)),
+                            "limit": None,
+                            "items": [
+                                {"type": "Education Loan Interest", "amount": float(profile_data.get("eduLoanInterest", 0))}
+                            ]
+                        },
+                        "80EEB": {
+                            "claimed": float(profile_data.get("evLoanInterest", 0)),
+                            "limit": 150000,
+                            "items": [
+                                {"type": "EV Loan Interest", "amount": float(profile_data.get("evLoanInterest", 0))}
+                            ]
+                        }
                     },
-                    "80D": {
-                        "claimed": 50000,
-                        "limit": 150000,
-                        "items": [
-                            {"type": "Health Insurance", "amount": 50000}
-                        ]
-                    },
-                    "80TTA": {
-                        "claimed": 8000,
-                        "limit": 10000,
-                        "items": [
-                            {"type": "Savings Account Interest", "amount": 8000}
-                        ]
-                    }
-                },
-                "total_deductions": 208000
+                    "total_deductions": c_80c + c_80d + c_nps + float(profile_data.get("homeLoanInterest", 0)) + float(profile_data.get("eduLoanInterest", 0)) + float(profile_data.get("evLoanInterest", 0))
+                }
             }
         except Exception as e:
             self.logger.error(f"Error fetching deductions: {e}")

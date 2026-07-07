@@ -1,298 +1,263 @@
-import React from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAppDispatch, useAppSelector } from '../store/store';
-import { logout } from '../store/slices/authSlice';
-import ThemeToggle from '../components/common/ThemeToggle';
-import { 
-  TrendingUp, 
-  ShieldAlert, 
-  FileText, 
-  Calculator, 
-  LogOut, 
-  User, 
-  CheckCircle2, 
-  AlertTriangle,
-  Calendar,
-  ArrowUpRight,
-  Percent,
-  Download
-} from 'lucide-react';
-import { 
-  ResponsiveContainer, 
-  AreaChart, 
-  Area, 
-  XAxis, 
-  YAxis, 
-  Tooltip 
-} from 'recharts';
+import { IndianRupee, Percent, ShieldCheck, Wallet, Sparkles, ArrowRight, Zap, UserCircle, AlertTriangle } from 'lucide-react';
+import AppLayout from '../components/shared/AppLayout';
+import StatCard from '../components/ui/StatCard';
+import ScoreGauge from '../components/ui/ScoreGauge';
+import { Card, SectionHeading, Badge, DemoBadge } from '../components/ui/Primitives';
+import { HealthTrendChart, IncomeVsTaxChart } from '../components/shared/Charts';
+import { useApiData } from '../hooks/useApiData';
+import { getHealthScore, calculateAdvancedTax } from '../api/services';
+import { mockHealthScore, mockTaxSummary, mockMonthlyTrend, mockIncomeVsTax } from '../utils/mockData';
+import { formatINR, formatCompactINR } from '../utils/format';
+import { Link } from 'react-router-dom';
+import { useProfileStore, calculateTax, TAX_YEAR, ASSESSMENT_YEAR } from '../store/useProfileStore';
+import { useAuthStore } from '../store/useAuthStore';
+import type { FinancialProfile } from '../store/useProfileStore';
 
-// Mock data for financial health trend
-const healthData = [
-  { month: 'Jan', score: 68 },
-  { month: 'Feb', score: 72 },
-  { month: 'Mar', score: 70 },
-  { month: 'Apr', score: 78 },
-  { month: 'May', score: 85 },
-  { month: 'Jun', score: 92 },
-];
+// Profile-aware smart suggestions
+function getProfileSuggestions(profile: FinancialProfile, tax: ReturnType<typeof calculateTax>) {
+  const suggestions: { strategy: string; action: string; potential_savings: number }[] = [];
+  const marginalRate = tax.taxableIncome > 1500000 ? 0.30 : tax.taxableIncome > 1000000 ? 0.20 : 0.10;
 
-export const Dashboard: React.FC = () => {
-  const { user } = useAppSelector((state) => state.auth);
-  const dispatch = useAppDispatch();
-  const navigate = useNavigate();
+  const sec80CUsed = profile.ppf + profile.elss + profile.lic + profile.ulip + profile.fd5yr + profile.nsc + profile.homeLoanPrincipal;
+  if (sec80CUsed < 150000 && tax.grossIncome > 0) {
+    suggestions.push({
+      strategy: `Maximize Section 80C — ₹${(150000 - Math.min(sec80CUsed, 150000)).toLocaleString('en-IN')} headroom left`,
+      action: 'Invest in ELSS, PPF, or NSC before March 31, 2026',
+      potential_savings: Math.max(0, 150000 - sec80CUsed) * marginalRate,
+    });
+  }
 
-  const handleLogout = () => {
-    dispatch(logout());
-    navigate('/login');
-  };
+  if (profile.npsEmployee < 50000 && tax.grossIncome > 0) {
+    suggestions.push({
+      strategy: 'NPS Tier-I extra deduction (80CCD(1B)) — outside 80C limit',
+      action: `Invest up to ₹${(50000 - profile.npsEmployee).toLocaleString('en-IN')} more in NPS for extra deduction`,
+      potential_savings: Math.max(0, 50000 - profile.npsEmployee) * marginalRate,
+    });
+  }
 
-  const username = user?.fullName || 'Vyas';
+  if (profile.healthInsuranceSelf < 25000 && tax.grossIncome > 0 && tax.regime === 'old') {
+    suggestions.push({
+      strategy: 'Health insurance (80D) — ₹25K deduction for self + family',
+      action: 'Buy or upgrade health insurance before March 31, 2026',
+      potential_savings: Math.max(0, 25000 - profile.healthInsuranceSelf) * marginalRate,
+    });
+  }
+
+  if (profile.profession === 'salaried' && profile.npsEmployer === 0 && profile.salaryCtc > 0) {
+    suggestions.push({
+      strategy: 'Ask employer for NPS contribution (80CCD(2)) — completely outside 80C',
+      action: `Up to ₹${Math.round(profile.salaryCtc * 0.10).toLocaleString('en-IN')} tax-free via employer NPS contribution`,
+      potential_savings: profile.salaryCtc * 0.10 * marginalRate,
+    });
+  }
+
+  // Regime comparison
+  const newT = calculateTax({ ...profile, taxRegime: 'new' });
+  const oldT = calculateTax({ ...profile, taxRegime: 'old' });
+  const currentT = tax.regime === 'new' ? newT : oldT;
+  const otherT = tax.regime === 'new' ? oldT : newT;
+  if (otherT.totalTax < currentT.totalTax - 5000) {
+    const better = tax.regime === 'new' ? 'Old Regime' : 'New Regime';
+    suggestions.push({
+      strategy: `Switch to ${better} — saves ₹${(currentT.totalTax - otherT.totalTax).toLocaleString('en-IN')} this year`,
+      action: `You're on ${tax.regime === 'new' ? 'New' : 'Old'} regime but ${better} is more beneficial for your income profile`,
+      potential_savings: currentT.totalTax - otherT.totalTax,
+    });
+  }
+
+  if (profile.hasVehicle && profile.vehicleType === 'ev' && profile.evLoanInterest < 150000) {
+    suggestions.push({
+      strategy: 'EV loan interest deduction (80EEB) — up to ₹1.5L',
+      action: `Claim ₹${Math.min(150000, profile.evLoanInterest || 0).toLocaleString('en-IN')} EV loan interest deduction`,
+      potential_savings: Math.max(0, 150000 - (profile.evLoanInterest || 0)) * marginalRate,
+    });
+  }
+
+  return suggestions.sort((a, b) => b.potential_savings - a.potential_savings).slice(0, 4);
+}
+
+export default function Dashboard() {
+  const { data: health, isDemo: healthDemo } = useApiData(getHealthScore, { result: mockHealthScore }, []);
+  const { data: tax, isDemo: taxDemo } = useApiData(() => calculateAdvancedTax({}), mockTaxSummary, []);
+
+  const h = health?.result || mockHealthScore;
+  const t = tax?.tax_calculation ? tax : mockTaxSummary;
+  const isDemo = healthDemo || taxDemo;
+
+  const { profile, completeness } = useProfileStore();
+  const user = useAuthStore((s) => s.user);
+  const profileTax = calculateTax(profile);
+  const hasProfile = profileTax.grossIncome > 0;
+
+  const displayTax = hasProfile ? profileTax.totalTax : t.tax_calculation?.total_tax_liability;
+  const displayGross = hasProfile ? profileTax.grossIncome : t.gross_income;
+  const displayDeductions = hasProfile ? profileTax.totalDeductions : t.deductions?.total_claimed;
+  const displayRate = hasProfile ? profileTax.effectiveRate.toFixed(1) : t.effective_tax_rate;
+  const displayTaxable = hasProfile ? profileTax.taxableIncome : t.taxable_income;
+
+  const profileSuggestions = hasProfile ? getProfileSuggestions(profile, profileTax) : [];
+  const suggestionsToShow = profileSuggestions.length > 0 ? profileSuggestions : (t.optimization_suggestions || mockTaxSummary.optimization_suggestions).slice(0, 4);
+
+  const totalPotentialSavings = hasProfile
+    ? profileSuggestions.reduce((a, s) => a + s.potential_savings, 0)
+    : 96400;
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-body relative overflow-hidden transition-colors duration-300">
-      {/* Background Gradients */}
-      <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-primary/5 rounded-full blur-[100px] pointer-events-none"></div>
-      <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-secondary/5 rounded-full blur-[100px] pointer-events-none"></div>
+    <AppLayout title="Dashboard" subtitle={`Your complete financial picture · ${TAX_YEAR} / ${ASSESSMENT_YEAR}`}>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <p className="text-[13px] text-ink-soft">
+            {hasProfile
+              ? `Welcome back, ${user?.name || 'there'} — live calculations based on your profile.`
+              : 'Welcome back — complete your profile for personalised insights.'}
+          </p>
+        </div>
+        <DemoBadge show={isDemo && !hasProfile} />
+      </div>
 
-      {/* Header */}
-      <header className="border-b border-slate-200 dark:border-slate-900 bg-white/80 dark:bg-slate-950/80 backdrop-blur-md sticky top-0 z-40 transition-colors duration-300">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="h-9 w-9 bg-gradient-to-tr from-primary to-secondary rounded-lg flex items-center justify-center font-heading font-bold text-white shadow-lg shadow-primary/20">
-              FS
+      {/* Profile prompt banner */}
+      {completeness < 50 && (
+        <div className="flex items-center justify-between gap-3 p-4 mb-5 rounded-xl bg-primary/8 border border-primary/20">
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+              <UserCircle size={16} />
             </div>
-            <span className="font-heading font-extrabold text-xl tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-slate-950 to-slate-600 dark:from-white dark:to-slate-400">
-              FinSage AI
+            <div>
+              <p className="text-[13.5px] font-semibold text-ink">Complete your financial profile</p>
+              <p className="text-[12px] text-ink-soft mt-0.5">
+                Your profile is {completeness}% complete. Add income, investments & assets to unlock personalised advice.
+              </p>
+            </div>
+          </div>
+          <Link
+            to="/profile"
+            className="shrink-0 h-9 px-4 rounded-lg bg-primary text-white text-[12.5px] font-semibold flex items-center gap-1.5 hover:bg-primary/90 transition-colors whitespace-nowrap"
+          >
+            Complete <ArrowRight size={13} />
+          </Link>
+        </div>
+      )}
+
+      {/* Hero row */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-6 stagger">
+        <Card className="lg:col-span-2 bg-gradient-to-br from-navy to-navy-deep text-white border-0 relative overflow-hidden">
+          <div className="absolute -right-10 -top-10 w-56 h-56 rounded-full bg-gradient-to-br from-saffron/20 to-teal/10 blur-2xl" />
+          <div className="relative p-6">
+            <p className="text-[11px] font-semibold tracking-wide uppercase text-white/60 mb-2">
+              Estimated Tax Position · {TAX_YEAR} · {hasProfile ? `${profile.taxRegime === 'new' ? 'New' : 'Old'} Regime` : 'Demo'}
+            </p>
+            <p className="ledger-num font-display font-semibold text-[38px] leading-none mb-1">
+              {formatINR(displayTax)}
+            </p>
+            <p className="text-[13px] text-white/60 mb-6">
+              Total liability at {displayRate}% effective rate
+            </p>
+
+            <div className="grid grid-cols-3 gap-4 pt-5 border-t border-white/10">
+              <div>
+                <p className="ledger-num text-[16px] font-semibold">{formatCompactINR(displayGross)}</p>
+                <p className="text-[11px] text-white/50">Gross income</p>
+              </div>
+              <div>
+                <p className="ledger-num text-[16px] font-semibold">{formatCompactINR(displayDeductions)}</p>
+                <p className="text-[11px] text-white/50">Deductions</p>
+              </div>
+              <div>
+                <p className="ledger-num text-[16px] font-semibold text-saffron-light">
+                  {formatCompactINR(totalPotentialSavings)}
+                </p>
+                <p className="text-[11px] text-white/50">Can still save</p>
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="flex flex-col items-center justify-center text-center p-6">
+          <p className="text-[11px] font-semibold tracking-wide uppercase text-primary mb-3">Financial Health</p>
+          <ScoreGauge score={h.overall_score} />
+          <p className="text-[12.5px] text-ink-soft mt-3">{h.health_status?.message}</p>
+          <Link to="/health-score" className="mt-3 text-[12.5px] font-medium text-primary inline-flex items-center gap-1 hover:gap-1.5 transition-all">
+            View breakdown <ArrowRight size={13} />
+          </Link>
+        </Card>
+      </div>
+
+      {/* Stat cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-6 stagger">
+        <StatCard label="Taxable income" value={formatCompactINR(displayTaxable)} icon={IndianRupee} accent="primary" />
+        <StatCard label="Effective tax rate" value={`${displayRate}%`} icon={Percent} accent="saffron" />
+        <StatCard label="Compliance score" value="85 / 100" icon={ShieldCheck} accent="teal" delta={5} deltaLabel=" pts" />
+        <StatCard label="Potential savings" value={formatCompactINR(totalPotentialSavings)} icon={Wallet} accent="saffron" />
+      </div>
+
+      {/* Charts row */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-5 mb-6 stagger">
+        <Card className="lg:col-span-3 p-6">
+          <SectionHeading eyebrow="4-Year Trend" title="Income vs. Tax Paid" />
+          <IncomeVsTaxChart data={mockIncomeVsTax} />
+        </Card>
+        <Card className="lg:col-span-2 p-6">
+          <SectionHeading eyebrow="6-Month Trend" title="Health Score Trajectory" />
+          <HealthTrendChart data={mockMonthlyTrend} />
+        </Card>
+      </div>
+
+      {/* Smart Savings CTA */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-6 stagger">
+        <Link to="/smart-savings" className="lg:col-span-1 block">
+          <Card className="p-5 h-full border-dashed border-primary/30 hover:border-primary hover:bg-primary/3 transition-all cursor-pointer group">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-9 h-9 rounded-lg bg-saffron/10 text-saffron flex items-center justify-center">
+                <Zap size={18} />
+              </div>
+              <div>
+                <p className="text-[14px] font-bold text-ink">Smart Savings</p>
+                <p className="text-[11.5px] text-ink-soft">Cost reduction engine</p>
+              </div>
+            </div>
+            <p className="text-[12.5px] text-ink-soft leading-relaxed mb-3">
+              Discover personalised strategies to cut taxes on vehicles, property, purchases & salary.
+            </p>
+            <span className="text-[12.5px] font-semibold text-primary flex items-center gap-1 group-hover:gap-2 transition-all">
+              Explore strategies <ArrowRight size={13} />
             </span>
-          </div>
+          </Card>
+        </Link>
 
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-sm transition-colors duration-300">
-              <User className="h-4 w-4 text-secondary" />
-              <span className="text-slate-700 dark:text-slate-300 font-semibold">{username}</span>
+        {/* Recommendations */}
+        <Card className="lg:col-span-2 p-6">
+          <SectionHeading
+            eyebrow={hasProfile ? 'AI Recommendations — Your Profile' : 'AI Recommendations'}
+            title="Top opportunities right now"
+            action={<Badge tone="medium"><Sparkles size={12} /> {suggestionsToShow.length} active</Badge>}
+          />
+          {!hasProfile && (
+            <div className="flex items-start gap-2 mb-3 px-3 py-2 rounded-lg bg-saffron/8 border border-saffron/20">
+              <AlertTriangle size={12} className="text-saffron mt-0.5 shrink-0" />
+              <p className="text-[11.5px] text-ink-soft">Showing generic tips. <Link to="/profile" className="text-primary font-semibold underline">Add your income</Link> for personalised savings.</p>
             </div>
-            
-            <ThemeToggle />
-            
-            <button 
-              onClick={handleLogout}
-              className="p-2.5 rounded-xl text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900 border border-slate-200 dark:border-transparent dark:hover:border-slate-800 transition-all duration-200 cursor-pointer"
-              title="Sign Out"
-            >
-              <LogOut className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 relative z-10">
-        {/* Welcome Section */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white/60 dark:bg-slate-900/40 p-6 rounded-2xl border border-slate-200 dark:border-slate-900 backdrop-blur-sm transition-colors duration-300">
-          <div>
-            <h1 className="text-3xl font-black tracking-tight text-slate-950 dark:text-white mb-1">
-              Welcome back, {username.split(' ')[0]}
-            </h1>
-            <p className="text-slate-600 dark:text-slate-400 text-sm">
-              Here is your financial and tax compliance overview. Everything is looking solid.
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="px-4 py-2 bg-success/10 dark:bg-success/15 border border-success/20 dark:border-success/30 rounded-xl text-success flex items-center gap-2 text-sm font-semibold transition-colors">
-              <CheckCircle2 className="h-4 w-4" />
-              Audit Ready (92%)
-            </div>
-            <div className="px-4 py-2 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-700 dark:text-slate-300 flex items-center gap-2 text-sm font-semibold transition-colors">
-              <Calendar className="h-4 w-4 text-secondary" />
-              ITR-2 Filing Draft
-            </div>
-          </div>
-        </div>
-
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {/* Card 1 */}
-          <div className="bg-white/60 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-850 p-6 rounded-2xl space-y-4 hover:border-primary/45 dark:hover:border-primary/45 hover:shadow-lg dark:hover:shadow-primary/5 transition-all duration-300 group hover:-translate-y-0.5">
-            <div className="flex justify-between items-start">
-              <span className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider">Financial Health Score</span>
-              <div className="p-2 bg-primary/10 text-primary rounded-xl group-hover:scale-110 transition-transform">
-                <TrendingUp className="h-5 w-5" />
-              </div>
-            </div>
-            <div>
-              <div className="text-3xl font-black text-slate-950 dark:text-white">92<span className="text-lg text-slate-400 dark:text-slate-500">/100</span></div>
-              <div className="flex items-center gap-1.5 text-xs text-success mt-1">
-                <ArrowUpRight className="h-3 w-3" />
-                <span>+4% from last month</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Card 2 */}
-          <div className="bg-white/60 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-850 p-6 rounded-2xl space-y-4 hover:border-secondary/45 dark:hover:border-secondary/45 hover:shadow-lg dark:hover:shadow-secondary/5 transition-all duration-300 group hover:-translate-y-0.5">
-            <div className="flex justify-between items-start">
-              <span className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider">Total Tax Saved</span>
-              <div className="p-2 bg-secondary/10 text-secondary rounded-xl group-hover:scale-110 transition-transform">
-                <Percent className="h-5 w-5" />
-              </div>
-            </div>
-            <div>
-              <div className="text-3xl font-black text-slate-950 dark:text-white">₹1,45,200</div>
-              <div className="flex items-center gap-1.5 text-xs text-success mt-1">
-                <ArrowUpRight className="h-3 w-3" />
-                <span>Optimized via Section 80C</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Card 3 */}
-          <div className="bg-white/60 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-850 p-6 rounded-2xl space-y-4 hover:border-success/45 dark:hover:border-success/45 hover:shadow-lg dark:hover:shadow-success/5 transition-all duration-300 group hover:-translate-y-0.5">
-            <div className="flex justify-between items-start">
-              <span className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider">Compliance Red Flags</span>
-              <div className="p-2 bg-red-500/10 text-red-500 dark:text-red-400 rounded-xl group-hover:scale-110 transition-transform">
-                <ShieldAlert className="h-5 w-5" />
-              </div>
-            </div>
-            <div>
-              <div className="text-3xl font-black text-slate-950 dark:text-white">0</div>
-              <div className="flex items-center gap-1.5 text-xs text-success mt-1">
-                <CheckCircle2 className="h-3.5 w-3.5" />
-                <span>Fully compliant</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Card 4 */}
-          <div className="bg-white/60 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-850 p-6 rounded-2xl space-y-4 hover:border-slate-350 dark:hover:border-slate-800 hover:shadow-lg transition-all duration-300 group hover:-translate-y-0.5">
-            <div className="flex justify-between items-start">
-              <span className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider">Upcoming Deadline</span>
-              <div className="p-2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-xl group-hover:scale-110 transition-transform">
-                <Calendar className="h-5 w-5" />
-              </div>
-            </div>
-            <div>
-              <div className="text-2xl font-black text-slate-900 dark:text-white">July 31, 2026</div>
-              <div className="flex items-center gap-1.5 text-xs text-yellow-600 dark:text-yellow-500 mt-1">
-                <AlertTriangle className="h-3.5 w-3.5" />
-                <span>ITR filing due date</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Dynamic Analytics & Agent Modules */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Chart Widget */}
-          <div className="lg:col-span-2 bg-white/60 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-900 p-6 rounded-2xl flex flex-col space-y-4 transition-colors duration-300">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-bold text-slate-950 dark:text-white">Financial Health Score Trend</h3>
-                <p className="text-slate-500 dark:text-slate-400 text-xs">A tracking score aggregated from tax efficiency and compliance factors</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="h-2 w-2 rounded-full bg-primary animate-pulse"></span>
-                <span className="text-xs text-slate-500 dark:text-slate-400">Live Scorer Status</span>
-              </div>
-            </div>
-            <div className="h-64 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={healthData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="colorScore" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#1a5490" stopOpacity={0.4}/>
-                      <stop offset="95%" stopColor="#1a5490" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                  <XAxis dataKey="month" stroke="var(--chart-axis)" fontSize={11} tickLine={false} axisLine={false} />
-                  <YAxis stroke="var(--chart-axis)" fontSize={11} domain={[50, 100]} tickLine={false} axisLine={false} />
-                  <Tooltip 
-                    contentStyle={{ backgroundColor: 'var(--tooltip-bg)', borderColor: 'var(--tooltip-border)', borderRadius: '12px' }}
-                    labelStyle={{ color: 'var(--tooltip-text)', fontWeight: 'bold' }}
-                    itemStyle={{ color: 'var(--tooltip-text)' }}
-                  />
-                  <Area type="monotone" dataKey="score" stroke="#1a5490" strokeWidth={2.5} fillOpacity={1} fill="url(#colorScore)" />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          {/* Action List & Agents */}
-          <div className="bg-white/60 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-900 p-6 rounded-2xl flex flex-col space-y-4 justify-between transition-colors duration-300">
-            <div className="space-y-4">
-              <div>
-                <h3 className="text-lg font-bold text-slate-950 dark:text-white font-heading">AI Agents & Workspaces</h3>
-                <p className="text-slate-500 dark:text-slate-400 text-xs">Run background jobs, check deductions, or file reports</p>
-              </div>
-
-              {/* Agent Grid */}
-              <div className="space-y-3">
-                {/* Agent 1 */}
-                <div className="flex items-center justify-between p-3 bg-white dark:bg-slate-950/60 hover:bg-slate-50 dark:hover:bg-slate-900 border border-slate-200 dark:border-slate-900 rounded-xl transition-all cursor-pointer group">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-success/10 text-success rounded-lg">
-                      <ShieldAlert className="h-4 w-4" />
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-semibold text-slate-900 dark:text-white group-hover:text-primary transition-colors">Compliance Checker</h4>
-                      <p className="text-slate-500 dark:text-slate-400 text-xxs">Verify red flags & rules</p>
-                    </div>
+          )}
+          <div className="ledger-rule mb-4" />
+          <div className="space-y-0">
+            {suggestionsToShow.map((s: any, i: number) => (
+              <div key={i} className="flex items-center justify-between py-3 border-b border-line last:border-0">
+                <div className="flex items-start gap-3">
+                  <span className="ledger-num text-[11px] font-semibold text-primary bg-primary/10 w-6 h-6 rounded-md flex items-center justify-center shrink-0 mt-0.5">
+                    {i + 1}
+                  </span>
+                  <div>
+                    <p className="text-[13.5px] font-medium text-ink">{s.strategy}</p>
+                    <p className="text-[12px] text-ink-soft">{s.action}</p>
                   </div>
-                  <ArrowUpRight className="h-4 w-4 text-slate-400 group-hover:text-primary transition-colors" />
                 </div>
-
-                {/* Agent 2 */}
-                <div className="flex items-center justify-between p-3 bg-white dark:bg-slate-950/60 hover:bg-slate-50 dark:hover:bg-slate-900 border border-slate-200 dark:border-slate-900 rounded-xl transition-all cursor-pointer group">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-secondary/10 text-secondary rounded-lg">
-                      <FileText className="h-4 w-4" />
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-semibold text-slate-900 dark:text-white group-hover:text-primary transition-colors">ITR Helper Agent</h4>
-                      <p className="text-slate-500 dark:text-slate-400 text-xxs">Check eligibility & step-by-step filing</p>
-                    </div>
-                  </div>
-                  <ArrowUpRight className="h-4 w-4 text-slate-400 group-hover:text-primary transition-colors" />
-                </div>
-
-                {/* Agent 3 */}
-                <div className="flex items-center justify-between p-3 bg-white dark:bg-slate-950/60 hover:bg-slate-50 dark:hover:bg-slate-900 border border-slate-200 dark:border-slate-900 rounded-xl transition-all cursor-pointer group">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-primary/10 text-primary rounded-lg">
-                      <Calculator className="h-4 w-4" />
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-semibold text-slate-900 dark:text-white group-hover:text-primary transition-colors">Advanced Calculator</h4>
-                      <p className="text-slate-500 dark:text-slate-400 text-xxs">Multi-source income & capital gains</p>
-                    </div>
-                  </div>
-                  <ArrowUpRight className="h-4 w-4 text-slate-400 group-hover:text-primary transition-colors" />
-                </div>
+                <p className="ledger-num text-[14px] font-semibold text-teal whitespace-nowrap ml-4">
+                  +{formatCompactINR(s.potential_savings)}
+                </p>
               </div>
-            </div>
-
-            <button className="w-full mt-4 py-2.5 bg-gradient-to-r from-primary to-primary-dark hover:from-primary-dark hover:to-primary text-white font-bold text-sm rounded-xl transition-all duration-300 shadow-md shadow-primary/20 flex items-center justify-center gap-2 cursor-pointer">
-              <Download className="h-4 w-4" />
-              Generate Tax Report
-            </button>
+            ))}
           </div>
-        </div>
-
-        {/* Quick Tips & Alerts */}
-        <div className="bg-gradient-to-r from-primary/10 to-transparent p-6 rounded-2xl border border-primary/20 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-          <div className="space-y-1">
-            <span className="px-2 py-0.5 bg-primary/20 text-primary border border-primary/30 rounded text-xxs font-bold uppercase tracking-wider">Weekly Tip</span>
-            <h4 className="text-sm font-bold text-slate-950 dark:text-white">Optimize Mutual Fund Gains before March 31</h4>
-            <p className="text-slate-650 dark:text-slate-400 text-xs">
-              You can harvest up to ₹1 Lakh in Long-Term Capital Gains (LTCG) tax-free every financial year under Section 112A.
-            </p>
-          </div>
-          <button className="px-4 py-2 bg-white hover:bg-slate-100 dark:bg-slate-900 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 text-xs font-bold rounded-xl text-slate-700 dark:text-slate-200 whitespace-nowrap transition-all cursor-pointer">
-            Learn More
-          </button>
-        </div>
-      </main>
-    </div>
+        </Card>
+      </div>
+    </AppLayout>
   );
-};
-
-export default Dashboard;
+}

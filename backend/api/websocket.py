@@ -10,6 +10,7 @@ import json
 import uuid
 from typing import Set
 import asyncio
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +106,7 @@ async def websocket_agent_stream(
             "type": "connection_established",
             "conversation_id": conversation_id,
             "user_id": user_id,
-            "timestamp": str(__import__('datetime').datetime.utcnow())
+            "timestamp": datetime.now(timezone.utc).isoformat()
         })
         
         logger.info(f"WebSocket connected: conversation={conversation_id}, user={user_id}")
@@ -127,7 +128,7 @@ async def websocket_agent_stream(
                 # Respond to ping
                 await websocket.send_json({
                     "type": "pong",
-                    "timestamp": str(__import__('datetime').datetime.utcnow())
+                    "timestamp": datetime.now(timezone.utc).isoformat()
                 })
     
     except WebSocketDisconnect:
@@ -165,7 +166,7 @@ async def simulate_agent_execution(conversation_id: str, query: str):
     await manager.broadcast(conversation_id, {
         "type": "agent_start",
         "agent": "tax_deduction_agent",
-        "timestamp": str(__import__('datetime').datetime.utcnow())
+        "timestamp": datetime.now(timezone.utc).isoformat()
     })
     
     # Simulate thinking
@@ -175,7 +176,7 @@ async def simulate_agent_execution(conversation_id: str, query: str):
             "type": "agent_thinking",
             "agent": "tax_deduction_agent",
             "reasoning": f"Analyzing deductions... step {i+1}/3",
-            "timestamp": str(__import__('datetime').datetime.utcnow())
+            "timestamp": datetime.now(timezone.utc).isoformat()
         })
     
     # Send result
@@ -191,7 +192,7 @@ async def simulate_agent_execution(conversation_id: str, query: str):
             "estimated_savings": 1600
         },
         "execution_time_ms": 1500,
-        "timestamp": str(__import__('datetime').datetime.utcnow())
+        "timestamp": datetime.now(timezone.utc).isoformat()
     })
     
     # Agent 2: Investment Agent
@@ -200,7 +201,7 @@ async def simulate_agent_execution(conversation_id: str, query: str):
     await manager.broadcast(conversation_id, {
         "type": "agent_start",
         "agent": "investment_optimizer_agent",
-        "timestamp": str(__import__('datetime').datetime.utcnow())
+        "timestamp": datetime.now(timezone.utc).isoformat()
     })
     
     await asyncio.sleep(1.5)
@@ -215,7 +216,7 @@ async def simulate_agent_execution(conversation_id: str, query: str):
             ]
         },
         "execution_time_ms": 1000,
-        "timestamp": str(__import__('datetime').datetime.utcnow())
+        "timestamp": datetime.now(timezone.utc).isoformat()
     })
     
     # Aggregation
@@ -223,7 +224,7 @@ async def simulate_agent_execution(conversation_id: str, query: str):
     
     await manager.broadcast(conversation_id, {
         "type": "aggregation_start",
-        "timestamp": str(__import__('datetime').datetime.utcnow())
+        "timestamp": datetime.now(timezone.utc).isoformat()
     })
     
     await asyncio.sleep(0.5)
@@ -233,7 +234,7 @@ async def simulate_agent_execution(conversation_id: str, query: str):
         "type": "final_response",
         "response": "Based on analysis: Your estimated tax savings are ₹1,600. Consider diversifying your investments as recommended.",
         "total_execution_time_ms": 3000,
-        "timestamp": str(__import__('datetime').datetime.utcnow())
+        "timestamp": datetime.now(timezone.utc).isoformat()
     })
 
 

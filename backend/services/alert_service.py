@@ -4,7 +4,7 @@ Service to manage compliance red flags and scheduled tasks execution logs.
 
 import logging
 from typing import Dict, Any, List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession

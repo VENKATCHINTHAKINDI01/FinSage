@@ -34,6 +34,18 @@ async def lifespan(app: FastAPI):
     logger.info(f"Environment: {settings.environment}")
     logger.info(f"Debug: {settings.debug}")
     
+    # Run database initialization & migrations dynamically
+    from backend.db.postgres import get_engine
+    from sqlalchemy import text
+    try:
+        engine = await get_engine()
+        async with engine.begin() as conn:
+            logger.info("Running database migration checks...")
+            await conn.execute(text("ALTER TABLE financial_profiles ADD COLUMN IF NOT EXISTS profile_data JSONB;"))
+            logger.info("Database migration checks complete")
+    except Exception as db_err:
+        logger.error(f"Database migration check failed: {db_err}")
+        
     # Initialize tool components
     from backend.orchestrator.graph import AsyncSessionProxy
     from backend.tools import ToolExecutor
@@ -148,18 +160,26 @@ async def lifespan(app: FastAPI):
     logger.info(f"Registered agents: {list(orchestrator.agents.keys())}")
     
     yield
-    
+
     # Shutdown
     logger.info("🛑 Shutting down FinSage AI")
+
     # Shutdown scheduler
     from backend.services.scheduler import get_scheduler
     scheduler = get_scheduler()
     if scheduler:
         scheduler.shutdown_scheduler()
         logger.info("✅ Scheduler shut down successfully")
-    # TODO: Close database pool
-    # TODO: Close Redis connection
-    # TODO: Close Qdrant connection
+
+    # Close database connection pool
+    from backend.db.postgres import close_db
+    await close_db()
+    logger.info("✅ Database connections closed")
+
+    # Close Redis connection
+    from backend.db.redis_client import close_redis
+    await close_redis()
+    logger.info("✅ Redis connection closed")
 
 
 # Create FastAPI app with lifespan
@@ -182,7 +202,7 @@ app.add_middleware(
 )
 
 # Include routes
-from backend.api import auth, chat, websocket, benefits, compliance, reports, notifications
+from backend.api import auth, chat, websocket, benefits, compliance, reports, notifications, profile
 
 app.include_router(auth.router, tags=["Authentication"])
 app.include_router(chat.router, tags=["Chat"])
@@ -192,6 +212,9 @@ app.include_router(benefits.router)
 app.include_router(compliance.router)
 app.include_router(reports.router)
 app.include_router(notifications.router)
+app.include_router(profile.router)
+
+
 # Health check endpoint
 @app.get("/health")
 async def health_check():
@@ -215,75 +238,9 @@ async def root():
     }
 
 
-# TODO: Import and include routers
-# from backend.api import auth, chat, reports, schemes, documents, websocket
-# app.include_router(auth.router, prefix="/api/v1/auth", tags=["Auth"])
-# app.include_router(chat.router, prefix="/api/v1", tags=["Chat"])
-# app.include_router(reports.router, prefix="/api/v1", tags=["Reports"])
-# app.include_router(schemes.router, prefix="/api/v1", tags=["Schemes"])
-# app.include_router(documents.router, prefix="/api/v1", tags=["Documents"])
-
-
-# Tools initialization
+# Global tool executor (populated in lifespan startup)
 from backend.tools import ToolExecutor
-from backend.tools.calculation import TaxCalculationEngine
-from backend.tools.database import DatabaseToolFactory
-from backend.tools.schemes_search import SchemeLookupTool, WebSearchTool
-from backend.tools.reports_notifications import (
-    ReportGenerationTool,
-    NotificationTool,
-    ExportTool
-)
-
-# Global tool executor
 tool_executor = None
-
-async def get_db():
-    from backend.orchestrator.graph import AsyncSessionProxy
-    yield AsyncSessionProxy()
-
-@app.on_event("startup")
-async def init_tools():
-    global tool_executor
-    
-    logger.info("🔧 Initializing tools...")
-    
-    # Get database session
-    async for db in get_db():
-        break
-    
-    # Initialize tool components
-    calc_engine = TaxCalculationEngine()
-    
-    db_factory = DatabaseToolFactory(db)
-    db_tools = db_factory.create_tools()
-    
-    scheme_tools = SchemeLookupTool()
-    search_tools = WebSearchTool()
-    report_tools = ReportGenerationTool()
-    notification_tools = NotificationTool()
-    export_tools = ExportTool()
-    
-    # Create unified tool executor
-    tool_executor = ToolExecutor(
-        calculation_engine=calc_engine,
-        database_tools=db_tools,
-        scheme_tools=scheme_tools,
-        search_tools=search_tools,
-        report_tools=report_tools,
-        notification_tools=notification_tools,
-        export_tools=export_tools
-    )
-    
-    logger.info(f"✅ Tools initialized ({len(tool_executor.list_tools())} tools available)")
-    
-    # Initialize India Tax Data Fetcher
-    from backend.services.india_tax_data_fetcher import get_india_tax_data
-    await get_india_tax_data()
-    logger.info("🇮🇳 India Tax Data Fetcher initialized in startup event")
-
-
-
 
 
 if __name__ == "__main__":

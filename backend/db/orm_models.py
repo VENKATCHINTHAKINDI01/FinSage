@@ -16,6 +16,7 @@ from sqlalchemy import (
     Date,
     Time,
     UniqueConstraint,
+    func,
 )
 from sqlalchemy.dialects.postgresql import UUID, JSON
 from sqlalchemy.orm import relationship
@@ -34,8 +35,8 @@ class User(Base):
     full_name = Column(String(255), nullable=False)
     password_hash = Column(String(255), nullable=False)
     is_active = Column(Boolean, default=True, index=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
     
     # Relationships
     sessions = relationship("Session", back_populates="user", cascade="all, delete-orphan")
@@ -93,6 +94,7 @@ class FinancialProfile(Base):
         index=True
     )  # individual, freelancer, salaried, business, retired
     financial_goal = Column(Text, nullable=True)
+    profile_data = Column(JSON, nullable=True)
     
     # Metadata
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

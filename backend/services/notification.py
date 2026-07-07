@@ -7,7 +7,7 @@ import asyncio
 import smtplib
 import os
 from typing import Dict, Any, List, Optional
-from datetime import datetime, time, timedelta
+from datetime import datetime, timezone, time, timedelta
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 

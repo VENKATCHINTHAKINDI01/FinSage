@@ -4,7 +4,7 @@ Service to manage user compliance audit histories and document checklists.
 
 import logging
 from typing import Dict, Any, List, Optional
-from datetime import datetime, date
+from datetime import datetime, timezone, date
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession

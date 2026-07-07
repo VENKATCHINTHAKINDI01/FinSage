@@ -4,7 +4,7 @@ Used for API request/response bodies.
 """
 
 from pydantic import BaseModel, EmailStr, Field, condecimal
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from decimal import Decimal
 
@@ -128,7 +128,7 @@ class ErrorResponse(BaseModel):
     """Standard error response."""
     detail: str
     error_code: Optional[str] = None
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 # ==================== HEALTH CHECK ====================
@@ -138,4 +138,4 @@ class HealthCheckResponse(BaseModel):
     status: str
     database: bool
     redis: bool
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

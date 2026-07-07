@@ -4,7 +4,7 @@ Service to generate, export, and track compiled reports.
 
 import logging
 from typing import Dict, Any, List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 import os
 from io import BytesIO

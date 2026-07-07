@@ -64,7 +64,7 @@ async def get_current_user(
             detail="User account is inactive",
         )
         
-    return UserResponse.from_orm(user)
+    return UserResponse.model_validate(user)
 
 
 async def get_current_user_id(
@@ -98,6 +98,6 @@ async def get_optional_user(
         user = await get_user_by_id(session, user_id)
         if not user or not user.is_active:
             return None
-        return UserResponse.from_orm(user)
+        return UserResponse.model_validate(user)
     except Exception:
         return None

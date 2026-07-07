@@ -13,6 +13,7 @@ from backend.db.postgres import get_session
 from backend.security.dependencies import get_current_user
 from backend.orchestrator.memory import get_or_create_memory
 from backend.orchestrator import AdvancedAgentOrchestrator, run_workflow
+from backend.orchestrator.intent_detector import IntentDetector
 from backend.tools import ToolExecutor
 
 from backend.agents.income_classifier import IncomeClassifierAgent
@@ -55,88 +56,6 @@ def get_db():
     """Placeholder get_db function for startup events."""
     return None
 
-
-@router.on_event("startup")
-async def startup_event():
-    """Initialize on app startup."""
-    logger.info("🚀 Starting FinSage AI")
-    
-    # Get tools from main
-    from backend.main import tool_executor
-    
-    # Initialize intent detector
-    global intent_detector
-    intent_detector = IntentDetector()
-    
-    # Initialize orchestrator with tools
-    from backend.orchestrator.graph import init_orchestrator
-    await init_orchestrator(tools=tool_executor)
-    
-    # Register agents
-    from backend.agents.income_classifier import IncomeClassifierAgent
-    from backend.agents.deduction_hunter import DeductionHunterAgent
-    from backend.agents.tax_optimizer import TaxOptimizerAgent
-    
-    orchestrator.register_agent(
-        "income_classifier_agent",
-        IncomeClassifierAgent()
-    )
-    orchestrator.register_agent(
-        "deduction_hunter_agent",
-        DeductionHunterAgent()
-    )
-    orchestrator.register_agent(
-        "tax_optimizer_agent",
-        TaxOptimizerAgent()
-    )
-    from backend.agents.benefits_discovery import BenefitsDiscoveryAgent
-    orchestrator.register_agent(
-        "benefits_discovery_agent",
-        BenefitsDiscoveryAgent()
-    )
-    from backend.agents.eligibility_verifier import EligibilityVerifierAgent
-    orchestrator.register_agent(
-        "eligibility_verifier_agent",
-        EligibilityVerifierAgent()
-    )
-    from backend.agents.compliance_checker import ComplianceCheckerAgent
-    orchestrator.register_agent(
-        "compliance_checker_agent",
-        ComplianceCheckerAgent()
-    )
-    from backend.agents.itr_helper import ITRHelperAgent
-    orchestrator.register_agent(
-        "itr_helper_agent",
-        ITRHelperAgent()
-    )
-    from backend.agents.advanced_calculator import AdvancedCalculatorAgent
-    orchestrator.register_agent(
-        "advanced_calculator_agent",
-        AdvancedCalculatorAgent()
-    )
-    from backend.agents.cross_border_tax import CrossBorderTaxAgent
-    orchestrator.register_agent(
-        "cross_border_tax_agent",
-        CrossBorderTaxAgent()
-    )
-    from backend.agents.price_intelligence import PriceIntelligenceAgent
-    orchestrator.register_agent(
-        "price_intelligence_agent",
-        PriceIntelligenceAgent()
-    )
-    from backend.agents.tax_strategy import TaxStrategyAgent
-    orchestrator.register_agent(
-        "tax_strategy_agent",
-        TaxStrategyAgent()
-    )
-    from backend.agents.wealth_planner import WealthPlannerAgent
-    orchestrator.register_agent(
-        "wealth_planner_agent",
-        WealthPlannerAgent()
-    )
-
-    
-    logger.info(f"✅ Ready: {len(orchestrator.agents)} agents, {len(tool_executor.list_tools()) if tool_executor else 0} tools")
 
 
 async def get_user_context(user_id: str, session: AsyncSession) -> Dict[str, Any]:

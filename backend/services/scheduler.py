@@ -5,7 +5,7 @@ Service to schedule automated background tasks using APScheduler.
 import logging
 import asyncio
 from typing import Dict, Any, List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger

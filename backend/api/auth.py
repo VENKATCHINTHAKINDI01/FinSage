@@ -9,7 +9,7 @@ import logging
 
 from backend.db.postgres import get_session
 from backend.security.dependencies import get_current_user
-from backend.db.crud.users import create_user, get_user_by_email, user_exists
+from backend.db.crud.users import create_user, get_user_by_email, get_user_by_id, user_exists
 from backend.db.crud.sessions import create_session
 from backend.models import (
     UserCreate,
@@ -24,18 +24,18 @@ from backend.security.jwt_handler import (
     verify_token,
 )
 from backend.config import settings
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/auth", tags=["Auth"])
 
 
-@router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/register", response_model=AuthTokenResponse, status_code=status.HTTP_201_CREATED)
 async def register(
     user_data: UserCreate,
     session: AsyncSession = Depends(get_session),
-) -> UserResponse:
+) -> AuthTokenResponse:
     """
     Register a new user account.
     
@@ -106,7 +106,26 @@ async def register(
         )
     
     logger.info(f"User registered successfully: {user.email}")
-    return UserResponse.from_orm(user)
+
+    # Generate tokens for immediate login after registration
+    access_token = create_access_token(user.id)
+    refresh_token = create_refresh_token(user.id)
+    expires_at = datetime.now(timezone.utc) + timedelta(
+        minutes=settings.auth.access_token_expire_minutes
+    )
+    await create_session(
+        session,
+        user_id=user.id,
+        token=access_token,
+        expires_at=expires_at,
+    )
+
+    return AuthTokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        token_type="bearer",
+        expires_in=settings.auth.access_token_expire_minutes * 60,
+    )
 
 
 @router.post("/login", response_model=AuthTokenResponse)
@@ -178,7 +197,7 @@ async def login(
     refresh_token = create_refresh_token(user.id)
     
     # Create session record in database (optional, for audit trail)
-    expires_at = datetime.utcnow() + timedelta(
+    expires_at = datetime.now(timezone.utc) + timedelta(
         minutes=settings.auth.access_token_expire_minutes
     )
     await create_session(
@@ -273,7 +292,3 @@ async def get_me(
     Get current authenticated user details.
     """
     return current_user
-
-
-# Helper import needed
-from backend.db.crud.users import get_user_by_id

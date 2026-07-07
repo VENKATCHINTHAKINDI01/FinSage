@@ -1,64 +1,68 @@
-# Environment
+# ============================================================
+# FinSage AI — Monorepo .gitignore
+# ============================================================
+
+# ── Environment & Secrets ─────────────────────────────────
 .env
-.env.local
-.env*.local
+.env.*
+!.env.example
+!env.example
 *.pem
 *.key
-senv/
+*.crt
 
-# Python
+# ── Python ───────────────────────────────────────────────
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
 *.egg
-MANIFEST
-.pytest_cache/
-.coverage
-htmlcov/
+*.egg-info/
+dist/
+build/
+*.manifest
+*.spec
+pip-log.txt
+pip-delete-this-directory.txt
+.eggs/
 
 # Virtual environments
+senv/
 venv/
 env/
+.venv/
 ENV/
-.venv
+env.bak/
+venv.bak/
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-.DS_Store
-*.sublime-project
-*.sublime-workspace
+# PyInstaller
+*.pyinstaller
 
-# Node / Frontend
+# Testing
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+nosetests.xml
+*.cover
+*.log
+.tox/
+
+# mypy / ruff / pyright
+.mypy_cache/
+.ruff_cache/
+.pytype/
+pyrightconfig.json
+
+# Jupyter
+.ipynb_checkpoints
+
+# ── Node / Frontend ───────────────────────────────────────
 node_modules/
+frontend/node_modules/
 frontend/dist/
-frontend/build/
-.next/
-out/
-
-# Database
-*.db
-*.sqlite
-*.sqlite3
+frontend/.vite/
 
 # Logs
 logs/
@@ -66,24 +70,60 @@ logs/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
 
-# Temporary
-tmp/
-temp/
-.tmp/
-*.bak
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
 
-# OS
+# Build output
+dist/
+dist-ssr/
+*.local
+.output/
+
+# TypeScript
+*.tsbuildinfo
+frontend/node_modules/.tmp/
+
+# ── Database ──────────────────────────────────────────────
+*.sqlite
+*.sqlite3
+*.db
+*.db-shm
+*.db-wal
+
+# ── Docker ────────────────────────────────────────────────
+.docker/
+
+# ── IDEs & Editors ────────────────────────────────────────
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+*.swo
+*.sw?
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sublime-project
+*.sublime-workspace
 .DS_Store
 Thumbs.db
+ehthumbs.db
 
-# Docker
-.dockerignore
-docker-compose.override.yml
-
-# Project specific
-*.pdf  # Don't commit PDFs to avoid bloat
-uploads/
-temp_docs/
-# Generated reports and exports cache
+# ── Exports & Generated Reports ──────────────────────────
 exports/
+*.pdf
+*.xlsx
+*.csv
+
+# ── Misc ─────────────────────────────────────────────────
+*.bak
+*.tmp
+*.orig
+.cache/
