@@ -214,6 +214,10 @@ async def chat_query(
         conv_context = memory["conversation"].get_context()
         known_deductions = memory["semantic"].get_known_deductions()
         
+        # Get validation summary from orchestration
+        validation_summary = result.get("validation_summary", {})
+        data_quality_score = validation_summary.get("avg_confidence", 0.8)
+        
         return {
             "success": True,
             "query": request.query,
@@ -221,6 +225,9 @@ async def chat_query(
             "agent_responses": agent_responses,
             "total_estimated_savings": total_savings,
             "quality_score": int(avg_quality * 100),
+            "data_quality_score": round(data_quality_score * 100),
+            "validation_summary": validation_summary,
+            "sources_verified": validation_summary.get("sources_verified", 0),
             "execution_log": result.get("execution_log", []),
             "agents_executed": len(result.get("agent_results", {})),
             "tools_available": result.get("tools_available", 0),
@@ -230,7 +237,7 @@ async def chat_query(
     
     except Exception as e:
         logger.error(f"Chat query error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise  # DEM-008: handled globally; str(e) must not reach the client
     finally:
         db_session_var.reset(token)
 

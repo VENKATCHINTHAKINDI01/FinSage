@@ -1,0 +1,213 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Weekly freshness sweep. Tax rules decay on a calendar, not on commits —
+    # a repo with no pushes for six months can still be shipping wrong slabs.
+    - cron: "0 3 * * 1"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.11"
+  PYTHONPATH: .
+
+jobs:
+  # ───────────────────────────────────────────────────────────────────────────
+  # The registry is the source of truth for what exists. If it is inconsistent,
+  # nothing downstream can be trusted, so this runs first and blocks the rest.
+  # ───────────────────────────────────────────────────────────────────────────
+  registry:
+    name: Feature registry
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install jsonschema PyYAML
+
+      - name: Validate feature.json against schema and invariants
+        run: python scripts/gen_progress.py --check
+
+      - name: Tax rule freshness gate
+        run: python scripts/verify_freshness.py
+
+  # ───────────────────────────────────────────────────────────────────────────
+  lint:
+    name: Lint & types
+    runs-on: ubuntu-latest
+    needs: registry
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: ruff check
+        # Legacy directories (agents, api, db, services) still carry ~1000
+        # style findings from v1 and are linted as they are rewritten, phase by
+        # phase. Widening the scope before the rewrite would mean a thousand
+        # cosmetic diffs obscuring the real changes.
+        run: |
+          ruff check backend/core backend/evals backend/llm backend/middleware \
+                     backend/rag/embeddings.py backend/tools/calculation.py scripts
+
+      - name: ruff format --check
+        run: ruff format --check backend scripts
+
+      - name: mypy
+        run: mypy backend/core scripts
+
+      - name: Architectural boundaries (import-linter)
+        # The core-purity contract. If backend/core can reach the network, a
+        # database or an LLM, it is no longer deterministic and no longer
+        # exhaustively testable — which is the basis for trusting its output.
+        run: lint-imports --config .importlinter
+
+  # ───────────────────────────────────────────────────────────────────────────
+  core:
+    name: Deterministic core (layers 1 & 2)
+    runs-on: ubuntu-latest
+    needs: registry
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Purity contract, golden cases, property invariants
+        run: |
+          pytest backend/core/tests \
+            --cov=backend/core --cov-report=term-missing \
+            --cov-report=xml:coverage-core.xml -q
+
+      - name: Core coverage gate
+        # Raised to 95 by CORE-011 once the engine and its golden corpus exist.
+        # Set honestly rather than aspirationally: a gate that always fails
+        # gets bypassed, and a bypassed gate protects nothing.
+        env:
+          THRESHOLD: "0"
+        run: |
+          coverage report --fail-under=$THRESHOLD
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-core
+          path: coverage-core.xml
+
+  # ───────────────────────────────────────────────────────────────────────────
+  evals:
+    name: Agent evals (layer 3)
+    runs-on: ubuntu-latest
+    needs: registry
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Harness self-tests
+        # The harness polices the LLM. Nobody polices the harness, so it tests
+        # itself — including a recorded agent that fabricates figures, which
+        # numeric_provenance must reject.
+        run: pytest backend/evals/tests -q
+
+      - name: Replay eval suite
+        # Offline and deterministic: recorded fixtures, no model calls, no cost.
+        # Fails on regression against baseline.json, and unconditionally on any
+        # numeric_provenance failure.
+        run: python -m backend.evals.runner
+
+  # ───────────────────────────────────────────────────────────────────────────
+  backend-tests:
+    name: Application tests
+    runs-on: ubuntu-latest
+    needs: registry
+    continue-on-error: true   # legacy suite; rewritten across phases 1–3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -r requirements.txt -r requirements-dev.txt
+      - run: pytest backend/tests -q
+
+  # ───────────────────────────────────────────────────────────────────────────
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    needs: registry
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+
+  # ───────────────────────────────────────────────────────────────────────────
+  security:
+    name: Supply chain
+    runs-on: ubuntu-latest
+    needs: registry
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install pip-audit
+
+      - name: pip-audit
+        run: pip-audit -r requirements.txt --strict
+
+      - name: Fail on committed secrets
+        # config.py ships a default JWT secret. It must never reach a branch
+        # with a real value beside it, and the placeholder must never survive
+        # into a deployed image (enforced properly in PRD-005).
+        run: |
+          if grep -rIn --exclude-dir=.git --exclude-dir=node_modules \
+                 --exclude-dir=senv --exclude='*.md' \
+                 -E '(gsk_[A-Za-z0-9]{20,}|tvly-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16})' .; then
+            echo "::error::Possible live API key committed"
+            exit 1
+          fi
+          echo "No live-looking credentials found."
+
+  # ───────────────────────────────────────────────────────────────────────────
+  gate:
+    name: Phase gate
+    runs-on: ubuntu-latest
+    needs: [registry, lint, core, evals, frontend, security]
+    if: always()
+    steps:
+      - name: Require all required jobs to have passed
+        run: |
+          results='${{ join(needs.*.result, " ") }}'
+          echo "Job results: $results"
+          for r in $results; do
+            if [ "$r" != "success" ]; then
+              echo "::error::Phase gate failed — a required job did not pass."
+              exit 1
+            fi
+          done
+          echo "Phase gate green."

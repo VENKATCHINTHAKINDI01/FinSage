@@ -1,9 +1,9 @@
 import AppLayout from '../components/shared/AppLayout';
-import { Card, SectionHeading, Badge, DemoBadge, ProgressBar, EmptyState } from '../components/ui/Primitives';
+import { Card, SectionHeading, Badge, ProgressBar, EmptyState } from '../components/ui/Primitives';
 import ScoreGauge from '../components/ui/ScoreGauge';
 import { useApiData } from '../hooks/useApiData';
+import { ErrorState, LoadingState } from '../components/shared/DataState';
 import { getComplianceReport } from '../api/services';
-import { mockCompliance } from '../utils/mockData';
 import { AlertTriangle, FileWarning, ShieldCheck, CheckCircle2 } from 'lucide-react';
 
 const severityTone: Record<'High' | 'Medium' | 'Low', 'high' | 'medium' | 'low'> = { 
@@ -19,12 +19,18 @@ interface RedFlag {
 }
 
 export default function Compliance() {
-  const { data, isDemo } = useApiData(getComplianceReport, mockCompliance, []);
-  const c = data?.compliance_score !== undefined ? data : mockCompliance;
+  const state = useApiData<any>(getComplianceReport, []);
+  if (state.loading) return <AppLayout title="Compliance"><LoadingState /></AppLayout>;
+  if (state.error)
+    return (
+      <AppLayout title="Compliance">
+        <ErrorState error={state.error} onRetry={state.refetch} what="your compliance report" />
+      </AppLayout>
+    );
+  const c: any = state.data ?? {};
 
   return (
     <AppLayout title="Compliance" subtitle="Audit readiness, red flags, and documentation status">
-      <div className="flex justify-end mb-4"><DemoBadge show={isDemo} /></div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-6 stagger">
         <Card className="flex flex-col items-center text-center p-6">

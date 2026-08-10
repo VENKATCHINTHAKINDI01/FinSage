@@ -123,7 +123,7 @@ async def get_profile(
         
     except Exception as e:
         logger.error(f"Error fetching profile: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise  # DEM-008: handled globally; str(e) must not reach the client
 
 
 @router.post("")
@@ -203,4 +203,4 @@ async def update_profile(
     except Exception as e:
         logger.error(f"Error saving profile: {e}", exc_info=True)
         await session.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        raise  # DEM-008: handled globally; str(e) must not reach the client

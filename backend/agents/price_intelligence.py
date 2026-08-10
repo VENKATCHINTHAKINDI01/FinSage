@@ -10,7 +10,7 @@ import logging
 from typing import Dict, Any, List
 from datetime import datetime
 
-from backend.agents.base_agent import TaxAgent, AgentOutput
+from backend.agents.base_agent import TaxAgent, AgentOutput, confidence_score, derive_confidence
 
 logger = logging.getLogger(__name__)
 
@@ -199,7 +199,7 @@ class PriceIntelligenceAgent(TaxAgent):
             return self._create_output(
                 result=result,
                 status="success",
-                confidence=0.88,
+                confidence=confidence_score(derive_confidence()),
                 reasoning="Calculated cost inflation indexation and compared tax-adjusted yields.",
                 execution_time_ms=execution_time
             )
@@ -210,7 +210,7 @@ class PriceIntelligenceAgent(TaxAgent):
             return self._create_output(
                 result={"error": str(e)},
                 status="error",
-                confidence=0.0,
+                confidence=0.0,  # execution failed — not a score
                 reasoning=f"Failure evaluating investment yield options: {str(e)}",
                 execution_time_ms=execution_time
             )

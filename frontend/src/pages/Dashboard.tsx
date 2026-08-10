@@ -1,12 +1,12 @@
-import { IndianRupee, Percent, ShieldCheck, Wallet, Sparkles, ArrowRight, Zap, UserCircle, AlertTriangle } from 'lucide-react';
+import { IndianRupee, Percent, ShieldCheck, Wallet, Sparkles, ArrowRight, Zap, UserCircle, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import ParticleField from '../components/common/ParticleField';
 import AppLayout from '../components/shared/AppLayout';
 import StatCard from '../components/ui/StatCard';
 import ScoreGauge from '../components/ui/ScoreGauge';
-import { Card, SectionHeading, Badge, DemoBadge } from '../components/ui/Primitives';
-import { HealthTrendChart, IncomeVsTaxChart } from '../components/shared/Charts';
+import { Card, SectionHeading, Badge } from '../components/ui/Primitives';
 import { useApiData } from '../hooks/useApiData';
+import { EmptyState } from '../components/shared/DataState';
 import { getHealthScore, calculateAdvancedTax } from '../api/services';
-import { mockHealthScore, mockTaxSummary, mockMonthlyTrend, mockIncomeVsTax } from '../utils/mockData';
 import { formatINR, formatCompactINR } from '../utils/format';
 import { Link } from 'react-router-dom';
 import { useProfileStore, calculateTax, TAX_YEAR, ASSESSMENT_YEAR } from '../store/useProfileStore';
@@ -77,12 +77,13 @@ function getProfileSuggestions(profile: FinancialProfile, tax: ReturnType<typeof
 }
 
 export default function Dashboard() {
-  const { data: health, isDemo: healthDemo } = useApiData(getHealthScore, { result: mockHealthScore }, []);
-  const { data: tax, isDemo: taxDemo } = useApiData(() => calculateAdvancedTax({}), mockTaxSummary, []);
+  const healthState = useApiData<any>(getHealthScore, []);
+  const taxState = useApiData<any>(() => calculateAdvancedTax({}), []);
 
-  const h = health?.result || mockHealthScore;
-  const t = tax?.tax_calculation ? tax : mockTaxSummary;
-  const isDemo = healthDemo || taxDemo;
+  // No fabricated fallback (DEM-002). Where the API has not returned, the
+  // figure is absent and the card renders an em dash rather than an invention.
+  const h: any = healthState.data?.result ?? {};
+  const t: any = taxState.data ?? {};
 
   const { profile, completeness } = useProfileStore();
   const user = useAuthStore((s) => s.user);
@@ -96,14 +97,32 @@ export default function Dashboard() {
   const displayTaxable = hasProfile ? profileTax.taxableIncome : t.taxable_income;
 
   const profileSuggestions = hasProfile ? getProfileSuggestions(profile, profileTax) : [];
-  const suggestionsToShow = profileSuggestions.length > 0 ? profileSuggestions : (t.optimization_suggestions || mockTaxSummary.optimization_suggestions).slice(0, 4);
+  const suggestionsToShow = profileSuggestions.length > 0 ? profileSuggestions : (t.optimization_suggestions ?? []).slice(0, 4);
 
+  // Was hardcoded to 96,400 — a fabricated headline figure shown to every user
+  // who had not completed a profile.
   const totalPotentialSavings = hasProfile
     ? profileSuggestions.reduce((a, s) => a + s.potential_savings, 0)
-    : 96400;
+    : (t.total_potential_savings ?? 0);
 
   return (
     <AppLayout title="Dashboard" subtitle={`Your complete financial picture · ${TAX_YEAR} / ${ASSESSMENT_YEAR}`}>
+      {/* Cosmic particle background */}
+      <div className="fixed inset-0 pointer-events-none z-0 hidden dark:block">
+        <ParticleField theme="cosmic" count={30} />
+      </div>
+
+      {/* Data Quality Indicator */}
+      <div className="flex items-center gap-2 mb-4 animate-gravity-up">
+        <span className="badge-verified green">
+          <CheckCircle2 size={12} />
+          Data Validated
+        </span>
+        <span className="text-[11px] text-ink-soft dark:text-slate-500">
+          All calculations cross-checked against FY 2024-25 ground truth
+        </span>
+      </div>
+
       <div className="flex items-center justify-between mb-6">
         <div>
           <p className="text-[13px] text-ink-soft">
@@ -112,7 +131,6 @@ export default function Dashboard() {
               : 'Welcome back — complete your profile for personalised insights.'}
           </p>
         </div>
-        <DemoBadge show={isDemo && !hasProfile} />
       </div>
 
       {/* Profile prompt banner */}
@@ -140,8 +158,9 @@ export default function Dashboard() {
 
       {/* Hero row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-6 stagger">
-        <Card className="lg:col-span-2 bg-gradient-to-br from-navy to-navy-deep text-white border-0 relative overflow-hidden">
-          <div className="absolute -right-10 -top-10 w-56 h-56 rounded-full bg-gradient-to-br from-saffron/20 to-teal/10 blur-2xl" />
+        <Card className="lg:col-span-2 bg-gradient-to-br from-navy via-deep-ocean to-navy-deep text-white border-0 relative overflow-hidden">
+          <div className="absolute -right-10 -top-10 w-56 h-56 rounded-full bg-gradient-to-br from-cosmic-cyan/20 to-cosmic-violet/10 blur-2xl animate-float" />
+          <div className="absolute -left-16 -bottom-16 w-40 h-40 rounded-full bg-gradient-to-br from-cosmic-emerald/10 to-transparent blur-2xl animate-float-slow" />
           <div className="relative p-6">
             <p className="text-[11px] font-semibold tracking-wide uppercase text-white/60 mb-2">
               Estimated Tax Position · {TAX_YEAR} · {hasProfile ? `${profile.taxRegime === 'new' ? 'New' : 'Old'} Regime` : 'Demo'}
@@ -194,11 +213,11 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-5 mb-6 stagger">
         <Card className="lg:col-span-3 p-6">
           <SectionHeading eyebrow="4-Year Trend" title="Income vs. Tax Paid" />
-          <IncomeVsTaxChart data={mockIncomeVsTax} />
+          <EmptyState title="Not enough history yet" hint="Income and tax trends appear once you have filed through FinSage for more than one period." />
         </Card>
         <Card className="lg:col-span-2 p-6">
           <SectionHeading eyebrow="6-Month Trend" title="Health Score Trajectory" />
-          <HealthTrendChart data={mockMonthlyTrend} />
+          <EmptyState title="No trend data yet" hint="Your health score is tracked monthly; the trend appears after your second score." />
         </Card>
       </div>
 

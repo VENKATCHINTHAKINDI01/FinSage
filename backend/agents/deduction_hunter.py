@@ -6,16 +6,14 @@ Uses user context and knowledge base to suggest deductible expenses.
 import time
 import logging
 from typing import Dict, Any
-from groq import Groq
 
-from backend.agents.base_agent import TaxAgent, AgentOutput
+from backend.agents.base_agent import TaxAgent, AgentOutput, confidence_score, derive_confidence
 from backend.rag.retriever import rag_retriever
 from backend.config import settings
+from backend.llm import get_llm
 
 logger = logging.getLogger(__name__)
 
-# Initialize Groq client
-client = Groq(api_key=settings.llm.api_key)
 
 
 class DeductionHunterAgent(TaxAgent):
@@ -187,7 +185,7 @@ class DeductionHunterAgent(TaxAgent):
             return self._create_output(
                 result=result,
                 status="success",
-                confidence=0.80,
+                confidence=confidence_score(derive_confidence()),
                 reasoning="Deductions identified using tool-based verification",
                 execution_time_ms=execution_time
             )
@@ -199,7 +197,7 @@ class DeductionHunterAgent(TaxAgent):
             return self._create_output(
                 result={"error": str(e)},
                 status="error",
-                confidence=0.0,
+                confidence=0.0,  # execution failed — not a score
                 reasoning=f"Error: {str(e)}",
                 execution_time_ms=execution_time
             )
@@ -251,21 +249,31 @@ Respond in JSON format:
 Important: Only include deductions applicable to the user's situation. Respond ONLY with valid JSON."""
 
         try:
-            message = client.chat.completions.create(
-                model=settings.llm.model,
-                max_tokens=2000,
-                messages=[{"role": "user", "content": prompt}]
-            )
+            from backend.tools.data_validator import LLMResponseValidator
+            validator = LLMResponseValidator()
             
-            response_text = message.choices[0].message.content.strip()
-            if "```json" in response_text:
-                response_text = response_text.split("```json")[1].split("```")[0].strip()
-            elif "```" in response_text:
-                response_text = response_text.split("```")[1].split("```")[0].strip()
-            import json
-            response_data = json.loads(response_text)
+            message = await get_llm().complete(prompt, max_tokens=2000)
             
-            return response_data.get("deductions", [])
+            response_text = message.text.strip()
+            
+            # Use robust JSON parser with multiple fallback strategies
+            response_data, parse_report = validator.parse_json_response(response_text)
+            
+            if response_data is None:
+                logger.warning(f"Failed to parse deductions JSON: {parse_report.warnings}")
+                return []
+            
+            raw_deductions = response_data.get("deductions", [])
+            
+            # Validate deductions — enforce section limits from ground truth
+            validated_deductions, validation_report = validator.validate_deductions(raw_deductions)
+            
+            if validation_report.warnings:
+                logger.info(f"Deduction validation warnings: {validation_report.warnings}")
+            if validation_report.corrections_applied:
+                logger.info(f"Deduction corrections applied: {validation_report.corrections_applied}")
+            
+            return validated_deductions
         
         except Exception as e:
             logger.error(f"Error identifying deductions: {e}")
@@ -325,18 +333,17 @@ Important: Only include deductions applicable to the user's situation. Respond O
         
         return documentation
     
-    def _estimate_tax_bracket(self, annual_income: float) -> float:
-        """Estimate tax bracket percentage (India)."""
-        
-        if annual_income <= 250000:
-            return 0.0
-        elif annual_income <= 500000:
-            return 0.05
-        elif annual_income <= 750000:
-            return 0.10
-        elif annual_income <= 1000000:
-            return 0.15
-        elif annual_income <= 1250000:
-            return 0.20
-        else:
-            return 0.30
+    # ── DEM-006 ──────────────────────────────────────────────────────────────
+    # `_estimate_tax_bracket` deleted. It held a FIFTH private copy of the slab
+    # table, carrying FY 2020-21 values (2.5 / 5 / 7.5 / 10 / 12.5 lakh) into a
+    # product computing FY 2026-27 tax.
+    #
+    # Beyond being stale, the approach was wrong: estimating a deduction's worth
+    # as `amount x marginal_rate` breaks wherever the deduction crosses a rebate
+    # or surcharge boundary, which is precisely where the figure matters. A
+    # ₹2,10,000 employer-NPS contribution on a ₹15,00,000 salary is worth
+    # ₹81,900, not the ₹63,000 a marginal-rate estimate would give, because it
+    # pulls the taxpayer into the s.87A relief zone.
+    #
+    # Use the `calculate_deduction_impact` tool, which recomputes tax both ways
+    # through backend.core.

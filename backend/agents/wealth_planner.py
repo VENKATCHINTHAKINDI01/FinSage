@@ -10,7 +10,7 @@ import logging
 from typing import Dict, Any, List
 from datetime import datetime
 
-from backend.agents.base_agent import TaxAgent, AgentOutput
+from backend.agents.base_agent import TaxAgent, AgentOutput, confidence_score, derive_confidence
 
 logger = logging.getLogger(__name__)
 
@@ -130,7 +130,7 @@ class WealthPlannerAgent(TaxAgent):
             return self._create_output(
                 result=result,
                 status="success",
-                confidence=0.90,
+                confidence=confidence_score(derive_confidence()),
                 reasoning="Calculated retirement tax implications for NPS and PPF and provided reinvestment exemption advice.",
                 execution_time_ms=execution_time
             )
@@ -141,7 +141,7 @@ class WealthPlannerAgent(TaxAgent):
             return self._create_output(
                 result={"error": str(e)},
                 status="error",
-                confidence=0.0,
+                confidence=0.0,  # execution failed — not a score
                 reasoning=f"Failure generating wealth planner tax analysis: {str(e)}",
                 execution_time_ms=execution_time
             )

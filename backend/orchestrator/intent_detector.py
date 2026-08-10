@@ -1,15 +1,16 @@
 """
 Intent detection - analyze user query and determine which agents to invoke.
-Uses LLM to understand what the user is asking about.
+Uses LLM to understand what the user is asking about, with keyword-based fallback.
 """
 
 from enum import Enum
 from pydantic import BaseModel
 import logging
 from typing import Optional
-from groq import Groq
 
 from backend.config import settings
+from backend.llm import get_llm
+from backend.tools.data_validator import LLMResponseValidator
 
 logger = logging.getLogger(__name__)
 
@@ -42,13 +43,112 @@ class IntentDetectionResult(BaseModel):
     reasoning: str  # Why we detected this intent
 
 
-# Initialize Groq client
-client = Groq(api_key=settings.llm.api_key)
 
+# LLM response validator
+_llm_validator = LLMResponseValidator()
+
+
+# ============================================================================
+# KEYWORD-BASED FALLBACK INTENT DETECTION
+# ============================================================================
+
+_KEYWORD_INTENT_MAP = {
+    Intent.TAX_DEDUCTION: [
+        "deduction", "deduct", "80c", "80d", "80e", "section 80",
+        "hra", "nps", "ppf", "elss", "insurance premium", "deductible"
+    ],
+    Intent.TAX_SAVINGS: [
+        "save tax", "tax saving", "reduce tax", "lower tax", "minimize tax",
+        "tax benefit", "tax exemption", "exempt"
+    ],
+    Intent.INVESTMENT_ADVICE: [
+        "invest", "mutual fund", "stock", "share", "sip", "portfolio",
+        "where to invest", "best investment", "returns"
+    ],
+    Intent.PORTFOLIO_ANALYSIS: [
+        "portfolio", "holdings", "asset allocation", "diversify", "rebalance"
+    ],
+    Intent.GOVERNMENT_BENEFITS: [
+        "government scheme", "govt scheme", "benefit", "subsidy", "yojana",
+        "pradhan mantri", "jan dhan", "pmjdy", "sukanya"
+    ],
+    Intent.ELIGIBILITY_CHECK: [
+        "eligible", "eligibility", "qualify", "can i claim", "am i eligible"
+    ],
+    Intent.BUSINESS_EXPENSE: [
+        "business expense", "office expense", "professional expense",
+        "freelance expense", "work from home", "home office"
+    ],
+    Intent.FINANCIAL_PLANNING: [
+        "financial plan", "retirement", "goal", "budget", "savings plan",
+        "long term plan", "financial future"
+    ],
+    Intent.COMPLIANCE_CHECK: [
+        "compliance", "audit", "red flag", "scrutiny", "notice",
+        "missing document", "tax notice", "penalty"
+    ],
+    Intent.TAX_FILING: [
+        "itr", "file tax", "tax return", "form 16", "filing",
+        "deadline", "e-file", "26as", "tax filing"
+    ],
+    Intent.TAX_CALCULATION: [
+        "calculate tax", "tax calculator", "capital gains", "short term",
+        "long term gain", "stcg", "ltcg", "loss carry", "tax liability"
+    ],
+    Intent.CROSS_BORDER_TAX: [
+        "nri", "foreign", "residency", "double tax", "dtaa",
+        "overseas", "international", "foreign asset", "schedule fa"
+    ],
+    Intent.PRICE_INTELLIGENCE: [
+        "cost inflation", "cii", "indexation", "gold price", "sgb",
+        "post-tax yield", "sovereign gold"
+    ],
+    Intent.TAX_STRATEGY: [
+        "strategy", "old regime", "new regime", "regime comparison",
+        "tax harvesting", "multi-year", "tax planning strategy"
+    ],
+    Intent.WEALTH_PLANNING: [
+        "wealth", "nps withdrawal", "ppf maturity", "section 54",
+        "reinvestment", "capital gains reinvest", "long term wealth"
+    ],
+}
+
+
+def _detect_intent_by_keywords(query: str) -> IntentDetectionResult:
+    """Fallback intent detection using keyword matching."""
+    query_lower = query.lower()
+    
+    best_intent = Intent.GENERAL
+    best_score = 0
+    best_keywords = []
+    
+    for intent, keywords in _KEYWORD_INTENT_MAP.items():
+        matches = [kw for kw in keywords if kw in query_lower]
+        score = len(matches)
+        if score > best_score:
+            best_score = score
+            best_intent = intent
+            best_keywords = matches
+    
+    confidence = min(0.7, 0.3 + (best_score * 0.15))  # Cap keyword-based confidence at 0.7
+    agents = _get_agents_for_intent(best_intent)
+    
+    return IntentDetectionResult(
+        intent=best_intent,
+        confidence=confidence,
+        agents_to_invoke=agents,
+        reasoning=f"Keyword match: {', '.join(best_keywords)}" if best_keywords else "No keyword match — defaulting to general"
+    )
+
+
+# ============================================================================
+# LLM-BASED INTENT DETECTION
+# ============================================================================
 
 async def detect_intent(user_query: str, user_id: str) -> IntentDetectionResult:
     """
     Analyze user query and detect intent.
+    Uses LLM with keyword-based fallback.
     
     Args:
         user_query: User's question
@@ -56,11 +156,6 @@ async def detect_intent(user_query: str, user_id: str) -> IntentDetectionResult:
     
     Returns:
         IntentDetectionResult with detected intent and agents to invoke
-    
-    Example:
-        result = await detect_intent("What tax deductions can I claim?", "user-123")
-        print(result.intent)  # Intent.TAX_DEDUCTION
-        print(result.agents_to_invoke)  # ["tax_agent", "deduction_hunter"]
     """
     
     prompt = f"""Analyze the following user query and determine their intent.
@@ -95,29 +190,39 @@ Respond in JSON format:
 Important: Respond ONLY with valid JSON, no other text."""
 
     try:
-        message = client.chat.completions.create(
-            model=settings.llm.model,
-            max_tokens=200,
-            messages=[
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ]
-        )
+        message = await get_llm().complete(prompt, max_tokens=200)
         
-        response_text = message.choices[0].message.content.strip()
+        response_text = message.text.strip()
         
-        # Parse JSON response
-        import json
-        response_data = json.loads(response_text)
+        # Use robust JSON parser
+        response_data, parse_report = _llm_validator.parse_json_response(response_text)
         
-        intent_str = response_data.get("intent", "GENERAL").upper()
-        confidence = float(response_data.get("confidence", 0.5))
-        reasoning = response_data.get("reasoning", "Intent detected")
+        if response_data is None:
+            # JSON parse failed — fall back to keyword detection
+            logger.warning(f"LLM intent JSON parse failed for user {user_id}, using keyword fallback")
+            return _detect_intent_by_keywords(user_query)
+        
+        # Validate the parsed response
+        validated_data, validation_report = _llm_validator.validate_intent_response(response_data)
+        
+        intent_str = validated_data.get("intent", "GENERAL").upper()
+        confidence = float(validated_data.get("confidence", 0.5))
+        reasoning = validated_data.get("reasoning", "Intent detected")
+        
+        # If LLM confidence is too low, supplement with keyword detection
+        if confidence < 0.5:
+            keyword_result = _detect_intent_by_keywords(user_query)
+            if keyword_result.confidence > confidence:
+                logger.info(f"LLM confidence low ({confidence}), using keyword result ({keyword_result.confidence})")
+                return keyword_result
         
         # Map intent to agents
-        intent = Intent(intent_str.lower().replace(" ", "_"))
+        try:
+            intent = Intent(intent_str.lower().replace(" ", "_"))
+        except ValueError:
+            logger.warning(f"Invalid intent value '{intent_str}', defaulting to GENERAL")
+            intent = Intent.GENERAL
+            
         agents = _get_agents_for_intent(intent)
         
         logger.info(f"Intent detected for user {user_id}: {intent} (confidence: {confidence})")
@@ -130,14 +235,11 @@ Important: Respond ONLY with valid JSON, no other text."""
         )
     
     except Exception as e:
-        logger.error(f"Error detecting intent: {e}")
-        # Fallback to GENERAL intent
-        return IntentDetectionResult(
-            intent=Intent.GENERAL,
-            confidence=0.0,
-            agents_to_invoke=["income_classifier_agent"],
-            reasoning=f"Error during detection: {str(e)}"
-        )
+        logger.error(f"Error detecting intent via LLM: {e}")
+        # Fallback to keyword-based detection instead of empty result
+        keyword_result = _detect_intent_by_keywords(user_query)
+        logger.info(f"Using keyword fallback: {keyword_result.intent} (confidence: {keyword_result.confidence})")
+        return keyword_result
 
 
 def _get_agents_for_intent(intent: Intent) -> list[str]:

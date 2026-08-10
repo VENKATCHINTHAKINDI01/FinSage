@@ -19,7 +19,7 @@ try:
 except ImportError:
     from backend.db.orm_models import TaxCalculation
 from backend.services.india_tax_data_fetcher import india_tax_data
-from backend.agents.base_agent import TaxAgent, AgentOutput
+from backend.agents.base_agent import TaxAgent, AgentOutput, confidence_score, derive_confidence
 
 logger = logging.getLogger(__name__)
 
@@ -259,7 +259,7 @@ class AdvancedCalculatorAgent(TaxAgent):
             return self._create_output(
                 result=result,
                 status="success",
-                confidence=0.95,
+                confidence=confidence_score(derive_confidence()),
                 reasoning="Advanced tax calculation completed including multiple income heads and capital gains.",
                 execution_time_ms=execution_time
             )
@@ -271,7 +271,7 @@ class AdvancedCalculatorAgent(TaxAgent):
             return self._create_output(
                 result={"error": str(e)},
                 status="error",
-                confidence=0.0,
+                confidence=0.0,  # execution failed — not a score
                 reasoning=f"Error running complex calculations: {str(e)}",
                 execution_time_ms=execution_time
             )

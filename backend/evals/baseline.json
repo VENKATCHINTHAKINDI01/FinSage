@@ -1,0 +1,27 @@
+{
+  "failed": 0,
+  "mode": "replay",
+  "passed": 2,
+  "scenarios": {
+    "EV-80EEB-CLOSED-WINDOW": {
+      "scorers": {
+        "citation_validity": "pass",
+        "numeric_provenance": "pass",
+        "refusal": "skip",
+        "window_awareness": "pass"
+      },
+      "verdict": "pass"
+    },
+    "INFORMATIONAL-CLEAN": {
+      "scorers": {
+        "citation_validity": "pass",
+        "numeric_provenance": "pass",
+        "refusal": "skip",
+        "window_awareness": "skip"
+      },
+      "verdict": "pass"
+    }
+  },
+  "skipped": 0,
+  "total": 2
+}

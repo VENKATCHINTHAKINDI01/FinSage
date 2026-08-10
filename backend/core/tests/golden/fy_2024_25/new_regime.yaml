@@ -1,0 +1,68 @@
+# FY 2024-25 · AY 2025-26 · new regime
+#
+# Prior years must stay computable: revised returns and ITR-U (a 48-month
+# window) both need them. These cases exist to prove the engine reads the year
+# from the rule pack rather than assuming "current" — the exact failure that
+# left v1 computing FY 2023-24 tax two years on.
+#
+# FY 2024-25 new regime slabs: 0–3L nil · 3–7L 5% · 7–10L 10% · 10–12L 15%
+#                              12–15L 20% · above 15L 30%
+# Standard deduction ₹75,000 (raised from ₹50,000 in the July 2024 Budget).
+# s.87A rebate ₹25,000 up to ₹7,00,000 taxable.
+
+- id: NR2425-REBATE-CEILING
+  fy: "2024-25"
+  regime: new
+  input: { salary: 775000, age: 34 }
+  expect:
+    taxable_income: 700000
+    tax_on_slabs: 20000
+    rebate_87a: 20000
+    total_tax: 0
+  verified_against: >
+    ₹7,75,000 salary less the ₹75,000 standard deduction is ₹7,00,000, exactly
+    the FY 2024-25 rebate ceiling. Slab: ₹4,00,000 in the 3–7L band @5% =
+    ₹20,000. The rebate is capped at ₹25,000 but only ₹20,000 of tax exists,
+    so the rebate is ₹20,000 and tax is nil.
+
+- id: NR2425-DIFFERENT-SLABS-FROM-2026
+  fy: "2024-25"
+  regime: new
+  input: { other_sources: 1500000, age: 34 }
+  expect:
+    tax_on_slabs: 140000
+    total_tax: 145600
+  verified_against: >
+    FY 2024-25 bands: 4,00,000 @5% = 20,000; 3,00,000 @10% = 30,000;
+    2,00,000 @15% = 30,000; 3,00,000 @20% = 60,000. Total 1,40,000; cess 5,600.
+    The identical income under FY 2026-27 bands is ₹1,09,200 (see
+    NR26-CROSS-YEAR-CONTROL) — proof the engine reads the year rather than
+    reusing one table for all of them.
+
+- id: NR2425-ABOVE-REBATE-CEILING
+  fy: "2024-25"
+  regime: new
+  input: { other_sources: 800000, age: 34 }
+  expect:
+    tax_on_slabs: 30000
+    rebate_87a: 0
+    total_tax: 31200
+  verified_against: >
+    ₹8,00,000 taxable is ₹1,00,000 above the FY 2024-25 rebate ceiling. Slab:
+    4,00,000 @5% = 20,000; 1,00,000 @10% = 10,000 = 30,000. Tax (30,000) is
+    less than the excess (1,00,000), so marginal relief does not apply and no
+    rebate is due. Cess 1,200.
+
+- id: NR2425-SPLIT-YEAR-FLAGGED
+  fy: "2024-25"
+  regime: new
+  input: { other_sources: 1000000, age: 34 }
+  expect:
+    tax_on_slabs: 50000
+    total_tax: 52000
+  verified_against: >
+    4,00,000 @5% = 20,000; 3,00,000 @10% = 30,000. Cess 2,000.
+    Income tax is unaffected by the 23 July 2024 capital gains reform; the
+    split-year handling is exercised separately in the capital gains tests,
+    where a pre-reform transfer must be refused rather than silently taxed at
+    post-reform rates.

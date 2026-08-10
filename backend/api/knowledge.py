@@ -153,10 +153,7 @@ async def upload_document(
         raise
     except Exception as e:
         logger.error(f"Error uploading document: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
-        )
+        raise  # DEM-008: handled globally; str(e) must not reach the client
 
 
 @router.get("/stats", response_model=KnowledgeBaseStats)
@@ -190,10 +187,7 @@ async def get_knowledge_base_stats(
     
     except Exception as e:
         logger.error(f"Error getting stats: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
-        )
+        raise  # DEM-008: handled globally; str(e) must not reach the client
 
 
 @router.get("/health")

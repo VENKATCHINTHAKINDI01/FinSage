@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import AppLayout from '../components/shared/AppLayout';
-import { Card, SectionHeading, Badge, DemoBadge } from '../components/ui/Primitives';
+import { Card, SectionHeading, Badge } from '../components/ui/Primitives';
 import { useApiData } from '../hooks/useApiData';
+import { ErrorState, LoadingState } from '../components/shared/DataState';
 import { getITRGuidance } from '../api/services';
-import { mockITR } from '../utils/mockData';
 import { Check, Clock, ExternalLink, XCircle, FileText } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -15,9 +15,16 @@ interface ITRStep {
 }
 
 export default function ITRGuide() {
-  const { data, isDemo } = useApiData(getITRGuidance, mockITR, []);
-  const guide = data?.recommended_form ? data : mockITR;
-  const steps = (guide.step_by_step_guide || mockITR.step_by_step_guide) as ITRStep[];
+  const state = useApiData<any>(getITRGuidance, []);
+  if (state.loading) return <AppLayout title="ITR Guide"><LoadingState /></AppLayout>;
+  if (state.error)
+    return (
+      <AppLayout title="ITR Guide">
+        <ErrorState error={state.error} onRetry={state.refetch} what="your filing guidance" />
+      </AppLayout>
+    );
+  const guide: any = state.data ?? {};
+  const steps = (guide.step_by_step_guide ?? []) as ITRStep[];
   const [completed, setCompleted] = useState<number[]>([]);
 
   const toggle = (step: number) =>
@@ -27,7 +34,6 @@ export default function ITRGuide() {
 
   return (
     <AppLayout title="ITR Filing Guide" subtitle="Step-by-step guidance tailored to your income profile">
-      <div className="flex justify-end mb-4"><DemoBadge show={isDemo} /></div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-6 stagger">
         <Card className="bg-gradient-to-br from-primary to-primary-dark text-white border-0 p-6">
@@ -96,7 +102,7 @@ export default function ITRGuide() {
         <Card className="p-6">
           <SectionHeading eyebrow="Avoid These" title="Common mistakes" />
           <div className="space-y-3">
-            {(guide.common_mistakes || mockITR.common_mistakes).map((m: string, i: number) => (
+            {(guide.common_mistakes ?? []).map((m: string, i: number) => (
               <div key={i} className="flex items-start gap-2.5">
                 <XCircle size={15} className="text-danger shrink-0 mt-0.5" />
                 <p className="text-[12.5px] text-ink-soft">{m}</p>

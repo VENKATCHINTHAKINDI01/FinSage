@@ -85,7 +85,7 @@ async def discover_benefits(
         import logging
         logger = logging.getLogger(__name__)
         logger.error(f"Error in discover_benefits: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise  # DEM-008: handled globally; str(e) must not reach the client
     finally:
         db_session_var.reset(token)
 
@@ -158,7 +158,7 @@ async def verify_eligibility(
         import logging
         logger = logging.getLogger(__name__)
         logger.error(f"Error in verify_eligibility: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise  # DEM-008: handled globally; str(e) must not reach the client
     finally:
         db_session_var.reset(token)
 

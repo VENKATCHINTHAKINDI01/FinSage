@@ -1,0 +1,156 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# Income-tax Act 1961 → Income-tax Act 2025 section mapping
+#
+# The 2025 Act came into force on 1 April 2026 and renumbered essentially
+# everything: 819 sections across 23 chapters became 536. The policy is largely
+# unchanged; the citations are entirely changed.
+#
+# This creates a two-audience problem. Departmental utilities and correspondence
+# for FY 2026-27 use the new numbering. Users, CAs, every article written before
+# 2026, and decades of habit use the old. So the product renders BOTH, and this
+# file is what makes that possible.
+#
+# HONESTY NOTE
+# ------------
+# Entries marked `confidence: unverified` are the obvious structural
+# correspondence but have NOT yet been checked line by line against the
+# published concordance. They render with the legacy number as primary and the
+# new number flagged. Guessing a citation confidently is exactly the failure
+# mode this project exists to avoid — see CORE-002 in feature.json, which stays
+# `not_started` until every entry is verified.
+#
+# Verify against:
+#   https://www.incometax.gov.in/iec/foportal/help/all-topics/e-filing-services/objective-and-scope-new-act
+#   https://www.incometaxindia.gov.in/  (Interplay and Transition FAQs)
+# ═══════════════════════════════════════════════════════════════════════════
+
+meta:
+  verified_on: "2026-08-09"
+  status: partial
+  sources:
+    - https://www.incometax.gov.in/iec/foportal/help/all-topics/e-filing-services/objective-and-scope-new-act
+    - https://www.pib.gov.in/PressReleasePage.aspx?PRID=2248005
+  policy: >
+    Where an entry is unverified the renderer shows the 1961 number as primary
+    and marks the 2025 number as provisional. It never silently substitutes one
+    for the other.
+
+# Applies from FY 2026-27 onward. For earlier years the 1961 numbering is
+# primary and no translation is applied.
+applies_from_fy: "2026-27"
+
+aliases:
+  - legacy: "87A"
+    current: "156"
+    description: Rebate for resident individuals
+    confidence: unverified
+
+  - legacy: "115BAC"
+    current: "202"
+    description: New tax regime — rates for individuals, HUF, AOP, BOI, AJP
+    confidence: unverified
+
+  - legacy: "16(ia)"
+    current: "19"
+    description: Standard deduction from salary
+    confidence: unverified
+
+  - legacy: "24(b)"
+    current: "22"
+    description: Interest on borrowed capital — income from house property
+    confidence: unverified
+
+  - legacy: "10(13A)"
+    current: "11"
+    description: House rent allowance exemption
+    confidence: unverified
+
+  - legacy: "111A"
+    current: "196"
+    description: Short-term capital gains on listed equity (STT paid)
+    confidence: unverified
+
+  - legacy: "112"
+    current: "197"
+    description: Long-term capital gains — general
+    confidence: unverified
+
+  - legacy: "112A"
+    current: "198"
+    description: Long-term capital gains on listed equity (STT paid)
+    confidence: unverified
+
+  - legacy: "80C"
+    current: "123"
+    description: Deduction for specified investments and payments
+    confidence: unverified
+
+  - legacy: "80CCD"
+    current: "124"
+    description: Contribution to the National Pension System
+    confidence: unverified
+
+  - legacy: "80D"
+    current: "126"
+    description: Health insurance premium
+    confidence: unverified
+
+  - legacy: "80E"
+    current: "128"
+    description: Interest on loan for higher education
+    confidence: unverified
+
+  - legacy: "80EEB"
+    current: "131"
+    description: Interest on loan for purchase of an electric vehicle
+    confidence: unverified
+
+  - legacy: "80G"
+    current: "133"
+    description: Donations to certain funds and institutions
+    confidence: unverified
+
+  - legacy: "80TTA"
+    current: "144"
+    description: Interest on savings account
+    confidence: unverified
+
+  - legacy: "80TTB"
+    current: "145"
+    description: Interest on deposits for senior citizens
+    confidence: unverified
+
+  - legacy: "44AD"
+    current: "58"
+    description: Presumptive taxation for business
+    confidence: unverified
+
+  - legacy: "44ADA"
+    current: "59"
+    description: Presumptive taxation for professionals
+    confidence: unverified
+
+  - legacy: "234B"
+    current: "425"
+    description: Interest for default in payment of advance tax
+    confidence: unverified
+
+  - legacy: "234C"
+    current: "426"
+    description: Interest for deferment of advance tax
+    confidence: unverified
+
+  - legacy: "244A"
+    current: "437"
+    description: Interest on refunds
+    confidence: unverified
+
+  - legacy: "288A"
+    current: "singular"
+    description: Rounding off of total income
+    confidence: unverified
+
+  - legacy: "288B"
+    current: "singular"
+    description: Rounding off of tax payable or refundable
+    confidence: unverified

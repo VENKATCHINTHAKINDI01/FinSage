@@ -188,7 +188,7 @@ async def get_compliance_report(
         }
     
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise  # DEM-008: handled globally; str(e) must not reach the client
     finally:
         db_session_var.reset(token)
 
@@ -259,7 +259,7 @@ async def get_itr_filing_guidance(
         }
     
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise  # DEM-008: handled globally; str(e) must not reach the client
     finally:
         db_session_var.reset(token)
 
@@ -348,7 +348,7 @@ async def calculate_advanced_tax(
         }
     
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise  # DEM-008: handled globally; str(e) must not reach the client
     finally:
         db_session_var.reset(token)
 
@@ -391,7 +391,7 @@ async def get_audit_history(
         }
     
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise  # DEM-008: handled globally; str(e) must not reach the client
 
 
 # ===== ENDPOINT 5: ITR Filing Status =====
@@ -430,4 +430,4 @@ async def get_itr_filing_status(
             }
     
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise  # DEM-008: handled globally; str(e) must not reach the client

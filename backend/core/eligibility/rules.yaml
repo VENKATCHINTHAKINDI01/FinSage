@@ -1,0 +1,157 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# Date-windowed eligibility rules — CORE-009
+#
+# The most damaging class of bug in Indian tax software is a benefit that
+# EXISTS in the statute but is CLOSED to this user on this date. The section
+# text still reads "₹1,50,000", so any system that pattern-matches on the
+# section quotes it — to someone who cannot claim a rupee of it.
+#
+# Every rule here therefore carries explicit windows, and the evaluator returns
+# WINDOW_CLOSED with the closing date rather than silently dropping the benefit.
+# Telling a user "80EEB would have given you ₹1.5L, but the sanction window
+# closed on 31 March 2023" is more useful than silence, and it is the kind of
+# thing that makes them believe the rest of the output.
+# ═══════════════════════════════════════════════════════════════════════════
+
+meta:
+  verified_on: "2026-08-09"
+  sources:
+    - https://www.incometaxindia.gov.in/
+    - https://cleartax.in/s/section-80eeb-deduction-purchase-electric-vehicle
+    - https://www.evselect.in/ev-subsidies-india
+    - https://www.personalfn.com/dwl/Precious-Metals/sovereign-gold-bond-scheme-discontinued-why-this-is-done-and-what-it-means-for-investors
+
+rules:
+
+  # ── The canonical trap ────────────────────────────────────────────────────
+  - id: 80EEB
+    name: Interest on electric vehicle loan
+    kind: deduction
+    max_benefit: 150000
+    regimes: [old]
+    windows:
+      - field: loan_sanction_date
+        from: "2019-01-01"
+        to: "2023-03-31"
+        closed_message: >
+          Section 80EEB requires the vehicle loan to have been SANCTIONED
+          between 1 January 2019 and 31 March 2023. Loans sanctioned after
+          that date do not qualify, however new the vehicle is.
+    conditions:
+      - { field: asset_type, equals: electric_vehicle }
+      - { field: taxpayer_type, in: [individual] }
+    once_per: lifetime
+    citation: { legacy_section: "80EEB" }
+
+  - id: 80EEA
+    name: Interest on housing loan — affordable housing
+    kind: deduction
+    max_benefit: 150000
+    regimes: [old]
+    windows:
+      - field: loan_sanction_date
+        from: "2019-04-01"
+        to: "2022-03-31"
+        closed_message: >
+          Section 80EEA closed to new loans on 31 March 2022. If your loan was
+          sanctioned inside the window you may continue claiming it for the
+          life of the loan.
+    conditions:
+      - { field: asset_type, equals: residential_property }
+      - { field: stamp_duty_value, at_most: 4500000 }
+      - { field: owns_other_property, equals: false }
+    citation: { legacy_section: "80EEA" }
+
+  - id: 80EE
+    name: Interest on housing loan — first-time buyer
+    kind: deduction
+    max_benefit: 50000
+    regimes: [old]
+    windows:
+      - field: loan_sanction_date
+        from: "2016-04-01"
+        to: "2017-03-31"
+        closed_message: Section 80EE closed to new loans on 31 March 2017.
+    conditions:
+      - { field: asset_type, equals: residential_property }
+    citation: { legacy_section: "80EE" }
+
+  # ── Still open ────────────────────────────────────────────────────────────
+  - id: 24B_SELF_OCCUPIED
+    name: Interest on housing loan — self-occupied property
+    kind: deduction
+    max_benefit: 200000
+    regimes: [old]
+    conditions:
+      - { field: property_use, equals: self_occupied }
+    citation: { legacy_section: "24(b)" }
+    note: >
+      No sanction-date window. This is the deduction most EV/home buyers are
+      actually looking for when 80EE and 80EEA turn out to be closed.
+
+  - id: 80TTB
+    name: Interest on deposits — senior citizens
+    kind: deduction
+    max_benefit: 50000
+    regimes: [old]
+    conditions:
+      - { field: age, at_least: 60 }
+    citation: { legacy_section: "80TTB" }
+
+  # ── Central schemes ───────────────────────────────────────────────────────
+  - id: PM_E_DRIVE_2W
+    name: PM E-DRIVE demand incentive — electric two-wheeler
+    kind: subsidy
+    benefit_per_kwh: 2500
+    max_benefit: 5000
+    windows:
+      - field: purchase_date
+        to: "2026-07-31"
+        closed_message: >
+          The PM E-DRIVE demand incentive for electric two-wheelers terminated
+          on 31 July 2026.
+    conditions:
+      - { field: asset_type, equals: electric_vehicle }
+      - { field: vehicle_category, equals: two_wheeler }
+    citation: { source_url: "https://heavyindustries.gov.in/" }
+
+  - id: PM_E_DRIVE_3W
+    name: PM E-DRIVE demand incentive — electric three-wheeler
+    kind: subsidy
+    benefit_per_kwh: 2500
+    max_benefit: 5000
+    windows:
+      - field: purchase_date
+        to: "2028-03-31"
+    conditions:
+      - { field: asset_type, equals: electric_vehicle }
+      - { field: vehicle_category, equals: three_wheeler }
+    citation: { source_url: "https://heavyindustries.gov.in/" }
+
+  - id: PM_E_DRIVE_CAR
+    name: PM E-DRIVE — electric car
+    kind: subsidy
+    max_benefit: 0
+    always_ineligible: true
+    ineligible_reason: >
+      PM E-DRIVE does not cover electric cars. The demand incentive is limited
+      to two- and three-wheelers, e-ambulances, e-trucks and buses.
+    conditions:
+      - { field: vehicle_category, equals: car }
+    citation: { source_url: "https://heavyindustries.gov.in/" }
+
+  # ── Availability, not eligibility ─────────────────────────────────────────
+  - id: SGB_PRIMARY
+    name: Sovereign Gold Bond — primary issuance
+    kind: investment
+    windows:
+      - field: purchase_date
+        to: "2024-02-29"
+        closed_message: >
+          The government has issued no new Sovereign Gold Bond tranche since
+          February 2024 and has announced no issuance calendar. Existing bonds
+          remain valid and tradable on NSE/BSE, but you cannot buy at primary
+          issue. v1 of this product recommended SGBs as a purchase.
+    conditions:
+      - { field: asset_type, in: [gold, sovereign_gold_bond] }
+    citation: { source_url: "https://www.rbi.org.in/" }

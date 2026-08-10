@@ -36,7 +36,7 @@ export default function Login() {
     setSubmitting(false);
 
     if (result.success) {
-      const dest = location.state?.from || '/';
+      const dest = location.state?.from || '/dashboard';
       navigate(dest, { replace: true });
     } else {
       setError(result.error || 'Something went wrong. Please try again.');

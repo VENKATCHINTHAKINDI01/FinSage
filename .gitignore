@@ -48,12 +48,18 @@ nosetests.xml
 *.cover
 *.log
 .tox/
+.hypothesis/
 
-# mypy / ruff / pyright
+# Eval harness caches (recorded LLM fixtures ARE committed; live-run output is not)
+backend/evals/.cache/
+backend/evals/runs/
+
+# mypy / ruff / pyright / importlinter
 .mypy_cache/
 .ruff_cache/
 .pytype/
 pyrightconfig.json
+.import_linter_cache/
 
 # Jupyter
 .ipynb_checkpoints
@@ -116,11 +122,17 @@ frontend/node_modules/.tmp/
 Thumbs.db
 ehthumbs.db
 
-# ── Exports & Generated Reports ──────────────────────────
+# ── Generated user documents ─────────────────────────────
+# Never commit generated financial documents. In production these live in the
+# encrypted vault (DOC-004), not on local disk — exports/ is a dev-only artefact.
 exports/
-*.pdf
-*.xlsx
-*.csv
+*.generated.pdf
+
+# Blanket *.pdf / *.xlsx / *.csv is deliberately NOT used: Phase 4 parsers
+# (Form 16, broker P&L, AIS) need committed sample fixtures to test against.
+# Those live under tests/fixtures/ and must be synthetic — never real user data.
+tests/fixtures/**/*.real.*
+backend/**/tests/fixtures/**/*.real.*
 
 # ── Misc ─────────────────────────────────────────────────
 *.bak

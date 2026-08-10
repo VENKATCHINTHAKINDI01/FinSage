@@ -5,10 +5,11 @@ Each agent inherits from this and implements execute() method.
 
 from abc import ABC, abstractmethod
 from pydantic import BaseModel
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 import logging
 from datetime import datetime
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
 
 logger = logging.getLogger(__name__)
 
@@ -24,12 +25,25 @@ class AgentOutput:
     reasoning: str = ""
     execution_time_ms: float = 0
     timestamp: str = None
+    # Validation metadata
+    validation_report: dict = None
+    data_sources_used: list = None
     
     def __post_init__(self):
         if self.timestamp is None:
             self.timestamp = datetime.utcnow().isoformat()
         if self.result is None:
             self.result = {}
+        if self.validation_report is None:
+            self.validation_report = {
+                "is_valid": True,
+                "confidence_score": self.confidence,
+                "warnings": [],
+                "corrections_applied": [],
+                "sources_verified": []
+            }
+        if self.data_sources_used is None:
+            self.data_sources_used = []
 
 
 class BaseAgent(ABC):
@@ -84,9 +98,32 @@ class BaseAgent(ABC):
     
     async def postprocess(self, result: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Postprocess result (format, validate, etc.).
+        Postprocess result — runs validation on the output.
         Override if needed.
         """
+        try:
+            from backend.tools.data_validator import LLMResponseValidator
+            validator = LLMResponseValidator()
+            
+            # Validate deductions if present
+            deductions = result.get("deductions") or result.get("deductions_found")
+            if deductions and isinstance(deductions, list):
+                validated_deductions, report = validator.validate_deductions(deductions)
+                result["deductions"] = validated_deductions
+                if "deductions_found" in result:
+                    result["deductions_found"] = validated_deductions
+                result["_validation_report"] = report.to_dict()
+            
+            # Validate income sources if present
+            sources = result.get("income_sources")
+            if sources and isinstance(sources, list):
+                validated_sources, report = validator.validate_income_sources(sources)
+                result["income_sources"] = validated_sources
+                result["_validation_report"] = report.to_dict()
+                
+        except Exception as e:
+            self.logger.warning(f"Postprocess validation skipped: {e}")
+        
         return result
     
     def _create_output(
@@ -98,6 +135,10 @@ class BaseAgent(ABC):
         execution_time_ms: float = 0.0
     ) -> AgentOutput:
         """Helper to create standardized output."""
+        # Extract validation report if present
+        validation_report = result.pop("_validation_report", None)
+        data_sources = result.pop("_data_sources", None)
+        
         return AgentOutput(
             agent_name=self.name,
             intent=self.intent,
@@ -106,7 +147,9 @@ class BaseAgent(ABC):
             confidence=confidence,
             reasoning=reasoning,
             execution_time_ms=execution_time_ms,
-            timestamp=datetime.utcnow()
+            timestamp=datetime.utcnow().isoformat(),
+            validation_report=validation_report,
+            data_sources_used=data_sources or []
         )
 
 
@@ -150,7 +193,30 @@ class TaxAgent(ABC):
         return query.strip().lower()
     
     async def postprocess(self, result: dict) -> dict:
-        """Postprocess agent result."""
+        """Postprocess agent result — runs validation."""
+        try:
+            from backend.tools.data_validator import LLMResponseValidator
+            validator = LLMResponseValidator()
+            
+            # Validate deductions if present
+            deductions = result.get("deductions") or result.get("deductions_found")
+            if deductions and isinstance(deductions, list):
+                validated_deductions, report = validator.validate_deductions(deductions)
+                result["deductions"] = validated_deductions
+                if "deductions_found" in result:
+                    result["deductions_found"] = validated_deductions
+                result["_validation_report"] = report.to_dict()
+            
+            # Validate income sources if present
+            sources = result.get("income_sources")
+            if sources and isinstance(sources, list):
+                validated_sources, report = validator.validate_income_sources(sources)
+                result["income_sources"] = validated_sources
+                result["_validation_report"] = report.to_dict()
+                
+        except Exception as e:
+            self.logger.warning(f"Postprocess validation skipped: {e}")
+        
         return result
     
     def _create_output(
@@ -162,6 +228,10 @@ class TaxAgent(ABC):
         execution_time_ms: float = 0
     ) -> AgentOutput:
         """Create standardized output."""
+        # Extract validation report if present
+        validation_report = result.pop("_validation_report", None) if isinstance(result, dict) else None
+        data_sources = result.pop("_data_sources", None) if isinstance(result, dict) else None
+        
         return AgentOutput(
             agent_name=self.name,
             intent=self.intent,
@@ -170,7 +240,9 @@ class TaxAgent(ABC):
             confidence=confidence,
             reasoning=reasoning,
             execution_time_ms=execution_time_ms,
-            timestamp=datetime.utcnow().isoformat()
+            timestamp=datetime.utcnow().isoformat(),
+            validation_report=validation_report,
+            data_sources_used=data_sources or []
         )
 
 
@@ -186,3 +258,79 @@ class BenefitsAgent(BaseAgent):
     
     def __init__(self, name: str):
         super().__init__(name, "benefits_related")
+
+# ═══════════════════════════════════════════════════════════════════════════
+# EVD-003 — confidence is measured, not authored
+# ═══════════════════════════════════════════════════════════════════════════
+
+def derive_confidence(
+    *,
+    tool_results: list | dict | None = None,
+    used_llm_for_values: bool = False,
+    missing_inputs: list[str] | None = None,
+    assumptions: dict[str, str] | None = None,
+    error: str | None = None,
+):
+    """Build a Confidence from what actually happened during this execution.
+
+    What this replaces
+    ------------------
+    Ten agents each returned a hand-picked constant — 0.80, 0.85, 0.88, 0.90,
+    0.92, 0.95 — rendered to users as a quality percentage. Nobody could say why
+    the ITR helper was 0.92 and the deduction hunter 0.80. They were not
+    measurements; they were decoration that looked like measurement, which
+    spends trust the system has not earned.
+
+    Separately, `ValidationReport.add_warning` subtracted a flat 0.1 per warning
+    regardless of what the warning said, so a cosmetic formatting note cost the
+    same as a failed limit check.
+
+    Confidence now derives from signals that exist at runtime: whether tools
+    actually returned, which inputs were absent, what was assumed, and whether a
+    model touched a value it should not have.
+    """
+    from backend.core.provenance.confidence import Confidence, Provenance
+
+    conf = Confidence()
+
+    if error:
+        conf.missing("a successful computation", error, blocks=True)
+        return conf
+
+    results = tool_results if isinstance(tool_results, list) else [tool_results] if tool_results else []
+    succeeded = [r for r in results if isinstance(r, dict) and r.get("success")]
+    if results and not succeeded:
+        conf.missing(
+            "tool results",
+            "no tool call returned successfully, so nothing here is grounded",
+            blocks=True,
+        )
+        return conf
+
+    for field_name in missing_inputs or []:
+        conf.missing(field_name, "excluded from the calculation")
+
+    for what, value in (assumptions or {}).items():
+        conf.assumption(what, value)
+
+    # Should never fire: the core computes every figure. If it does, the answer
+    # is not deterministic and must not be presented as exact.
+    if used_llm_for_values:
+        conf.llm_generated("a figure in this result")
+
+    # Values the user typed rather than a document we parsed.
+    if not results:
+        conf.input_from("user profile", Provenance.USER_STATED)
+
+    return conf
+
+
+def confidence_score(conf) -> float:
+    """Confidence as a float, for the legacy `AgentOutput.confidence` field.
+
+    The conversion lives here rather than in backend/core because the core bans
+    float construction outright — a Decimal-to-float hop is harmless for a 0–1
+    ratio, but carving an exception into a purity rule is how purity rules stop
+    being enforced. AGT-001 replaces this field with the full breakdown.
+    """
+    return float(conf.score)

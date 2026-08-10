@@ -6,15 +6,13 @@ Recommends timing, filing approaches, and strategic decisions.
 import time
 import logging
 from typing import Dict, Any
-from groq import Groq
 
-from backend.agents.base_agent import TaxAgent, AgentOutput
+from backend.agents.base_agent import TaxAgent, AgentOutput, confidence_score, derive_confidence
 from backend.config import settings
+from backend.llm import get_llm
 
 logger = logging.getLogger(__name__)
 
-# Initialize Groq client
-client = Groq(api_key=settings.llm.api_key)
 
 
 class TaxOptimizerAgent(TaxAgent):
@@ -199,7 +197,7 @@ class TaxOptimizerAgent(TaxAgent):
             return self._create_output(
                 result=result,
                 status="success",
-                confidence=0.78,
+                confidence=confidence_score(derive_confidence()),
                 reasoning="Strategies generated with tool-calculated savings",
                 execution_time_ms=execution_time
             )
@@ -211,7 +209,7 @@ class TaxOptimizerAgent(TaxAgent):
             return self._create_output(
                 result={"error": str(e)},
                 status="error",
-                confidence=0.0,
+                confidence=0.0,  # execution failed — not a score
                 reasoning=f"Error: {str(e)}",
                 execution_time_ms=execution_time
             )
@@ -271,13 +269,9 @@ Respond in JSON format:
 Important: Only suggest legal, compliant strategies. Respond ONLY with valid JSON."""
 
         try:
-            message = client.chat.completions.create(
-                model=settings.llm.model,
-                max_tokens=2000,
-                messages=[{"role": "user", "content": prompt}]
-            )
+            message = await get_llm().complete(prompt, max_tokens=2000)
             
-            response_text = message.choices[0].message.content.strip()
+            response_text = message.text.strip()
             if "```json" in response_text:
                 response_text = response_text.split("```json")[1].split("```")[0].strip()
             elif "```" in response_text:

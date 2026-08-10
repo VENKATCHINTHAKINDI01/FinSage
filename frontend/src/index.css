@@ -461,3 +461,291 @@
 }
 
 
+/* ═══════════════════════════════════════════════════════════════════
+   PHASE 3: DEEP OCEAN TO MULTIVERSE — PREMIUM TRANSITIONS
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── Cosmic Color Palette ────────────────────────────────────────── */
+@theme {
+  --color-cosmic-cyan: #06b6d4;
+  --color-cosmic-violet: #8b5cf6;
+  --color-cosmic-pink: #ec4899;
+  --color-cosmic-emerald: #10b981;
+  --color-cosmic-amber: #f59e0b;
+  --color-abyss: #020617;
+  --color-deep-ocean: #041525;
+  --color-midnight: #0b1536;
+  --color-nebula-purple: #1e1054;
+  --color-aurora-teal: #0d504a;
+  --color-starlight: rgba(255, 255, 255, 0.03);
+}
+
+/* ── Deep Ocean Dive — Scroll-driven gradient ───────────────────── */
+@keyframes deep-ocean-dive {
+  0%   { background-color: #0c4a6e; }
+  25%  { background-color: #082f49; }
+  50%  { background-color: #041525; }
+  75%  { background-color: #020a18; }
+  100% { background-color: #020617; }
+}
+
+.bg-deep-ocean {
+  background: linear-gradient(180deg,
+    #0c4a6e 0%,
+    #082f49 20%,
+    #041525 45%,
+    #020a18 70%,
+    #020617 100%
+  );
+  min-height: 100vh;
+}
+
+/* ── Aurora Wave — shimmer border effect ─────────────────────────── */
+@keyframes aurora-wave {
+  0%   { border-color: rgba(6, 182, 212, 0.3); box-shadow: 0 0 20px rgba(6, 182, 212, 0.08); }
+  33%  { border-color: rgba(139, 92, 246, 0.3); box-shadow: 0 0 20px rgba(139, 92, 246, 0.08); }
+  66%  { border-color: rgba(16, 185, 129, 0.3); box-shadow: 0 0 20px rgba(16, 185, 129, 0.08); }
+  100% { border-color: rgba(6, 182, 212, 0.3); box-shadow: 0 0 20px rgba(6, 182, 212, 0.08); }
+}
+
+.aurora-border {
+  animation: aurora-wave 6s ease infinite;
+}
+
+/* ── Gravity Pull — elements pull into view with spring ──────────── */
+@keyframes gravity-pull-up {
+  0%   { opacity: 0; transform: translateY(60px) scale(0.95); }
+  60%  { opacity: 1; transform: translateY(-8px) scale(1.02); }
+  80%  { transform: translateY(3px) scale(0.99); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes gravity-pull-left {
+  0%   { opacity: 0; transform: translateX(-50px) scale(0.95); }
+  60%  { opacity: 1; transform: translateX(6px) scale(1.01); }
+  100% { opacity: 1; transform: translateX(0) scale(1); }
+}
+
+@keyframes gravity-pull-right {
+  0%   { opacity: 0; transform: translateX(50px) scale(0.95); }
+  60%  { opacity: 1; transform: translateX(-6px) scale(1.01); }
+  100% { opacity: 1; transform: translateX(0) scale(1); }
+}
+
+.animate-gravity-up    { animation: gravity-pull-up 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; opacity: 0; }
+.animate-gravity-left  { animation: gravity-pull-left 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; opacity: 0; }
+.animate-gravity-right { animation: gravity-pull-right 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; opacity: 0; }
+
+/* ── Warp Speed — page transition effect ─────────────────────────── */
+@keyframes warp-enter {
+  0%   { opacity: 0; transform: scale(0.92) translateY(20px); filter: blur(8px); }
+  50%  { opacity: 0.7; filter: blur(2px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); filter: blur(0); }
+}
+
+@keyframes warp-exit {
+  0%   { opacity: 1; transform: scale(1); filter: blur(0); }
+  100% { opacity: 0; transform: scale(1.05) translateY(-10px); filter: blur(6px); }
+}
+
+.page-warp-enter {
+  animation: warp-enter 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.page-warp-exit {
+  animation: warp-exit 0.3s ease-in forwards;
+}
+
+/* ── Data Stream — matrix-like visualization lines ───────────────── */
+@keyframes data-stream-vertical {
+  0%   { transform: translateY(-100%); opacity: 0; }
+  10%  { opacity: 0.6; }
+  90%  { opacity: 0.6; }
+  100% { transform: translateY(100vh); opacity: 0; }
+}
+
+@keyframes data-pulse {
+  0%, 100% { opacity: 0.15; }
+  50%       { opacity: 0.5; }
+}
+
+.data-stream-line {
+  position: absolute;
+  width: 1px;
+  height: 60px;
+  background: linear-gradient(180deg, transparent, rgba(6, 182, 212, 0.6), transparent);
+  animation: data-stream-vertical 3s linear infinite;
+}
+
+/* ── Nebula Morph — cosmic color shifts ──────────────────────────── */
+@keyframes nebula-morph {
+  0%   { background-position: 0% 50%; filter: hue-rotate(0deg); }
+  25%  { background-position: 50% 0%; }
+  50%  { background-position: 100% 50%; filter: hue-rotate(15deg); }
+  75%  { background-position: 50% 100%; }
+  100% { background-position: 0% 50%; filter: hue-rotate(0deg); }
+}
+
+.bg-nebula-morph {
+  background: linear-gradient(135deg,
+    #020617, #0a1628, #0f1035, #1a0a2e, #041d24, #020617
+  );
+  background-size: 600% 600%;
+  animation: nebula-morph 30s ease infinite;
+}
+
+/* ── Counter Animation ──────────────────────────────────────────── */
+@keyframes counter-reveal {
+  0%   { opacity: 0; transform: translateY(16px) scale(0.9); }
+  60%  { transform: translateY(-2px) scale(1.03); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.animate-counter {
+  animation: counter-reveal 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+/* ── Scroll Reveal Classes ──────────────────────────────────────── */
+.reveal-on-scroll {
+  opacity: 0;
+  transform: translateY(30px);
+  transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.reveal-on-scroll.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ── Verification Badge Styles ──────────────────────────────────── */
+.badge-verified {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+.badge-verified.green {
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+.badge-verified.yellow {
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
+
+.badge-verified.red {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.25);
+}
+
+/* ── Gradient Wave Separator ────────────────────────────────────── */
+.wave-separator {
+  position: relative;
+  width: 100%;
+  height: 80px;
+  overflow: hidden;
+}
+
+.wave-separator::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 200%;
+  height: 100%;
+  background: linear-gradient(90deg,
+    rgba(6, 182, 212, 0.1),
+    rgba(139, 92, 246, 0.1),
+    rgba(16, 185, 129, 0.1),
+    rgba(6, 182, 212, 0.1)
+  );
+  animation: shimmer 4s linear infinite;
+  background-size: 200% auto;
+}
+
+/* ── Cosmic Card Variants ───────────────────────────────────────── */
+.card-cosmic {
+  position: relative;
+  border-radius: 20px;
+  overflow: hidden;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.card-cosmic::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: linear-gradient(135deg,
+    rgba(6, 182, 212, 0.4),
+    rgba(139, 92, 246, 0.3),
+    rgba(16, 185, 129, 0.3),
+    rgba(6, 182, 212, 0.4)
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  background-size: 300% 300%;
+  animation: gradient-shift 5s ease infinite;
+}
+
+.card-cosmic:hover {
+  transform: translateY(-6px) scale(1.01);
+  box-shadow: 0 20px 60px rgba(6, 182, 212, 0.15), 0 0 40px rgba(139, 92, 246, 0.08);
+}
+
+.dark .card-cosmic {
+  background: rgba(2, 6, 23, 0.6);
+}
+
+:root:not(.dark) .card-cosmic {
+  background: rgba(255, 255, 255, 0.85);
+}
+
+/* ── Particle Grid Background ───────────────────────────────────── */
+.particle-grid {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image:
+    radial-gradient(circle at 1px 1px, rgba(6, 182, 212, 0.06) 1px, transparent 0);
+  background-size: 40px 40px;
+}
+
+.dark .particle-grid {
+  background-image:
+    radial-gradient(circle at 1px 1px, rgba(6, 182, 212, 0.08) 1px, transparent 0);
+}
+
+/* ── Smooth Page Transitions (View Transitions API) ─────────────── */
+@view-transition {
+  navigation: auto;
+}
+
+::view-transition-old(root) {
+  animation: warp-exit 0.3s ease-in forwards;
+}
+
+::view-transition-new(root) {
+  animation: warp-enter 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* ── Stat Card Glow Variants ────────────────────────────────────── */
+.stat-glow-cyan    { box-shadow: 0 0 30px rgba(6, 182, 212, 0.1), inset 0 1px 0 rgba(6, 182, 212, 0.1); }
+.stat-glow-violet  { box-shadow: 0 0 30px rgba(139, 92, 246, 0.1), inset 0 1px 0 rgba(139, 92, 246, 0.1); }
+.stat-glow-emerald { box-shadow: 0 0 30px rgba(16, 185, 129, 0.1), inset 0 1px 0 rgba(16, 185, 129, 0.1); }
+.stat-glow-amber   { box-shadow: 0 0 30px rgba(245, 158, 11, 0.1), inset 0 1px 0 rgba(245, 158, 11, 0.1); }
+

@@ -1,0 +1,37 @@
+# Seed scenario proving the harness works before any agent is refactored.
+# The full corpus (60+ scenarios) lands with AGT-005 in phase 3.
+#
+# The matching negative control — an agent that invents figures — lives in
+# backend/evals/tests/test_harness.py rather than here, so that this suite
+# stays "scenarios that must pass" and CI red always means something is wrong.
+
+- id: EV-80EEB-CLOSED-WINDOW
+  description: >
+    Section 80EEB requires the vehicle loan to have been sanctioned between
+    2019-01-01 and 2023-03-31. A user buying an EV today cannot claim it. The
+    agent must say the window is closed rather than quoting the 1.5L headline,
+    and must not claim PM E-DRIVE, which does not cover electric cars.
+  query: "I'm buying an electric car next month with a loan. What tax benefit do I get?"
+  profile:
+    fy: "2026-27"
+    regime: new
+    salary: 1800000
+    age: 34
+  must_state:
+    - window_closed: "80EEB"
+    - gst_rate_ev: 0.05
+  must_not_claim:
+    - deduction: "80EEB"
+    - subsidy: "PM_E_DRIVE"
+  max_latency_ms: 4000
+
+
+- id: INFORMATIONAL-CLEAN
+  description: >
+    The common case — a straightforward computation, correctly reported. Most
+    answers look like this, and the harness must not manufacture findings on
+    them. A suite that only contains failures cannot detect over-flagging.
+  query: "What is my tax for this year?"
+  profile: { fy: "2026-27", regime: new, salary: 1275000 }
+  must_state:
+    - rebate_87a: 60000

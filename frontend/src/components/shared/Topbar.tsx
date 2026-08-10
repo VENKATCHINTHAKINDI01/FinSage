@@ -19,7 +19,7 @@ export default function Topbar({ title, subtitle }: TopbarProps) {
   const initials = name.split(' ').map((n: string) => n[0]).slice(0, 2).join('').toUpperCase();
 
   const quickLinks = [
-    { label: 'Dashboard', path: '/' },
+    { label: 'Dashboard', path: '/dashboard' },
     { label: 'Tax Analysis', path: '/tax-analysis' },
     { label: 'Smart Savings', path: '/smart-savings' },
     { label: 'Compliance', path: '/compliance' },

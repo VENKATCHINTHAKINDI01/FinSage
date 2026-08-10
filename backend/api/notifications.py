@@ -43,7 +43,7 @@ async def set_notification_preferences(
         return result
     
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise  # DEM-008: handled globally; str(e) must not reach the client
 
 
 @router.get("/preferences")
@@ -60,7 +60,7 @@ async def get_notification_preferences(
         return result
     
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise  # DEM-008: handled globally; str(e) must not reach the client
 
 
 @router.get("/history")
@@ -83,4 +83,4 @@ async def get_notification_history(
         }
     
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise  # DEM-008: handled globally; str(e) must not reach the client

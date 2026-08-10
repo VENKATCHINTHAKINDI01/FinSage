@@ -73,20 +73,6 @@ export function ProgressBar({ value, max = 100, tone = 'primary' }: ProgressBarP
   );
 }
 
-interface DemoBadgeProps {
-  show: boolean;
-}
-
-export function DemoBadge({ show }: DemoBadgeProps) {
-  if (!show) return null;
-  return (
-    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10.5px] font-medium bg-saffron-soft text-saffron border border-saffron/20">
-      <span className="w-1.5 h-1.5 rounded-full bg-saffron" />
-      Demo data — connect backend for live figures
-    </span>
-  );
-}
-
 interface EmptyStateProps {
   icon?: LucideIcon;
   title: string;

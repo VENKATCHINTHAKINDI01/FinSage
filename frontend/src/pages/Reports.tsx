@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import AppLayout from '../components/shared/AppLayout';
-import { Card, SectionHeading, Badge, DemoBadge, EmptyState } from '../components/ui/Primitives';
+import { Card, SectionHeading, Badge, EmptyState } from '../components/ui/Primitives';
 import { useApiData } from '../hooks/useApiData';
+import { ErrorState, LoadingState } from '../components/shared/DataState';
 import { getReportsList, generateReport } from '../api/services';
-import { mockReports } from '../utils/mockData';
 import { formatDate } from '../utils/format';
 import { FileStack, Download, ShieldCheck, Activity, Calculator, Loader2 } from 'lucide-react';
 
@@ -34,8 +34,15 @@ interface ReportItem {
 }
 
 export default function Reports() {
-  const { data, isDemo } = useApiData(getReportsList, { reports: mockReports }, []);
-  const reports = (data?.reports || mockReports) as ReportItem[];
+  const state = useApiData<any>(getReportsList, []);
+  if (state.loading) return <AppLayout title="Reports"><LoadingState /></AppLayout>;
+  if (state.error)
+    return (
+      <AppLayout title="Reports">
+        <ErrorState error={state.error} onRetry={state.refetch} what="your reports" />
+      </AppLayout>
+    );
+  const reports = ((state.data as any)?.reports ?? []) as ReportItem[];
   const [generating, setGenerating] = useState<string | null>(null);
 
   const handleGenerate = async (type: string) => {
@@ -52,7 +59,6 @@ export default function Reports() {
 
   return (
     <AppLayout title="Reports" subtitle="Generate and download PDF reports of your financial position">
-      <div className="flex justify-end mb-4"><DemoBadge show={isDemo} /></div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-6 stagger">
         {REPORT_TYPES.map(({ type, label, desc, icon: Icon, accent }) => (

@@ -1,172 +1,140 @@
-"""
-Embeddings service - converts text to vector embeddings using Groq/Llama.
-Used for semantic search and RAG retrieval.
+"""Text embeddings — DEM-004.
+
+What this replaced
+------------------
+    hash_val = hashlib.md5(text.encode()).hexdigest()
+    np.random.seed(int(hash_val, 16) % (2**32))
+    embedding = np.random.randn(self.dim)
+
+That is deterministic, and it is not an embedding. "80C deduction limit" and
+"Section 80C limit" hash differently, so they seed differently, so they produce
+orthogonal vectors. Semantic search over it returns noise.
+
+The damage was not just poor retrieval. Every agent claimed its answer was
+grounded in retrieved sources, and `ValidationReport` reported a
+`sources_verified` count, while the retrieval underneath was random. The
+confidence numbers shown to users were measuring nothing.
+
+Now: BAAI/bge-small-en-v1.5 via fastembed (ONNX runtime). Chosen over
+sentence-transformers because that pulls torch plus ~18 nvidia-* packages —
+several gigabytes — into the image for a CPU-only workload.
+
+Failure policy
+--------------
+If the model cannot load, this raises. It does NOT fall back to a hash, a zero
+vector, or anything else that would let retrieval silently resume returning
+nonsense. Broken retrieval must look broken.
 """
 
-from typing import List
+from __future__ import annotations
+
+import asyncio
 import logging
-import numpy as np
-from groq import Groq
+from typing import TYPE_CHECKING
 
-from backend.config import settings
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
 
-# Initialize Groq client
-client = Groq(api_key=settings.llm.api_key)
+MODEL_NAME = "BAAI/bge-small-en-v1.5"
+EMBEDDING_DIM = 384  # must match the Qdrant collection dimension
 
-# Embedding dimension for Llama models
-EMBEDDING_DIM = 768
+# bge models are trained with an asymmetric query prefix; omitting it measurably
+# degrades retrieval on short queries, which is most of what users type.
+QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
+
+
+class EmbeddingsUnavailable(RuntimeError):
+    """The embedding model could not be loaded or run."""
 
 
 class EmbeddingsService:
+    """Sentence embeddings for semantic retrieval.
+
+    The model is loaded lazily on first use (it downloads on first run and is
+    cached thereafter), and encoding is pushed to a worker thread so it never
+    blocks the event loop.
     """
-    Generate text embeddings for semantic search.
-    
-    Note: For production, consider using:
-    - Sentence Transformers (all-MiniLM-L6-v2)
-    - OpenAI embeddings
-    - Cohere embeddings
-    
-    For now, we use Groq with simple text preprocessing.
-    """
-    
-    def __init__(self):
-        self.dim = EMBEDDING_DIM
-    
-    async def embed_text(self, text: str) -> List[float]:
-        """
-        Convert text to embedding vector.
-        
-        Args:
-            text: Text to embed
-        
-        Returns:
-            Vector embedding as list of floats
-        
-        Example:
-            embedding = await embeddings.embed_text("What are tax deductions?")
-            # Returns: [0.1, -0.05, 0.3, ...] (768 dimensions)
-        """
-        
+
+    def __init__(self, model_name: str = MODEL_NAME, dim: int = EMBEDDING_DIM) -> None:
+        self.model_name = model_name
+        self.dim = dim
+        self._model = None
+        self._lock = asyncio.Lock()
+
+    # ── model lifecycle ─────────────────────────────────────────────────────
+
+    def _load(self):
+        if self._model is not None:
+            return self._model
         try:
-            # Preprocess text
-            text = text.strip()
-            if not text:
-                return [0.0] * self.dim
-            
-            # Generate embedding using Groq
-            # In production, use dedicated embedding models
-            embedding = await self._generate_embedding(text)
-            
-            logger.debug(f"Generated embedding for text: {text[:50]}...")
-            
-            return embedding
-        
-        except Exception as e:
-            logger.error(f"Error embedding text: {e}")
-            # Return zero vector on error
-            return [0.0] * self.dim
-    
-    async def embed_batch(self, texts: List[str]) -> List[List[float]]:
+            from fastembed import TextEmbedding
+        except ImportError as exc:
+            raise EmbeddingsUnavailable(
+                "fastembed is not installed. Semantic search is unavailable. "
+                "Install it rather than falling back to a hash — random vectors "
+                "produce confident nonsense."
+            ) from exc
+
+        logger.info("Loading embedding model %s", self.model_name)
+        self._model = TextEmbedding(model_name=self.model_name)
+        return self._model
+
+    async def _encode(self, texts: Sequence[str]) -> list[list[float]]:
+        async with self._lock:
+            model = await asyncio.to_thread(self._load)
+        vectors = await asyncio.to_thread(lambda: [v.tolist() for v in model.embed(list(texts))])
+
+        for v in vectors:
+            if len(v) != self.dim:
+                raise EmbeddingsUnavailable(
+                    f"{self.model_name} produced {len(v)} dimensions, expected "
+                    f"{self.dim}. The Qdrant collection dimension must match; "
+                    f"re-ingest rather than truncating."
+                )
+        return vectors
+
+    # ── public API ──────────────────────────────────────────────────────────
+
+    async def embed_query(self, text: str) -> list[float]:
+        """Embed a search query, with the bge query prefix applied."""
+        if not text or not text.strip():
+            raise EmbeddingsUnavailable("cannot embed empty text")
+        return (await self._encode([QUERY_PREFIX + text.strip()]))[0]
+
+    async def embed_text(self, text: str) -> list[float]:
+        """Embed a document or passage (no query prefix)."""
+        if not text or not text.strip():
+            raise EmbeddingsUnavailable("cannot embed empty text")
+        return (await self._encode([text.strip()]))[0]
+
+    async def embed_batch(self, texts: Sequence[str]) -> list[list[float]]:
+        """Embed many passages in one pass.
+
+        Batched properly rather than looped — the previous implementation
+        called the single-text path in a Python loop, which for a real model
+        would be an order of magnitude slower on ingest.
         """
-        Convert multiple texts to embeddings.
-        
-        Args:
-            texts: List of texts to embed
-        
-        Returns:
-            List of embedding vectors
-        
-        Example:
-            embeddings = await embeddings_service.embed_batch([
-                "Tax deductions",
-                "Investment advice",
-                "Government benefits"
-            ])
+        cleaned = [t.strip() for t in texts if t and t.strip()]
+        if not cleaned:
+            return []
+        return await self._encode(cleaned)
+
+    @staticmethod
+    def similarity(a: Sequence[float], b: Sequence[float]) -> float:
+        """Cosine similarity, clamped to [0, 1].
+
+        Not clamped to [0,1] because negatives are impossible — they are
+        possible — but because a negative similarity and a zero similarity mean
+        the same thing to a retrieval threshold.
         """
-        
-        embeddings = []
-        for text in texts:
-            embedding = await self.embed_text(text)
-            embeddings.append(embedding)
-        
-        logger.info(f"Generated {len(embeddings)} embeddings")
-        
-        return embeddings
-    
-    async def _generate_embedding(self, text: str) -> List[float]:
-        """
-        Internal method to generate embedding.
-        Currently uses simple hash-based approach for demo.
-        
-        In production, replace with actual embedding model:
-        ```python
-        from sentence_transformers import SentenceTransformer
-        model = SentenceTransformer('all-MiniLM-L6-v2')
-        embedding = model.encode(text)
-        return embedding.tolist()
-        ```
-        """
-        
-        # Simple hash-based embedding for demo
-        # In production, use proper embedding model
-        
-        import hashlib
-        
-        # Create deterministic embedding from text hash
-        hash_val = hashlib.md5(text.encode()).hexdigest()
-        
-        # Seed numpy random with hash
-        seed = int(hash_val, 16) % (2**32)
-        np.random.seed(seed)
-        
-        # Generate random vector (deterministic due to seed)
-        embedding = np.random.randn(self.dim).astype(float).tolist()
-        
-        # Normalize
-        norm = np.linalg.norm(embedding)
-        embedding = [x / norm for x in embedding] if norm > 0 else embedding
-        
-        return embedding
-    
-    def similarity(self, embedding1: List[float], embedding2: List[float]) -> float:
-        """
-        Calculate cosine similarity between two embeddings.
-        
-        Args:
-            embedding1: First vector
-            embedding2: Second vector
-        
-        Returns:
-            Similarity score (0.0 to 1.0)
-        
-        Example:
-            score = embeddings.similarity(vec1, vec2)
-            # Returns: 0.85 (85% similar)
-        """
-        
-        try:
-            vec1 = np.array(embedding1)
-            vec2 = np.array(embedding2)
-            
-            # Cosine similarity
-            dot_product = np.dot(vec1, vec2)
-            norm1 = np.linalg.norm(vec1)
-            norm2 = np.linalg.norm(vec2)
-            
-            if norm1 == 0 or norm2 == 0:
-                return 0.0
-            
-            similarity = dot_product / (norm1 * norm2)
-            
-            # Clamp to [0, 1]
-            return max(0.0, min(1.0, float(similarity)))
-        
-        except Exception as e:
-            logger.error(f"Error calculating similarity: {e}")
+        dot = sum(x * y for x, y in zip(a, b, strict=True))
+        na = sum(x * x for x in a) ** 0.5
+        nb = sum(y * y for y in b) ** 0.5
+        if na == 0 or nb == 0:
             return 0.0
+        return max(0.0, min(1.0, dot / (na * nb)))
 
 
-# Global embeddings service
 embeddings_service = EmbeddingsService()

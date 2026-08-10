@@ -6,15 +6,13 @@ Categorizes income into salary, freelance, passive, investments, etc.
 import time
 import logging
 from typing import Dict, Any
-from groq import Groq
 
-from backend.agents.base_agent import TaxAgent, AgentOutput
+from backend.agents.base_agent import TaxAgent, AgentOutput, confidence_score, derive_confidence
 from backend.config import settings
+from backend.llm import get_llm
 
 logger = logging.getLogger(__name__)
 
-# Initialize Groq client
-client = Groq(api_key=settings.llm.api_key)
 
 
 class IncomeClassifierAgent(TaxAgent):
@@ -151,7 +149,7 @@ class IncomeClassifierAgent(TaxAgent):
             return self._create_output(
                 result=result,
                 status="success",
-                confidence=0.85,
+                confidence=confidence_score(derive_confidence()),
                 reasoning="Income sources identified and analyzed using tools",
                 execution_time_ms=execution_time
             )
@@ -163,7 +161,7 @@ class IncomeClassifierAgent(TaxAgent):
             return self._create_output(
                 result={"error": str(e)},
                 status="error",
-                confidence=0.0,
+                confidence=0.0,  # execution failed — not a score
                 reasoning=f"Error: {str(e)}",
                 execution_time_ms=execution_time
             )
@@ -209,21 +207,29 @@ Respond in JSON format:
 Important: Respond ONLY with valid JSON."""
 
         try:
-            message = client.chat.completions.create(
-                model=settings.llm.model,
-                max_tokens=1500,
-                messages=[{"role": "user", "content": prompt}]
-            )
+            from backend.tools.data_validator import LLMResponseValidator
+            validator = LLMResponseValidator()
             
-            response_text = message.choices[0].message.content.strip()
-            if "```json" in response_text:
-                response_text = response_text.split("```json")[1].split("```")[0].strip()
-            elif "```" in response_text:
-                response_text = response_text.split("```")[1].split("```")[0].strip()
-            import json
-            response_data = json.loads(response_text)
+            message = await get_llm().complete(prompt, max_tokens=1500)
             
-            return response_data.get("income_sources", [])
+            response_text = message.text.strip()
+            
+            # Use robust JSON parser with multiple fallback strategies
+            response_data, parse_report = validator.parse_json_response(response_text)
+            
+            if response_data is None:
+                logger.warning(f"Failed to parse income sources JSON: {parse_report.warnings}")
+                return []
+            
+            raw_sources = response_data.get("income_sources", [])
+            
+            # Validate income sources (amounts, required fields)
+            validated_sources, validation_report = validator.validate_income_sources(raw_sources)
+            
+            if validation_report.warnings:
+                logger.info(f"Income validation warnings: {validation_report.warnings}")
+            
+            return validated_sources
         
         except Exception as e:
             logger.error(f"Error extracting income sources: {e}")

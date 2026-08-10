@@ -1,0 +1,2578 @@
+{
+  "$schema": "./docs/feature.schema.json",
+  "project": "finsage_ai",
+  "version": "1.0.0",
+  "generated_at": "2026-08-09",
+  "plan_ref": "docs/IMPLEMENTATION_PLAN.md",
+  "review_ref": "CODE_REVIEW_2026-08.md",
+  "fy_supported": [
+    "2024-25",
+    "2025-26",
+    "2026-27"
+  ],
+  "governing_act": "Income-tax Act, 2025 (in force 2026-04-01); Income-tax Act, 1961 for FY <= 2025-26",
+  "conventions": {
+    "status_vocabulary": [
+      "not_started",
+      "in_progress",
+      "blocked",
+      "implemented",
+      "tested",
+      "verified"
+    ],
+    "status_notes": "Only 'verified' (legal basis confirmed against an official source) counts toward completion. Nothing user-facing ships below 'verified'.",
+    "tier": {
+      "P0": "Correctness or safety. Blocks release.",
+      "P1": "Core user value.",
+      "P2": "Differentiating value.",
+      "P3": "Nice to have."
+    },
+    "freshness_policy_days": 180,
+    "freshness_note": "CI job verify_freshness.py FAILS the build when any feature with rules_refs has last_verified older than freshness_policy_days.",
+    "invariants": [
+      "No feature may be both deterministic:true and llm_involved:true in its calculation path.",
+      "Every feature with a user-facing rupee figure must list at least one golden test.",
+      "Every feature with rules_refs must have at least one Tier-1 official source."
+    ]
+  },
+  "phases": [
+    {
+      "id": 0,
+      "name": "Foundation & guardrails",
+      "gate": "CI green on empty suite; core boundary rule enforced",
+      "status": "verified"
+    },
+    {
+      "id": 1,
+      "name": "Deterministic tax core",
+      "gate": "All golden tests pass; engine coverage >= 95%; zero tax constants outside core/rules",
+      "status": "in_progress"
+    },
+    {
+      "id": 2,
+      "name": "Demolition & de-faking",
+      "gate": "No hardcoded slabs outside core/rules; semantic retrieval verified; p95 < 3s @ 20 concurrent",
+      "status": "in_progress"
+    },
+    {
+      "id": 3,
+      "name": "Thin agents & orchestration",
+      "gate": "Zero numeric_provenance failures; reviewer catches all seeded omissions; p95 < 4s single-pass informational and < 9s full three-pass review; scheduler jobs run with a real DB session",
+      "status": "in_progress"
+    },
+    {
+      "id": 4,
+      "name": "Document intelligence",
+      "gate": "Parsers fail loudly on malformed input; reconciliation zero false negatives on seeded set",
+      "status": "in_progress"
+    },
+    {
+      "id": 5,
+      "name": "Planning features",
+      "gate": "Golden tests per feature; every output line carries a citation",
+      "status": "not_started"
+    },
+    {
+      "id": 6,
+      "name": "Procurement Intelligence",
+      "gate": "EV worked example correct end-to-end; no Tier-3 source in any cost line; all figures dated",
+      "status": "not_started"
+    },
+    {
+      "id": 7,
+      "name": "Production readiness",
+      "gate": "Security checklist passed; DPDP controls table published; load test at target concurrency",
+      "status": "not_started"
+    }
+  ],
+  "features": [
+    {
+      "id": "FND-001",
+      "name": "Repository hygiene",
+      "phase": 0,
+      "tier": "P0",
+      "status": "verified",
+      "description": "Remove .DS_Store, __pycache__, .pytest_cache, .ruff_cache, senv/ from the tree. Purge exports/ (40+ unencrypted user financial PDFs) and gitignore it.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [],
+      "acceptance_criteria": [
+        "git status clean after fresh clone + install",
+        "exports/ gitignored and emptied",
+        "no build artefacts tracked or present"
+      ],
+      "files": [
+        ".gitignore",
+        "exports/"
+      ],
+      "tests": {
+        "golden": [],
+        "unit": [],
+        "eval": []
+      },
+      "risk": "Low. Verify exports/ contains no data the user still needs before purge.",
+      "last_verified": "2026-08-09"
+    },
+    {
+      "id": "FND-002",
+      "name": "feature.json registry + PROGRESS.md generator",
+      "phase": 0,
+      "tier": "P0",
+      "status": "verified",
+      "description": "Machine-readable feature registry as single source of truth. scripts/gen_progress.py renders PROGRESS.md. PROGRESS.md is never hand-edited.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [],
+      "acceptance_criteria": [
+        "feature.json validates against docs/feature.schema.json",
+        "gen_progress.py regenerates PROGRESS.md deterministically",
+        "CI fails if PROGRESS.md differs from generated output"
+      ],
+      "files": [
+        "feature.json",
+        "docs/feature.schema.json",
+        "scripts/gen_progress.py",
+        "PROGRESS.md"
+      ],
+      "tests": {
+        "golden": [],
+        "unit": [
+          "test_feature_registry_schema"
+        ],
+        "eval": []
+      },
+      "risk": "Low",
+      "last_verified": "2026-08-09"
+    },
+    {
+      "id": "FND-003",
+      "name": "CI pipeline",
+      "phase": 0,
+      "tier": "P0",
+      "status": "verified",
+      "description": "GitHub Actions: ruff, mypy, pytest with coverage gate, import-linter, pip-audit, npm build + oxlint, PROGRESS.md drift check, verify_freshness.py.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "FND-002"
+      ],
+      "acceptance_criteria": [
+        "All jobs run on PR and main",
+        "Coverage gate enforced on backend/core at 95%",
+        "Build fails on stale last_verified"
+      ],
+      "files": [
+        ".github/workflows/ci.yml",
+        "scripts/verify_freshness.py"
+      ],
+      "tests": {
+        "golden": [],
+        "unit": [],
+        "eval": []
+      },
+      "risk": "Low",
+      "last_verified": "2026-08-09"
+    },
+    {
+      "id": "FND-004",
+      "name": "Core purity boundary rule",
+      "phase": 0,
+      "tier": "P0",
+      "status": "verified",
+      "description": "import-linter contract: backend/core must not import backend.api, backend.agents, backend.db, groq, httpx, requests, or sqlalchemy. Guarantees the core is deterministic and exhaustively testable.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "FND-003"
+      ],
+      "acceptance_criteria": [
+        "importlinter contract defined and passing",
+        "CI fails on any violating import"
+      ],
+      "files": [
+        ".importlinter",
+        "setup.cfg"
+      ],
+      "tests": {
+        "golden": [],
+        "unit": [],
+        "eval": []
+      },
+      "risk": "Low",
+      "last_verified": "2026-08-09"
+    },
+    {
+      "id": "FND-005",
+      "name": "Dependency upgrade and audit",
+      "phase": 0,
+      "tier": "P0",
+      "status": "verified",
+      "description": "Upgrade fastapi/starlette/pydantic from ~2yr-old pins. Drop celery, rq (unused), python-jose (unmaintained, PyJWT already present), sentence-transformers==2.2.2 (broken against modern huggingface_hub). Verify frontend pins resolve.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "FND-003"
+      ],
+      "acceptance_criteria": [
+        "pip-audit reports zero high/critical advisories",
+        "npm ci resolves cleanly and npm run build passes",
+        "requirements.txt contains no unused package"
+      ],
+      "files": [
+        "requirements.txt",
+        "pyproject.toml",
+        "frontend/package.json"
+      ],
+      "tests": {
+        "golden": [],
+        "unit": [],
+        "eval": []
+      },
+      "risk": "Medium. Pydantic and FastAPI majors may need code changes.",
+      "last_verified": "2026-08-09"
+    },
+    {
+      "id": "FND-006",
+      "name": "Agent harness skeleton",
+      "phase": 0,
+      "tier": "P0",
+      "status": "verified",
+      "description": "Wire all four harness layers with empty suites: golden runner, Hypothesis property harness, eval runner with scorer plugin interface and fixture replay, contract/integration scaffolding.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "FND-003"
+      ],
+      "acceptance_criteria": [
+        "pytest discovers all four layers",
+        "eval runner replays from fixtures with zero network calls",
+        "baseline.json comparison logic implemented"
+      ],
+      "files": [
+        "backend/core/tests/golden/",
+        "backend/evals/runner.py",
+        "backend/evals/scorers/",
+        "backend/evals/baseline.json"
+      ],
+      "tests": {
+        "golden": [],
+        "unit": [
+          "test_eval_runner"
+        ],
+        "eval": []
+      },
+      "risk": "Low",
+      "last_verified": "2026-08-09"
+    },
+    {
+      "id": "CORE-001",
+      "name": "Versioned tax rule packs",
+      "phase": 1,
+      "tier": "P0",
+      "status": "verified",
+      "description": "YAML rule packs per FY (2024-25, 2025-26, 2026-27) with meta.effective_from/to, governing_act, verified_on, sources. Loader returns an immutable TaxRuleset. Replaces seven divergent hardcoded copies.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "FND-004"
+      ],
+      "acceptance_criteria": [
+        "load_ruleset(fy) returns immutable ruleset for all supported FYs",
+        "Unknown FY raises explicitly, never falls back to a default",
+        "Every rule node carries a source URL",
+        "grep finds zero tax constants outside core/rules"
+      ],
+      "rules_refs": [
+        "fy_2026_27",
+        "fy_2025_26",
+        "fy_2024_25"
+      ],
+      "legal_refs": [
+        {
+          "act": "Income-tax Act, 2025",
+          "note": "FY 2026-27 onward"
+        }
+      ],
+      "sources": [
+        "https://www.incometax.gov.in/",
+        "https://www.incometaxindia.gov.in/"
+      ],
+      "files": [
+        "backend/core/rules/"
+      ],
+      "tests": {
+        "golden": [
+          "ruleset_load"
+        ],
+        "unit": [
+          "test_ruleset_immutable",
+          "test_unknown_fy_raises"
+        ],
+        "eval": []
+      },
+      "risk": "High value. Everything downstream depends on this being right.",
+      "last_verified": "2026-08-09"
+    },
+    {
+      "id": "CORE-002",
+      "name": "Section alias map (1961 to 2025 Act)",
+      "phase": 1,
+      "tier": "P0",
+      "status": "implemented",
+      "description": "Bidirectional mapping between repealed 1961 Act sections and Income-tax Act 2025 numbering. Product currently cites only the repealed statute. UI shows both during transition years.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "CORE-001"
+      ],
+      "acceptance_criteria": [
+        "Every section cited anywhere in the product resolves in the alias map",
+        "Citation renderer emits both numbering schemes for FY >= 2026-27",
+        "Unmapped section raises at test time, not runtime"
+      ],
+      "rules_refs": [
+        "aliases_1961_to_2025"
+      ],
+      "sources": [
+        "https://www.pib.gov.in/PressReleasePage.aspx?PRID=2248005",
+        "https://www.incometax.gov.in/iec/foportal/help/all-topics/e-filing-services/objective-and-scope-new-act"
+      ],
+      "files": [
+        "backend/core/rules/aliases_1961_to_2025.yaml",
+        "backend/core/provenance/citation.py"
+      ],
+      "tests": {
+        "golden": [],
+        "unit": [
+          "test_alias_bidirectional",
+          "test_all_cited_sections_resolve"
+        ],
+        "eval": []
+      },
+      "risk": "The 2025 Act renumbered ~819 sections into 536. Mapping must be sourced, not guessed.",
+      "last_verified": null
+    },
+    {
+      "id": "CORE-003",
+      "name": "Slab engine",
+      "phase": 1,
+      "tier": "P0",
+      "status": "verified",
+      "description": "Progressive slab computation for both regimes, all age bands. FIXES: current code ships FY 2023-24 slabs, and puts OLD-regime senior slabs inside a new-regime table with an auto-switch at age 60.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "CORE-001"
+      ],
+      "acceptance_criteria": [
+        "New regime FY 2026-27: 7 slabs, nil to 4L, 30% above 24L",
+        "Old regime: 2.5L/5L/10L with correct senior (3L) and super-senior (5L) exemptions",
+        "No senior-citizen slab distinction under the new regime",
+        "Age bands 59/60/79/80 boundary-tested"
+      ],
+      "rules_refs": [
+        "fy_2026_27.regimes.new.slabs",
+        "fy_2026_27.regimes.old.slabs"
+      ],
+      "sources": [
+        "https://cleartax.in/c/income-tax-slab-rates"
+      ],
+      "files": [
+        "backend/core/tax_engine/slabs.py"
+      ],
+      "tests": {
+        "golden": [
+          "fy_2026_27/salaried_basic.yaml"
+        ],
+        "unit": [
+          "test_slab_boundaries"
+        ],
+        "eval": []
+      },
+      "risk": "P0 correctness. Fixes review defect 3.2 and 3.3.",
+      "last_verified": "2026-08-09"
+    },
+    {
+      "id": "CORE-004",
+      "name": "Section 87A rebate with marginal relief",
+      "phase": 1,
+      "tier": "P0",
+      "status": "verified",
+      "description": "FY 2026-27 new regime: rebate 60,000, zero tax to 12,00,000 taxable, with marginal relief just above. Old regime: 12,500 to 5,00,000. Rebate excluded on 111A/112A special-rate income. FIXES: rebate is entirely absent from the current engine, so every user under 12L gets a wrong answer.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "CORE-003"
+      ],
+      "acceptance_criteria": [
+        "Taxable 12,00,000 new regime yields total tax 0",
+        "Taxable 12,00,001 yields marginal relief, not a 60,000 cliff",
+        "Rebate not applied to 111A/112A components",
+        "Post-tax income monotonic across the boundary (property test)"
+      ],
+      "rules_refs": [
+        "fy_2026_27.regimes.new.rebate_87a"
+      ],
+      "legal_refs": [
+        {
+          "act": "Income-tax Act, 2025",
+          "legacy_section": "87A"
+        }
+      ],
+      "sources": [
+        "https://cleartax.in/c/income-tax-slab-rates",
+        "https://www.canarahsbclife.com/blog/tax-saving/what-is-tax-rebate-under-section-87a"
+      ],
+      "files": [
+        "backend/core/tax_engine/rebate.py"
+      ],
+      "tests": {
+        "golden": [
+          "fy_2026_27/rebate_boundary.yaml"
+        ],
+        "unit": [
+          "test_87a_marginal_relief"
+        ],
+        "eval": []
+      },
+      "risk": "P0. The single worst defect in v1 (review 3.1).",
+      "last_verified": "2026-08-09"
+    },
+    {
+      "id": "CORE-005",
+      "name": "Surcharge with marginal relief",
+      "phase": 1,
+      "tier": "P0",
+      "status": "verified",
+      "description": "Surcharge bands with marginal relief at every threshold. New regime capped at 25%; old regime to 37%. Surcharge on capital gains capped at 15%. FIXES: current code creates a ~1.4L cliff at 50,00,001.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "CORE-003"
+      ],
+      "acceptance_criteria": [
+        "No cliff at any surcharge threshold (property test: post-tax income monotonic)",
+        "New regime surcharge never exceeds 25%",
+        "Capital gains surcharge component capped at 15%"
+      ],
+      "rules_refs": [
+        "fy_2026_27.surcharge"
+      ],
+      "sources": [
+        "https://www.incometaxindia.gov.in/"
+      ],
+      "files": [
+        "backend/core/tax_engine/surcharge.py"
+      ],
+      "tests": {
+        "golden": [
+          "fy_2026_27/surcharge_marginal_relief.yaml"
+        ],
+        "unit": [
+          "test_no_surcharge_cliff"
+        ],
+        "eval": []
+      },
+      "risk": "P0 correctness. Fixes review defect 3.7.",
+      "last_verified": "2026-08-09"
+    },
+    {
+      "id": "CORE-006",
+      "name": "Chapter VI-A deductions with correct structures",
+      "phase": 1,
+      "tier": "P0",
+      "status": "verified",
+      "description": "FIXES four wrong limits: 80D is 25k self (50k senior) + 25k/50k parents capped at 1L, not a flat 1.5L. 80DDB is 40k, 1L only for seniors. 80CCD(1) sits inside the 80C 1.5L ceiling, (1B) adds 50k, (2) employer is separate at 14% of salary under the new regime. Regime-awareness: most deductions unavailable under the new regime.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "CORE-001"
+      ],
+      "acceptance_criteria": [
+        "80D computed from the four-way self/parents x age matrix",
+        "80CCD(1) correctly consumes 80C headroom; (1B) additive; (2) separate",
+        "80DDB age-conditional",
+        "Deductions filtered by regime; new regime allows only the permitted set",
+        "Standard deduction 75,000 new / 50,000 old applied in the engine, not scattered"
+      ],
+      "rules_refs": [
+        "fy_2026_27.deductions"
+      ],
+      "legal_refs": [
+        {
+          "act": "Income-tax Act, 2025",
+          "legacy_section": "80C/80CCD/80D/80DDB/80TTA/80TTB/80U/80G/80E"
+        }
+      ],
+      "sources": [
+        "https://www.incometaxindia.gov.in/"
+      ],
+      "files": [
+        "backend/core/tax_engine/deductions.py"
+      ],
+      "tests": {
+        "golden": [
+          "fy_2026_27/deductions.yaml"
+        ],
+        "unit": [
+          "test_80d_matrix",
+          "test_80ccd_interaction"
+        ],
+        "eval": []
+      },
+      "risk": "P0. Fixes review defects 3.6 and 3.8.",
+      "last_verified": "2026-08-09"
+    },
+    {
+      "id": "CORE-007",
+      "name": "Capital gains engine",
+      "phase": 1,
+      "tier": "P0",
+      "status": "verified",
+      "description": "Post-23-Jul-2024 regime. FIXES: current code taxes all LTCG at flat 20% ignoring indexation and the exemption, and taxes equity STCG at slab rates.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "CORE-003"
+      ],
+      "acceptance_criteria": [
+        "111A listed equity STCG at flat 20%, not slab",
+        "112A LTCG at 12.5% with 1,25,000 annual exemption",
+        "112 other-asset LTCG at 12.5% without indexation",
+        "Pre-31-Jan-2018 equity grandfathering (fair market value step-up)",
+        "Pre-23-Jul-2024 immovable property: resident individual/HUF option of 20%+indexation vs 12.5%, engine picks the lower and states which",
+        "Holding periods: 12m equity, 24m other",
+        "87A rebate not applied against 111A/112A"
+      ],
+      "rules_refs": [
+        "fy_2026_27.capital_gains"
+      ],
+      "legal_refs": [
+        {
+          "act": "Income-tax Act, 2025",
+          "legacy_section": "111A/112/112A"
+        }
+      ],
+      "sources": [
+        "https://www.pib.gov.in/PressReleasePage.aspx?PRID=2036604",
+        "https://www.incometaxindia.gov.in/w/capital-gain"
+      ],
+      "files": [
+        "backend/core/tax_engine/capital_gains.py"
+      ],
+      "tests": {
+        "golden": [
+          "fy_2026_27/capital_gains.yaml"
+        ],
+        "unit": [
+          "test_112a_exemption_edge",
+          "test_grandfathering"
+        ],
+        "eval": []
+      },
+      "risk": "P0. Fixes review defects 3.4 and 3.5.",
+      "last_verified": "2026-08-09"
+    },
+    {
+      "id": "CORE-008",
+      "name": "Presumptive taxation (44AD / 44ADA / 44AE)",
+      "phase": 1,
+      "tier": "P1",
+      "status": "in_progress",
+      "description": "44AD turnover cap 2cr (3cr where >=95% receipts are digital); 44ADA 50L (75L digital). Correct presumptive rates and the advance-tax consequence (100% by 15 March).",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "CORE-003"
+      ],
+      "acceptance_criteria": [
+        "Digital-receipt threshold uplift applied correctly",
+        "Opting-out lock-in period modelled",
+        "Feeds the advance tax planner's single-instalment rule"
+      ],
+      "rules_refs": [
+        "fy_2026_27.presumptive"
+      ],
+      "legal_refs": [
+        {
+          "act": "Income-tax Act, 2025",
+          "legacy_section": "44AD/44ADA/44AE"
+        }
+      ],
+      "sources": [
+        "https://www.incometaxindia.gov.in/"
+      ],
+      "files": [
+        "backend/core/tax_engine/presumptive.py"
+      ],
+      "tests": {
+        "golden": [
+          "fy_2026_27/presumptive.yaml"
+        ],
+        "unit": [],
+        "eval": []
+      },
+      "risk": "Medium",
+      "last_verified": null
+    },
+    {
+      "id": "CORE-009",
+      "name": "Date-windowed eligibility DSL",
+      "phase": 1,
+      "tier": "P0",
+      "status": "verified",
+      "description": "Declarative rule format with effective-date windows and an evaluator returning ELIGIBLE / INELIGIBLE(reason) / WINDOW_CLOSED(date) / INSUFFICIENT_DATA(fields). Prevents the 80EEB class of bug, where a benefit exists in statute but is closed to this user on this date.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "CORE-001"
+      ],
+      "acceptance_criteria": [
+        "80EEB correctly returns WINDOW_CLOSED for any loan sanctioned after 2023-03-31",
+        "WINDOW_CLOSED is surfaced to the user with the closing date, never silently dropped",
+        "INSUFFICIENT_DATA names the exact missing fields",
+        "Covers 80EE, 80EEA, 80EEB, PM E-DRIVE, state EV policies, SGB availability, all schemes"
+      ],
+      "rules_refs": [
+        "fy_2026_27.eligibility"
+      ],
+      "legal_refs": [
+        {
+          "act": "Income-tax Act, 2025",
+          "legacy_section": "80EEB",
+          "window": "2019-01-01 to 2023-03-31"
+        }
+      ],
+      "sources": [
+        "https://cleartax.in/s/section-80eeb-deduction-purchase-electric-vehicle",
+        "https://www.incometaxindia.gov.in/w/section-80eeb-7"
+      ],
+      "files": [
+        "backend/core/eligibility/"
+      ],
+      "tests": {
+        "golden": [
+          "eligibility/windows.yaml"
+        ],
+        "unit": [
+          "test_80eeb_window_closed"
+        ],
+        "eval": [
+          "EV-80EEB-CLOSED-WINDOW"
+        ]
+      },
+      "risk": "P0. This is the most commonly wrong thing in Indian tax software.",
+      "last_verified": "2026-08-09"
+    },
+    {
+      "id": "CORE-010",
+      "name": "Money and Provenance value objects",
+      "phase": 1,
+      "tier": "P0",
+      "status": "verified",
+      "description": "Decimal-backed Money (no floats in money paths) and a Provenance record binding every figure to (rule_id, section, fy, source_url, computed_at). Enables the citation ledger and the numeric_provenance scorer.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "CORE-001"
+      ],
+      "acceptance_criteria": [
+        "No float arithmetic anywhere in backend/core money paths (lint-enforced)",
+        "Rounding rules match ITD convention",
+        "Every engine return value carries Provenance"
+      ],
+      "files": [
+        "backend/core/provenance/"
+      ],
+      "tests": {
+        "golden": [],
+        "unit": [
+          "test_money_rounding",
+          "test_no_float_in_money_path"
+        ],
+        "eval": []
+      },
+      "risk": "Low effort, high leverage.",
+      "last_verified": "2026-08-09"
+    },
+    {
+      "id": "CORE-011",
+      "name": "Golden test corpus",
+      "phase": 1,
+      "tier": "P0",
+      "status": "verified",
+      "description": "120+ verified (input -> exact expected output) cases across supported FYs, each citing where the expected value was confirmed. Mandatory boundary cases at every threshold.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "CORE-003",
+        "CORE-004",
+        "CORE-005",
+        "CORE-006",
+        "CORE-007"
+      ],
+      "acceptance_criteria": [
+        "100% pass, zero skips",
+        "Every case records verified_against with a source and date",
+        "Boundaries covered: 12L/12L+1, 50L/50L+1, 1.25L LTCG, ages 59/60/79/80",
+        "backend/core branch coverage >= 95%"
+      ],
+      "files": [
+        "backend/core/tests/golden/"
+      ],
+      "tests": {
+        "golden": [
+          "all"
+        ],
+        "unit": [],
+        "eval": []
+      },
+      "risk": "P0. v1 has ~50 tests and not one asserts a tax figure.",
+      "last_verified": "2026-08-09"
+    },
+    {
+      "id": "CORE-012",
+      "name": "Property-based invariant tests",
+      "phase": 1,
+      "tier": "P0",
+      "status": "verified",
+      "description": "Hypothesis invariants: tax monotonic in income; POST-TAX income monotonic in income (catches every cliff automatically); valid deductions never increase tax; no negative tax; zero income yields zero tax.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "CORE-011"
+      ],
+      "acceptance_criteria": [
+        "All invariants hold across 10,000 generated cases per run",
+        "Any cliff bug fails the suite without a hand-written case"
+      ],
+      "files": [
+        "backend/core/tests/properties/"
+      ],
+      "tests": {
+        "golden": [],
+        "unit": [
+          "test_invariants"
+        ],
+        "eval": []
+      },
+      "risk": "Low",
+      "last_verified": "2026-08-09"
+    },
+    {
+      "id": "DEM-001",
+      "name": "Remove frontend demo-auth fallback",
+      "phase": 2,
+      "tier": "P0",
+      "status": "verified",
+      "description": "Delete the useAuthStore catch-all that authenticates against localStorage with btoa() fake tokens and PLAINTEXT PASSWORDS whenever the backend errors. Highest-risk code in the repo.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Backend failure surfaces a real error state, never a logged-in session",
+        "No password ever written to browser storage",
+        "finsage_demo_users key removed and cleaned from existing clients"
+      ],
+      "files": [
+        "frontend/src/store/useAuthStore.ts"
+      ],
+      "tests": {
+        "golden": [],
+        "unit": [
+          "test_auth_failure_shows_error"
+        ],
+        "eval": []
+      },
+      "risk": "P0 security. Review section 5.1.",
+      "last_verified": "2026-08-09"
+    },
+    {
+      "id": "DEM-002",
+      "name": "Remove mockData page fallbacks",
+      "phase": 2,
+      "tier": "P0",
+      "status": "verified",
+      "description": "Seven pages silently render fabricated financial figures on API failure. Replace with explicit loading / error / empty states.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "DEM-001"
+      ],
+      "acceptance_criteria": [
+        "utils/mockData.ts deleted",
+        "No page renders a number that did not come from the API",
+        "Every data view has distinct loading, error and empty states"
+      ],
+      "files": [
+        "frontend/src/utils/mockData.ts",
+        "frontend/src/pages/"
+      ],
+      "tests": {
+        "golden": [],
+        "unit": [],
+        "eval": []
+      },
+      "risk": "P0. Fabricated financial figures indistinguishable from real ones.",
+      "last_verified": "2026-08-09"
+    },
+    {
+      "id": "DEM-003",
+      "name": "Unify the API client",
+      "phase": 2,
+      "tier": "P0",
+      "status": "verified",
+      "description": "Two clients exist: api/client.ts (fetch, port 8001, token at finsage_auth) and services/api.ts (axios, port 8000, token at 'token'). Delete one, use relative URLs so the Vite proxy works and CORS is unnecessary.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Exactly one API client module",
+        "All requests relative; no hardcoded origin or port",
+        "Single token convention; 401 interceptor with refresh"
+      ],
+      "files": [
+        "frontend/src/api/client.ts",
+        "frontend/src/services/api.ts"
+      ],
+      "tests": {
+        "golden": [],
+        "unit": [],
+        "eval": []
+      },
+      "risk": "Low",
+      "last_verified": "2026-08-09"
+    },
+    {
+      "id": "DEM-004",
+      "name": "Real embeddings and Qdrant re-ingest",
+      "phase": 2,
+      "tier": "P0",
+      "status": "tested",
+      "description": "Replace md5 -> np.random.seed -> random vector with BAAI/bge-small-en-v1.5. Current RAG is decorative: semantically identical queries produce orthogonal vectors, while validation_report still reports sources_verified.",
+      "deterministic": false,
+      "llm_involved": false,
+      "depends_on": [
+        "FND-005"
+      ],
+      "acceptance_criteria": [
+        "Collection dimension matches the model",
+        "20-query relevance spot-check passes manual review",
+        "Corpus re-ingested with chunking and metadata",
+        "similarity_threshold retuned against real score distribution"
+      ],
+      "files": [
+        "backend/rag/embeddings.py",
+        "backend/rag/vector_store.py",
+        "backend/rag/document_loader.py"
+      ],
+      "tests": {
+        "golden": [],
+        "unit": [
+          "test_embedding_semantic_similarity"
+        ],
+        "eval": [
+          "rag_relevance"
+        ]
+      },
+      "risk": "P0. Confidence scores are currently measuring nothing.",
+      "last_verified": null
+    },
+    {
+      "id": "DEM-005",
+      "name": "Async LLM client",
+      "phase": 2,
+      "tier": "P0",
+      "status": "implemented",
+      "description": "Sync Groq client is called inside async handlers in ~10 modules, blocking the event loop for the full LLM duration. Move to AsyncGroq with lazy per-request construction (no module-level clients).",
+      "deterministic": false,
+      "llm_involved": true,
+      "depends_on": [],
+      "acceptance_criteria": [
+        "No module-level Groq client anywhere",
+        "All LLM calls awaited without blocking",
+        "k6: p95 < 3s at 20 concurrent users",
+        "Client injectable and mockable in tests"
+      ],
+      "files": [
+        "backend/llm/client.py",
+        "backend/agents/"
+      ],
+      "tests": {
+        "golden": [],
+        "unit": [
+          "test_no_module_level_client"
+        ],
+        "eval": [
+          "latency_cost"
+        ]
+      },
+      "risk": "P0 performance. Review section 4.3.",
+      "last_verified": null
+    },
+    {
+      "id": "DEM-006",
+      "name": "Delete duplicate tax engines",
+      "phase": 2,
+      "tier": "P0",
+      "status": "verified",
+      "description": "Remove tax_strategy.py regime calculators (FY 2024-25, cliff bug), deduction_hunter._estimate_tax_bracket (FY 2020-21 slabs), and TAX_SLABS/DEDUCTION_LIMITS in tools/calculation.py. All routed to core.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "CORE-011"
+      ],
+      "acceptance_criteria": [
+        "grep for slab constants returns hits only in core/rules",
+        "All tools delegate to core",
+        "IndiaTaxDataFetcher renamed RuleSetProvider and reads real packs"
+      ],
+      "files": [
+        "backend/agents/tax_strategy.py",
+        "backend/agents/deduction_hunter.py",
+        "backend/tools/calculation.py",
+        "backend/services/india_tax_data_fetcher.py"
+      ],
+      "tests": {
+        "golden": [
+          "all"
+        ],
+        "unit": [],
+        "eval": []
+      },
+      "risk": "P0. Seven divergent copies is the root cause of v1's staleness.",
+      "last_verified": "2026-08-09"
+    },
+    {
+      "id": "DEM-007",
+      "name": "Remove lifespan DDL; Alembic owns schema",
+      "phase": 2,
+      "tier": "P0",
+      "status": "verified",
+      "description": "main.py runs ALTER TABLE ... ADD COLUMN IF NOT EXISTS on every startup while Alembic exists. Races across replicas.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [],
+      "acceptance_criteria": [
+        "No DDL in application code",
+        "alembic upgrade head / downgrade base round-trips cleanly on a scratch DB"
+      ],
+      "files": [
+        "backend/main.py",
+        "backend/db/migrations/"
+      ],
+      "tests": {
+        "golden": [],
+        "unit": [
+          "test_alembic_roundtrip"
+        ],
+        "eval": []
+      },
+      "risk": "Medium",
+      "last_verified": "2026-08-09"
+    },
+    {
+      "id": "DEM-008",
+      "name": "Stop leaking internal errors",
+      "phase": 2,
+      "tier": "P0",
+      "status": "verified",
+      "description": "HTTPException(500, detail=str(e)) returns raw exception text (potentially connection strings) to clients. Replace with correlation IDs and structured server-side logging.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [],
+      "acceptance_criteria": [
+        "No raw exception text in any HTTP response",
+        "Correlation ID in response and log",
+        "Global exception handler installed"
+      ],
+      "files": [
+        "backend/api/",
+        "backend/middleware/errors.py"
+      ],
+      "tests": {
+        "golden": [],
+        "unit": [
+          "test_no_internal_leak"
+        ],
+        "eval": []
+      },
+      "risk": "P0 security. Review section 5.3.",
+      "last_verified": "2026-08-09"
+    },
+    {
+      "id": "DEM-009",
+      "name": "Honest README",
+      "phase": 2,
+      "tier": "P0",
+      "status": "verified",
+      "description": "Remove claims the code does not honour: LangGraph orchestration, live tax data fetching, DPDP/GDPR compliance, RAG. Describe what exists.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Every README claim traceable to a verified feature in this registry",
+        "Compliance claims present only after Phase 7 controls exist"
+      ],
+      "files": [
+        "README.md"
+      ],
+      "tests": {
+        "golden": [],
+        "unit": [],
+        "eval": []
+      },
+      "risk": "P0 credibility.",
+      "last_verified": "2026-08-09"
+    },
+    {
+      "id": "AGT-001",
+      "name": "Thin-agent refactor",
+      "phase": 3,
+      "tier": "P0",
+      "status": "not_started",
+      "description": "Agents lose all arithmetic authority. They receive core-computed tool results and explain them. Enforced by the numeric_provenance scorer.",
+      "deterministic": false,
+      "llm_involved": true,
+      "depends_on": [
+        "CORE-011",
+        "DEM-006"
+      ],
+      "acceptance_criteria": [
+        "No agent performs arithmetic on money",
+        "No LLM prompt requests a rupee amount",
+        "Every agent output line carries a citation from the tool result"
+      ],
+      "files": [
+        "backend/agents/"
+      ],
+      "tests": {
+        "golden": [],
+        "unit": [],
+        "eval": [
+          "numeric_provenance"
+        ]
+      },
+      "risk": "P0. Review section 4.5.",
+      "last_verified": null
+    },
+    {
+      "id": "AGT-002",
+      "name": "Parallel orchestration",
+      "phase": 3,
+      "tier": "P1",
+      "status": "tested",
+      "description": "Replace the sequential for-loop with asyncio.gather for independent agents, per-agent timeouts and partial-failure tolerance.",
+      "deterministic": false,
+      "llm_involved": true,
+      "depends_on": [
+        "AGT-001",
+        "DEM-005"
+      ],
+      "acceptance_criteria": [
+        "Independent agents run concurrently",
+        "One agent failing does not fail the response",
+        "p95 multi-agent latency < 4s"
+      ],
+      "files": [
+        "backend/orchestrator/graph.py"
+      ],
+      "tests": {
+        "golden": [],
+        "unit": [
+          "test_partial_failure"
+        ],
+        "eval": [
+          "latency_cost"
+        ]
+      },
+      "risk": "Medium",
+      "last_verified": null
+    },
+    {
+      "id": "AGT-003",
+      "name": "RequestContext replaces global state",
+      "phase": 3,
+      "tier": "P0",
+      "status": "verified",
+      "description": "Remove AsyncSessionProxy, db_session_var ContextVar, OrchestratorProxy and the module-global tool_executor. Explicit RequestContext(db, user, fy, tools). Currently scheduler jobs have no request context, so any DB-touching tool raises RuntimeError.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "AGT-001"
+      ],
+      "acceptance_criteria": [
+        "No module-level mutable singletons",
+        "Scheduler jobs execute successfully against a real DB session",
+        "Agents unit-testable without running the lifespan"
+      ],
+      "files": [
+        "backend/orchestrator/",
+        "backend/services/scheduler.py",
+        "backend/main.py"
+      ],
+      "tests": {
+        "golden": [],
+        "unit": [
+          "test_scheduler_db_access"
+        ],
+        "eval": []
+      },
+      "risk": "P0. The monthly health report job is likely broken today for this reason.",
+      "last_verified": "2026-08-09"
+    },
+    {
+      "id": "AGT-004",
+      "name": "Numeric provenance scorer",
+      "phase": 3,
+      "tier": "P0",
+      "status": "verified",
+      "description": "Extracts every number from agent user-facing output and fails if it does not appear in the tool-result payload the agent received. Makes the no-LLM-numbers rule mechanical rather than cultural.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "FND-006",
+        "AGT-001"
+      ],
+      "acceptance_criteria": [
+        "Catches an injected hallucinated figure in a red-team scenario",
+        "Tolerates legitimate formatting and rounding variance",
+        "Hard CI gate at zero failures"
+      ],
+      "files": [
+        "backend/evals/scorers/numeric_provenance.py"
+      ],
+      "tests": {
+        "golden": [],
+        "unit": [
+          "test_catches_injected_hallucination"
+        ],
+        "eval": []
+      },
+      "risk": "P0. The keystone control of the whole design.",
+      "last_verified": "2026-08-09"
+    },
+    {
+      "id": "AGT-005",
+      "name": "Eval scenario corpus",
+      "phase": 3,
+      "tier": "P0",
+      "status": "implemented",
+      "description": "60+ YAML scenarios with must_state / must_not_claim assertions, recorded LLM fixtures for deterministic offline CI, nightly live run for model drift, baseline.json regression gate.",
+      "deterministic": false,
+      "llm_involved": true,
+      "depends_on": [
+        "AGT-004"
+      ],
+      "acceptance_criteria": [
+        "Full suite replays offline with zero network calls",
+        "Covers closed windows, regime edges, out-of-scope refusal, capital gains, procurement",
+        "CI fails on regression vs baseline.json"
+      ],
+      "files": [
+        "backend/evals/scenarios/",
+        "backend/evals/fixtures/",
+        "backend/evals/baseline.json"
+      ],
+      "tests": {
+        "golden": [],
+        "unit": [],
+        "eval": [
+          "all"
+        ]
+      },
+      "risk": "Medium",
+      "last_verified": null
+    },
+    {
+      "id": "AGT-006",
+      "name": "Scope-refusal guardrail",
+      "phase": 3,
+      "tier": "P0",
+      "status": "verified",
+      "description": "Personalised investment advice is SEBI-regulated. INVESTMENT_ADVICE and PORTFOLIO_ANALYSIS intents currently route into tax_optimizer_agent. Constrain output to tax treatment of instrument categories; no product-specific recommendations.",
+      "deterministic": false,
+      "llm_involved": true,
+      "depends_on": [
+        "AGT-005"
+      ],
+      "acceptance_criteria": [
+        "Refusal scorer passes on all red-team advice prompts",
+        "Standing disclaimer rendered on advisory surfaces",
+        "No named-product buy recommendation in any output"
+      ],
+      "files": [
+        "backend/agents/guardrails.py"
+      ],
+      "tests": {
+        "golden": [],
+        "unit": [],
+        "eval": [
+          "refusal"
+        ]
+      },
+      "risk": "P0 regulatory. Review section 5.5.",
+      "last_verified": "2026-08-09"
+    },
+    {
+      "id": "AGT-007",
+      "name": "Real WebSocket agent streaming",
+      "phase": 3,
+      "tier": "P2",
+      "status": "in_progress",
+      "description": "Transport exists but agents emit nothing into it. Stream per-agent start/progress/complete plus tool invocations.",
+      "deterministic": false,
+      "llm_involved": true,
+      "depends_on": [
+        "AGT-002"
+      ],
+      "acceptance_criteria": [
+        "Frontend renders live per-agent progress",
+        "Reconnect and backpressure handled",
+        "WebSocket authenticated (currently user_id is an unauthenticated query param)"
+      ],
+      "files": [
+        "backend/api/websocket.py"
+      ],
+      "tests": {
+        "golden": [],
+        "unit": [
+          "test_ws_auth_required"
+        ],
+        "eval": [
+          "stream_event_ordering"
+        ]
+      },
+      "risk": "Note: the WS endpoint currently trusts a user_id query parameter. Security fix required regardless.",
+      "last_verified": null
+    },
+    {
+      "id": "DOC-001",
+      "name": "Form 16 parser and profile autofill",
+      "phase": 4,
+      "tier": "P1",
+      "status": "tested",
+      "description": "Parse Form 16 Part A/B with PyMuPDF into a structured salary breakdown. Kills the biggest onboarding drop-off.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "CORE-011"
+      ],
+      "acceptance_criteria": [
+        "Extracts gross salary, exempt allowances, Chapter VI-A, TDS, employer TAN",
+        "Handles multiple employer formats",
+        "Low-confidence fields fail loudly and prompt confirmation; never silently guessed",
+        "User confirms extracted values against the source page before they enter any calculation"
+      ],
+      "files": [
+        "backend/services/parsers/form16.py"
+      ],
+      "tests": {
+        "golden": [
+          "parsers/form16_samples.yaml"
+        ],
+        "unit": [
+          "test_form16_malformed"
+        ],
+        "eval": []
+      },
+      "risk": "Format variance across employers. Fuzz with malformed input.",
+      "last_verified": null
+    },
+    {
+      "id": "DOC-002",
+      "name": "Broker P&L parsers",
+      "phase": 4,
+      "tier": "P1",
+      "status": "tested",
+      "description": "Zerodha, Groww, CAMS/KFintech statement parsers producing a normalised capital gains ledger for CORE-007.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "CORE-007"
+      ],
+      "acceptance_criteria": [
+        "Correct trade-date, ISIN, quantity, cost, consideration extraction",
+        "Correct holding-period classification",
+        "Pre-31-Jan-2018 holdings flagged for grandfathering",
+        "Reconciles to the statement's own totals or fails"
+      ],
+      "files": [
+        "backend/services/parsers/broker/"
+      ],
+      "tests": {
+        "golden": [
+          "parsers/broker_samples.yaml"
+        ],
+        "unit": [],
+        "eval": []
+      },
+      "risk": "Medium",
+      "last_verified": null
+    },
+    {
+      "id": "DOC-003",
+      "name": "AIS / TIS reconciliation",
+      "phase": 4,
+      "tier": "P1",
+      "status": "not_started",
+      "description": "Parse AIS/TIS and reconcile against declared income. AIS mismatch is the single largest cause of tax notices in India, and nothing in v1 touches it. Highest-value feature in the product.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "DOC-001",
+        "DOC-002"
+      ],
+      "acceptance_criteria": [
+        "Parses AIS JSON and PDF forms",
+        "Reconciles salary, interest, dividend, securities, property, GST turnover",
+        "Mismatches classified by severity with a suggested action",
+        "Zero false negatives on a seeded mismatch set",
+        "Supports AIS feedback categories"
+      ],
+      "files": [
+        "backend/services/parsers/ais.py",
+        "backend/services/reconciliation.py"
+      ],
+      "tests": {
+        "golden": [
+          "reconciliation/seeded_mismatches.yaml"
+        ],
+        "unit": [],
+        "eval": []
+      },
+      "risk": "Largest scope in Phase 4. Sequence last.",
+      "last_verified": null
+    },
+    {
+      "id": "DOC-004",
+      "name": "Encrypted document vault",
+      "phase": 4,
+      "tier": "P0",
+      "status": "not_started",
+      "description": "S3/MinIO with server-side encryption, signed short-lived URLs, retention TTL, per-user isolation. Replaces exports/ on local disk.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "FND-001"
+      ],
+      "acceptance_criteria": [
+        "No user document written to local disk",
+        "Encryption at rest verified",
+        "URLs expire; cross-user access denied by test",
+        "Retention policy enforced by a scheduled job"
+      ],
+      "files": [
+        "backend/services/document_service.py"
+      ],
+      "tests": {
+        "golden": [],
+        "unit": [
+          "test_cross_user_denied",
+          "test_url_expiry"
+        ],
+        "eval": []
+      },
+      "risk": "P0 privacy. Prerequisite for DPDP.",
+      "last_verified": null
+    },
+    {
+      "id": "PLN-001",
+      "name": "Regime comparison with exact breakeven",
+      "phase": 5,
+      "tier": "P1",
+      "status": "not_started",
+      "description": "Deterministic old-vs-new comparison on the user's actual deduction set, plus the exact breakeven deduction amount at their income. Replaces the LLM agent doing it with FY 2024-25 slabs.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "CORE-011"
+      ],
+      "acceptance_criteria": [
+        "Breakeven computed exactly, not sampled",
+        "Handles capital gains and surcharge interaction",
+        "States which regime wins and by how much, with citations",
+        "Golden-tested at multiple income levels"
+      ],
+      "rules_refs": [
+        "fy_2026_27.regimes"
+      ],
+      "sources": [
+        "https://cleartax.in/c/income-tax-slab-rates",
+        "https://www.incometax.gov.in/"
+      ],
+      "files": [
+        "backend/core/tax_engine/regime_compare.py"
+      ],
+      "tests": {
+        "golden": [
+          "fy_2026_27/regime_comparison.yaml"
+        ],
+        "unit": [],
+        "eval": []
+      },
+      "risk": "Low",
+      "last_verified": null
+    },
+    {
+      "id": "PLN-002",
+      "name": "Advance tax planner with 234B/234C",
+      "phase": 5,
+      "tier": "P1",
+      "status": "not_started",
+      "description": "Quarterly instalments (15%/45%/75%/100% by 15 Jun/Sep/Dec/Mar), shortfall detection, 234B and 234C interest projection. Presumptive taxpayers: 100% by 15 March.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "CORE-008"
+      ],
+      "acceptance_criteria": [
+        "Instalment schedule correct for salaried, business and presumptive",
+        "234B and 234C computed separately and correctly",
+        "Senior citizens without business income exempted from advance tax",
+        "Interest on refund uses 0.5% per month, not the 1% p.a. in v1"
+      ],
+      "rules_refs": [
+        "fy_2026_27.advance_tax"
+      ],
+      "legal_refs": [
+        {
+          "act": "Income-tax Act, 2025",
+          "legacy_section": "234B/234C/244A"
+        }
+      ],
+      "sources": [
+        "https://www.incometaxindia.gov.in/",
+        "https://www.incometax.gov.in/"
+      ],
+      "files": [
+        "backend/core/tax_engine/advance_tax.py"
+      ],
+      "tests": {
+        "golden": [
+          "fy_2026_27/advance_tax.yaml"
+        ],
+        "unit": [],
+        "eval": []
+      },
+      "risk": "Low. Fixes review defect 3.11.",
+      "last_verified": null
+    },
+    {
+      "id": "PLN-003",
+      "name": "Capital gains optimiser and tax-loss harvesting",
+      "phase": 5,
+      "tier": "P1",
+      "status": "not_started",
+      "description": "Harvesting opportunities against the 1.25L 112A exemption, loss set-off ordering, carry-forward tracking, Feb-March prompts.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "CORE-007",
+        "DOC-002"
+      ],
+      "acceptance_criteria": [
+        "Set-off ordering follows statute (STCL against STCG then LTCG; LTCL against LTCG only)",
+        "8-year carry-forward tracked, contingent on timely filing",
+        "Harvesting suggestions quantified post-tax",
+        "Repurchase-timing caution stated"
+      ],
+      "files": [
+        "backend/core/tax_engine/cg_optimiser.py"
+      ],
+      "tests": {
+        "golden": [
+          "fy_2026_27/harvesting.yaml"
+        ],
+        "unit": [],
+        "eval": []
+      },
+      "risk": "Medium",
+      "last_verified": null
+    },
+    {
+      "id": "PLN-004",
+      "name": "Deterministic ITR form selector",
+      "phase": 5,
+      "tier": "P1",
+      "status": "not_started",
+      "description": "Decision tree replacing v1's wrong table, which describes ITR-5 as 'high income individuals > 50 lakh' (it is for firms/LLPs/AOPs/BOIs), omits ITR-3 entirely, and states ITR-4 as 'turnover < 5 crore'.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "CORE-008"
+      ],
+      "acceptance_criteria": [
+        "ITR-1 through ITR-7 correctly scoped",
+        "ITR-3 present",
+        "ITR-4 Sugam conditions correct (total income <= 50L presumptive)",
+        "Disqualifiers handled: foreign assets, director, unlisted shares, capital gains, >1 house",
+        "Explains why each form was excluded"
+      ],
+      "rules_refs": [
+        "fy_2026_27.itr_forms"
+      ],
+      "sources": [
+        "https://www.incometax.gov.in/iec/foportal/downloads/income-tax-returns"
+      ],
+      "files": [
+        "backend/core/tax_engine/itr_selector.py"
+      ],
+      "tests": {
+        "golden": [
+          "fy_2026_27/itr_forms.yaml"
+        ],
+        "unit": [],
+        "eval": []
+      },
+      "risk": "P1. Users following v1's table file the wrong form. Review defect 3.9.",
+      "last_verified": null
+    },
+    {
+      "id": "PLN-005",
+      "name": "Profile-derived deadline calendar",
+      "phase": 5,
+      "tier": "P2",
+      "status": "not_started",
+      "description": "Per-user deadlines rather than v1's hardcoded global scheduler jobs. ITR 31 Jul / 31 Oct audit / 30 Nov TP, advance tax x4, TDS returns, GSTR-1/3B if registered, ITR-U 48-month window.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "AGT-003"
+      ],
+      "acceptance_criteria": [
+        "Deadlines derived from the user's actual obligations",
+        "ITR-U window correct at 48 months from end of relevant AY",
+        "Notifications idempotent and timezone-correct (IST)"
+      ],
+      "rules_refs": [
+        "fy_2026_27.deadlines"
+      ],
+      "sources": [
+        "https://www.incometax.gov.in/iec/foportal/help/tax-calendar",
+        "https://www.incometaxindia.gov.in/"
+      ],
+      "files": [
+        "backend/services/deadlines.py",
+        "backend/services/scheduler.py"
+      ],
+      "tests": {
+        "golden": [
+          "deadlines.yaml"
+        ],
+        "unit": [],
+        "eval": []
+      },
+      "risk": "Low",
+      "last_verified": null
+    },
+    {
+      "id": "PLN-006",
+      "name": "Salary structuring optimiser",
+      "phase": 5,
+      "tier": "P2",
+      "status": "not_started",
+      "description": "Constrained optimisation over HRA vs 80GG, LTA, employer NPS 80CCD(2) at 14% under the new regime, meal cards, car perquisite.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "CORE-006",
+        "PLN-001"
+      ],
+      "acceptance_criteria": [
+        "HRA exemption uses the correct three-way minimum with metro/non-metro",
+        "80GG mutual exclusivity with HRA enforced",
+        "80CCD(2) at 14% new regime / 10% old",
+        "Recommendations respect real employer constraints"
+      ],
+      "files": [
+        "backend/core/tax_engine/salary_structuring.py"
+      ],
+      "tests": {
+        "golden": [
+          "fy_2026_27/salary_structuring.yaml"
+        ],
+        "unit": [],
+        "eval": []
+      },
+      "risk": "Medium",
+      "last_verified": null
+    },
+    {
+      "id": "PLN-007",
+      "name": "Citation ledger UI",
+      "phase": 5,
+      "tier": "P1",
+      "status": "not_started",
+      "description": "Every displayed figure is click-through to rule_id, section (both numbering schemes), FY, source URL and verification date. Finishes what ValidationReport half-started.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "CORE-010",
+        "CORE-002",
+        "EVD-001"
+      ],
+      "acceptance_criteria": [
+        "Every rupee figure in the UI has a provenance popover",
+        "Both 1961 and 2025 Act citations shown for FY >= 2026-27",
+        "Undated figures cannot render"
+      ],
+      "files": [
+        "frontend/src/components/shared/Provenance.tsx"
+      ],
+      "tests": {
+        "golden": [],
+        "unit": [],
+        "eval": []
+      },
+      "risk": "P1 trust. For a tax product, 'why is this number this number' is the whole game.",
+      "last_verified": null
+    },
+    {
+      "id": "PRC-001",
+      "name": "Item resolver",
+      "phase": 6,
+      "tier": "P1",
+      "status": "not_started",
+      "description": "Free text to structured Item(category, subcategory, specs, HSN, state, use_case, financing, budget). LLM extracts structure only; it produces no figures.",
+      "deterministic": false,
+      "llm_involved": true,
+      "depends_on": [
+        "AGT-001"
+      ],
+      "acceptance_criteria": [
+        "HSN resolved for costing",
+        "Missing critical fields trigger targeted questions, never assumptions",
+        "Category packs: vehicle/EV, property, electronics, gold, appliance, business asset"
+      ],
+      "files": [
+        "backend/procurement/resolver.py"
+      ],
+      "tests": {
+        "golden": [],
+        "unit": [],
+        "eval": [
+          "procurement_resolution"
+        ]
+      },
+      "risk": "Low",
+      "last_verified": null
+    },
+    {
+      "id": "PRC-002",
+      "name": "Tiered source gatherer",
+      "phase": 6,
+      "tier": "P0",
+      "status": "not_started",
+      "description": "Tier-1 official (cbic, incometax, parivahan, state transport, heavyindustries, state EV policy, state IGR/circle rates, RERA, RBI, IBJA, BIS), Tier-2 OEM/dealer-quote/bank rate cards, Tier-3 aggregators. Cache with verified_on and per-source TTL.",
+      "deterministic": false,
+      "llm_involved": false,
+      "depends_on": [
+        "PRC-001"
+      ],
+      "acceptance_criteria": [
+        "Tier-3 sources CANNOT contribute to any cost line; enforced by type, not convention",
+        "Every fact carries source URL, tier and fetch date",
+        "Per-source TTL: GST 30d, state EV policy 7d, gold 1h, circle rates 90d",
+        "Nightly canary per Tier-1 fetcher; stale cache serves with a visible badge rather than breaking"
+      ],
+      "files": [
+        "backend/procurement/sources/"
+      ],
+      "tests": {
+        "golden": [],
+        "unit": [
+          "test_tier3_cannot_produce_figure"
+        ],
+        "eval": []
+      },
+      "risk": "No e-commerce scraping: JS-rendered, anti-bot, generally ToS-violating. Official sources plus user-uploaded quotes instead.",
+      "last_verified": null
+    },
+    {
+      "id": "PRC-003",
+      "name": "Landed cost model",
+      "phase": 6,
+      "tier": "P1",
+      "status": "not_started",
+      "description": "Deterministic: base + GST(2.0 slab by HSN) + cess + customs + road tax/registration + stamp duty + insurance/logistics/installation - subsidies - discounts - ITC - income-tax effect = true landed cost, plus finance cost.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "PRC-002",
+        "CORE-009"
+      ],
+      "acceptance_criteria": [
+        "GST 2.0 structure correct (0/5/18/40); 12% and 28% removed",
+        "EV GST at 5%",
+        "State road tax and stamp duty tables with effective dates",
+        "ITC only when GST-registered and business use",
+        "Depreciation half-rate rule when asset used < 180 days",
+        "Worked EV example from plan section 5.5 correct end-to-end"
+      ],
+      "rules_refs": [
+        "fy_2026_27.gst",
+        "state_levies"
+      ],
+      "sources": [
+        "https://cleartax.in/s/gst-rates",
+        "https://razorpay.com/learn/gst-2-0-reforms-in-india/"
+      ],
+      "files": [
+        "backend/core/costing/landed_cost.py"
+      ],
+      "tests": {
+        "golden": [
+          "costing/landed_cost.yaml"
+        ],
+        "unit": [],
+        "eval": []
+      },
+      "risk": "P1. v1's GST data still lists the abolished 12% and 28% slabs.",
+      "last_verified": null
+    },
+    {
+      "id": "PRC-004",
+      "name": "Purchase eligibility and subsidy engine",
+      "phase": 6,
+      "tier": "P0",
+      "status": "not_started",
+      "description": "Date-windowed evaluation of every benefit attached to a purchase. Must correctly report 80EEB as WINDOW_CLOSED, PM E-DRIVE as not covering electric cars, and the e-2W demand incentive terminating 31 Jul 2026.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "CORE-009",
+        "PRC-002"
+      ],
+      "acceptance_criteria": [
+        "80EEB returns WINDOW_CLOSED for loans sanctioned after 2023-03-31",
+        "PM E-DRIVE correctly excludes electric cars",
+        "e-2W/e-3W incentive at 2,500 per kWh capped at 5,000, with correct terminal dates",
+        "State EV policy windows evaluated per state",
+        "Closed windows shown explicitly with the closing date"
+      ],
+      "rules_refs": [
+        "fy_2026_27.eligibility",
+        "schemes.pm_edrive",
+        "schemes.state_ev"
+      ],
+      "sources": [
+        "https://cleartax.in/s/section-80eeb-deduction-purchase-electric-vehicle",
+        "https://www.evselect.in/ev-subsidies-india"
+      ],
+      "files": [
+        "backend/procurement/eligibility.py"
+      ],
+      "tests": {
+        "golden": [
+          "procurement/ev_eligibility.yaml"
+        ],
+        "unit": [],
+        "eval": [
+          "EV-80EEB-CLOSED-WINDOW"
+        ]
+      },
+      "risk": "P0. v1 would invent a 1.5L deduction here.",
+      "last_verified": null
+    },
+    {
+      "id": "PRC-005",
+      "name": "Dated signal ledger (timing)",
+      "phase": 6,
+      "tier": "P1",
+      "status": "not_started",
+      "description": "NOT a price forecast. A ledger of dated, sourced facts that change cost: policy cliffs, GST effective dates, 31 March depreciation boundary, model-year and festive cycles (stated as observed patterns with years observed), Budget dates.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "PRC-003",
+        "PRC-004"
+      ],
+      "acceptance_criteria": [
+        "Every signal has a date, a source and a quantified rupee impact where computable",
+        "No output predicts a price movement",
+        "Observed patterns explicitly labelled as historical, with the years observed",
+        "31 March vs 1 April depreciation impact computed exactly for business assets"
+      ],
+      "files": [
+        "backend/procurement/timing.py"
+      ],
+      "tests": {
+        "golden": [
+          "procurement/signals.yaml"
+        ],
+        "unit": [
+          "test_no_predictive_language"
+        ],
+        "eval": [
+          "timing_no_forecast"
+        ]
+      },
+      "risk": "P1 integrity. A product that implies it can predict gold or property prices does harm.",
+      "last_verified": null
+    },
+    {
+      "id": "PRC-006",
+      "name": "Dealer quote teardown",
+      "phase": 6,
+      "tier": "P1",
+      "status": "not_started",
+      "description": "User uploads or pastes a dealer/vendor quotation; the engine tears it down line by line against the computed landed cost and flags padding, unnecessary add-ons, wrong GST rate and inflated logistics or handling charges.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "PRC-003"
+      ],
+      "acceptance_criteria": [
+        "Line items extracted and mapped to model components",
+        "Discrepancy report with rupee deltas",
+        "Flags GST charged at the wrong rate",
+        "Flags charges with no statutory basis (e.g. arbitrary handling fees)"
+      ],
+      "files": [
+        "backend/procurement/quote_teardown.py"
+      ],
+      "tests": {
+        "golden": [
+          "procurement/quotes.yaml"
+        ],
+        "unit": [],
+        "eval": []
+      },
+      "risk": "Highest practical value in Phase 6: it works on the user's real price, and dealer quotations are where padding hides.",
+      "last_verified": null
+    },
+    {
+      "id": "PRC-007",
+      "name": "Property purchase pack",
+      "phase": 6,
+      "tier": "P1",
+      "status": "not_started",
+      "description": "Stamp duty and registration by state, circle-rate/guidance-value floor with 50C/56(2)(x) implications, GST on under-construction, RERA registration lookup, women-buyer concession, home loan 24(b)/80EEA windows, Section 54/54EC reinvestment.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "PRC-003",
+        "PRC-004"
+      ],
+      "acceptance_criteria": [
+        "State stamp duty tables with effective dates and women-buyer concessions",
+        "Circle-rate shortfall triggers the deemed-income warning",
+        "RERA registration status surfaced",
+        "NO opinion on locality appreciation or market timing"
+      ],
+      "rules_refs": [
+        "state_levies.stamp_duty"
+      ],
+      "sources": [
+        "https://www.incometaxindia.gov.in/",
+        "https://cbic.gov.in/"
+      ],
+      "files": [
+        "backend/procurement/packs/property.py"
+      ],
+      "tests": {
+        "golden": [
+          "procurement/property.yaml"
+        ],
+        "unit": [],
+        "eval": [
+          "property_no_market_call"
+        ]
+      },
+      "risk": "Regulatory restraint required. Compute costs; do not forecast markets.",
+      "last_verified": null
+    },
+    {
+      "id": "PRC-008",
+      "name": "Rewrite price_intelligence agent",
+      "phase": 6,
+      "tier": "P1",
+      "status": "not_started",
+      "description": "Keep the CII table (still needed for grandfathered pre-23-Jul-2024 property). Delete the yield comparisons, which use a 10% ELSS LTCG rate (should be 12.5%) and RECOMMEND BUYING SOVEREIGN GOLD BONDS, whose primary issuance the government stopped in February 2024.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "CORE-007",
+        "PRC-004"
+      ],
+      "acceptance_criteria": [
+        "CII retained solely for grandfathered property indexation",
+        "SGB availability gated by the eligibility engine; primary issuance flagged as discontinued with the secondary-market position stated",
+        "Post-tax yield figures come from core, not hardcoded assumptions"
+      ],
+      "sources": [
+        "https://www.personalfn.com/dwl/Precious-Metals/sovereign-gold-bond-scheme-discontinued-why-this-is-done-and-what-it-means-for-investors"
+      ],
+      "files": [
+        "backend/agents/price_intelligence.py"
+      ],
+      "tests": {
+        "golden": [],
+        "unit": [],
+        "eval": [
+          "sgb_availability"
+        ]
+      },
+      "risk": "P1. Currently recommends a product that cannot be bought at primary issue.",
+      "last_verified": null
+    },
+    {
+      "id": "PRC-009",
+      "name": "SmartSavings and PurchaseAdvisor rebuild",
+      "phase": 6,
+      "tier": "P1",
+      "status": "not_started",
+      "description": "Keep the existing UX shell (category detection, guided questions, verdict card) and wire it to the real procurement backend instead of the generic chat endpoint.",
+      "deterministic": false,
+      "llm_involved": true,
+      "depends_on": [
+        "PRC-003",
+        "PRC-004",
+        "PRC-005",
+        "PRC-006"
+      ],
+      "acceptance_criteria": [
+        "Cost breakdown rendered line by line with sources and dates",
+        "Closed windows shown explicitly",
+        "Signal ledger rendered as dated facts, never as a prediction",
+        "Tier-3 context visibly badged as unverified"
+      ],
+      "files": [
+        "frontend/src/pages/SmartSavings.tsx",
+        "frontend/src/components/smartsavings/"
+      ],
+      "tests": {
+        "golden": [],
+        "unit": [],
+        "eval": [
+          "procurement_end_to_end",
+          "timing_no_forecast"
+        ]
+      },
+      "risk": "Low. The shell is decent and worth keeping.",
+      "last_verified": null
+    },
+    {
+      "id": "EVD-001",
+      "name": "Calculation trace",
+      "phase": 1,
+      "tier": "P0",
+      "status": "verified",
+      "description": "Every engine operation emits a structured step: (label, operands, operation, result, rule_ref, citation). Steps compose into a tree mirroring the computation. This is the raw material for the shown-working worksheet, the evidence pack and the numeric_provenance scorer. Not logging — a first-class return value.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "CORE-010"
+      ],
+      "acceptance_criteria": [
+        "Every engine function returns (value, trace) — trace is never optional",
+        "Trace replays: re-executing the recorded steps reproduces the value exactly",
+        "Trace is serialisable to JSON and renderable as a worksheet",
+        "Zero measurable latency cost when the trace is not consumed",
+        "Golden tests assert on trace structure, not just the final number"
+      ],
+      "files": [
+        "backend/core/provenance/trace.py"
+      ],
+      "tests": {
+        "golden": [
+          "trace/replay.yaml"
+        ],
+        "unit": [
+          "test_trace_replays_to_same_value"
+        ],
+        "eval": []
+      },
+      "risk": "P0. Without this, 'show the math' is reverse-engineered prose rather than the actual computation.",
+      "last_verified": "2026-08-09"
+    },
+    {
+      "id": "EVD-002",
+      "name": "Composed confidence model",
+      "phase": 1,
+      "tier": "P0",
+      "status": "verified",
+      "description": "Confidence is COMPUTED from five measurable signals, never authored. For a deterministic engine the arithmetic is certain — the uncertainty lives entirely in the inputs. Signals: (1) input provenance, official-document > parsed > user-stated > system-assumed; (2) rule freshness from last_verified; (3) input completeness, which required fields are present; (4) assumption count, how many defaults were substituted; (5) source tier for procurement facts. Emits a BREAKDOWN, not an opaque number.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "EVD-001",
+        "CORE-009"
+      ],
+      "acceptance_criteria": [
+        "A deterministic computation on complete official inputs from fresh rules reports CERTAIN, not 87% — no fake precision",
+        "Confidence is never produced by an LLM; asserted by test",
+        "Every score expands into the specific signals that reduced it",
+        "Missing inputs are named explicitly, e.g. 'rent paid not provided — HRA exemption excluded'",
+        "Degradation is causal and reproducible, not a fixed decrement per warning",
+        "Eligibility INSUFFICIENT_DATA propagates into the score and is surfaced"
+      ],
+      "files": [
+        "backend/core/provenance/confidence.py"
+      ],
+      "tests": {
+        "golden": [
+          "confidence/signals.yaml"
+        ],
+        "unit": [
+          "test_certain_when_complete",
+          "test_confidence_never_from_llm"
+        ],
+        "eval": []
+      },
+      "risk": "P0 trust. v1 hardcodes confidence=0.80 and 0.88 as literals in the agents and shows them as a quality score, and degrades 0.1 per warning regardless of what the warning was.",
+      "last_verified": "2026-08-09"
+    },
+    {
+      "id": "EVD-003",
+      "name": "Purge fabricated confidence scores",
+      "phase": 2,
+      "tier": "P0",
+      "status": "verified",
+      "description": "Delete every hardcoded confidence literal in the agents and the arbitrary 0.1-per-warning decay in ValidationReport. Delete sources_verified counts that report a number while RAG returns random vectors. Route all of it through EVD-002.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "EVD-002",
+        "DEM-004"
+      ],
+      "acceptance_criteria": [
+        "grep finds no numeric confidence literal in backend/agents",
+        "No count of 'sources verified' can exceed the number of sources actually retrieved and used",
+        "quality_score and data_quality_score in the chat response derive from EVD-002"
+      ],
+      "files": [
+        "backend/agents/",
+        "backend/tools/data_validator.py",
+        "backend/api/chat.py"
+      ],
+      "tests": {
+        "golden": [],
+        "unit": [
+          "test_no_hardcoded_confidence"
+        ],
+        "eval": []
+      },
+      "risk": "P0. Showing users an invented confidence number is worse than showing none.",
+      "last_verified": "2026-08-09"
+    },
+    {
+      "id": "EVD-004",
+      "name": "Source archival and access dating",
+      "phase": 3,
+      "tier": "P1",
+      "status": "not_started",
+      "description": "Every external source cited is stored with URL, tier, retrieved_at, HTTP status, content hash, and an archived snapshot of the relevant extract. Government pages move and change; a citation that 404s a year later is worthless in an assessment.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "EVD-002"
+      ],
+      "acceptance_criteria": [
+        "Snapshot of the cited extract stored, not just the URL",
+        "Content hash detects upstream change and flags affected cached facts",
+        "Every citation renders with an 'as of' date",
+        "No undated source can appear in user-facing output"
+      ],
+      "files": [
+        "backend/evidence/archive.py"
+      ],
+      "tests": {
+        "golden": [],
+        "unit": [
+          "test_source_hash_change_flags_stale"
+        ],
+        "eval": []
+      },
+      "risk": "Storage growth. Archive the extract, not the whole page.",
+      "last_verified": null
+    },
+    {
+      "id": "EVD-005",
+      "name": "Evidence and working panel",
+      "phase": 5,
+      "tier": "P1",
+      "status": "not_started",
+      "description": "Expandable drawer on every result showing four tabs: Working (the calculation trace as a step-by-step worksheet), Sources (citations with tier, URL and access date), Inputs (what we used, where each value came from, what we assumed), and Confidence (the signal breakdown with what would raise it).",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "EVD-001",
+        "EVD-002",
+        "EVD-004",
+        "PLN-007"
+      ],
+      "acceptance_criteria": [
+        "Worksheet renders the actual trace, not a re-narration",
+        "Every assumption is labelled as an assumption and is editable in place",
+        "Confidence tab states concretely what would increase the score",
+        "Panel is accessible and printable"
+      ],
+      "files": [
+        "frontend/src/components/evidence/"
+      ],
+      "tests": {
+        "golden": [],
+        "unit": [],
+        "eval": []
+      },
+      "risk": "P1. This is the feature that converts a plausible answer into a defensible one.",
+      "last_verified": null
+    },
+    {
+      "id": "EVD-006",
+      "name": "Downloadable Evidence Pack",
+      "phase": 5,
+      "tier": "P1",
+      "status": "not_started",
+      "description": "One-click end-to-end PDF the user can hand to a CA or keep for assessment: inputs and their provenance, assumptions, full step-by-step math, every citation with section (both Act numberings), source URL and access date, rule-pack version and verification dates, confidence breakdown, closed-window notices, and a machine-readable JSON appendix.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "EVD-005",
+        "DOC-004"
+      ],
+      "acceptance_criteria": [
+        "Contains zero LLM-generated figures — assertable by running numeric_provenance over the pack",
+        "Every number traces to a rule and a source within the document",
+        "Closed eligibility windows listed explicitly with closing dates",
+        "Rule-pack version and each rule's last_verified date printed",
+        "Machine-readable JSON appendix embedded for re-verification",
+        "Generated into the encrypted vault, delivered by signed short-lived URL, never written to local disk"
+      ],
+      "files": [
+        "backend/evidence/pack.py",
+        "backend/services/report_generator.py"
+      ],
+      "tests": {
+        "golden": [
+          "evidence/pack_contents.yaml"
+        ],
+        "unit": [
+          "test_pack_has_no_untraced_number"
+        ],
+        "eval": []
+      },
+      "risk": "P1. Must not repeat v1's habit of writing user financial PDFs to exports/ unencrypted.",
+      "last_verified": null
+    },
+    {
+      "id": "EVD-007",
+      "name": "Reproducibility and integrity",
+      "phase": 5,
+      "tier": "P2",
+      "status": "not_started",
+      "description": "Each Evidence Pack pins the rule-pack version and input snapshot hash, and carries a content hash. Regenerating from the same pinned inputs produces a byte-identical computation section. A verify endpoint confirms a pack was produced by this system and has not been altered.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "EVD-006"
+      ],
+      "acceptance_criteria": [
+        "Same inputs plus same rule version regenerate an identical computation section",
+        "Content hash printed in the pack and verifiable via endpoint",
+        "Recomputing under a newer rule pack shows a clearly marked diff rather than silently changing the answer"
+      ],
+      "files": [
+        "backend/evidence/integrity.py"
+      ],
+      "tests": {
+        "golden": [],
+        "unit": [
+          "test_regeneration_is_byte_identical"
+        ],
+        "eval": []
+      },
+      "risk": "Non-determinism from timestamps or dict ordering. Pin and sort everything.",
+      "last_verified": null
+    },
+    {
+      "id": "PRD-001",
+      "name": "DPDP Act 2023 compliance",
+      "phase": 7,
+      "tier": "P0",
+      "status": "not_started",
+      "description": "Handling income and PAN makes this a Data Fiduciary. v1 claims compliance in the README with nothing behind it.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "DOC-004"
+      ],
+      "acceptance_criteria": [
+        "Itemised notice with versioning; consent recorded per purpose",
+        "Withdrawal as easy as granting",
+        "Purpose limitation and stated retention enforced by a job",
+        "Erasure endpoint with verified deletion across DB, vault and vector store",
+        "Breach notification runbook (Data Protection Board plus affected principals)",
+        "Grievance officer published; data-processing register maintained",
+        "Controls mapped to obligations in a published table"
+      ],
+      "files": [
+        "backend/compliance/dpdp/",
+        "docs/dpdp_controls.md"
+      ],
+      "tests": {
+        "golden": [],
+        "unit": [
+          "test_erasure_complete"
+        ],
+        "eval": []
+      },
+      "risk": "P0 legal.",
+      "last_verified": null
+    },
+    {
+      "id": "PRD-002",
+      "name": "Auth hardening",
+      "phase": 7,
+      "tier": "P0",
+      "status": "not_started",
+      "description": "httpOnly cookie plus CSRF or hardened token handling, refresh rotation with reuse detection, revocation check against the sessions table in get_current_user, logout invalidation, WebSocket authentication.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "DEM-001"
+      ],
+      "acceptance_criteria": [
+        "Revoked token rejected immediately",
+        "Refresh reuse detected and the family invalidated",
+        "No JWT readable by JavaScript",
+        "WebSocket rejects an unauthenticated user_id query param"
+      ],
+      "files": [
+        "backend/security/",
+        "backend/api/websocket.py"
+      ],
+      "tests": {
+        "golden": [],
+        "unit": [
+          "test_revocation",
+          "test_refresh_reuse"
+        ],
+        "eval": []
+      },
+      "risk": "P0 security.",
+      "last_verified": null
+    },
+    {
+      "id": "PRD-003",
+      "name": "Rate limiting and abuse controls",
+      "phase": 7,
+      "tier": "P0",
+      "status": "not_started",
+      "description": "Per-user and per-IP limits, LLM spend caps per user per day, upload size and type validation, malware scan on uploads.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "PRD-002"
+      ],
+      "acceptance_criteria": [
+        "Limits enforced at the edge and in-app",
+        "LLM spend cap prevents runaway cost",
+        "Upload validation rejects non-PDF and oversized files"
+      ],
+      "files": [
+        "backend/middleware/ratelimit.py"
+      ],
+      "tests": {
+        "golden": [],
+        "unit": [
+          "test_rate_limit_enforced",
+          "test_llm_spend_cap"
+        ],
+        "eval": []
+      },
+      "risk": "P0 abuse and cost control. An uncapped LLM endpoint behind auth is still a spend vector.",
+      "last_verified": null
+    },
+    {
+      "id": "PRD-004",
+      "name": "Observability",
+      "phase": 7,
+      "tier": "P1",
+      "status": "not_started",
+      "description": "OpenTelemetry traces across request to agent to tool to core, Prometheus metrics, Sentry, LLM token and cost dashboards, PII-redacting log formatter.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "AGT-003"
+      ],
+      "acceptance_criteria": [
+        "End-to-end trace for a chat query",
+        "No PII in any log line (redaction tested)",
+        "Cost per query tracked and alertable"
+      ],
+      "files": [
+        "backend/observability/"
+      ],
+      "tests": {
+        "golden": [],
+        "unit": [
+          "test_log_redaction"
+        ],
+        "eval": []
+      },
+      "risk": "Medium",
+      "last_verified": null
+    },
+    {
+      "id": "PRD-005",
+      "name": "Secrets management",
+      "phase": 7,
+      "tier": "P0",
+      "status": "not_started",
+      "description": "Move off .env for production. Secrets manager, rotation policy, no secret in image or logs, startup validation that fails fast on missing config.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [],
+      "acceptance_criteria": [
+        "No secret in the image, repo or logs",
+        "Rotation documented and tested",
+        "App refuses to start with a placeholder JWT secret"
+      ],
+      "files": [
+        "backend/config.py",
+        "docker/"
+      ],
+      "tests": {
+        "golden": [],
+        "unit": [
+          "test_rejects_default_secret"
+        ],
+        "eval": []
+      },
+      "risk": "P0. config.py currently defaults to 'your-super-secret-key-change-in-production'.",
+      "last_verified": null
+    },
+    {
+      "id": "PRD-006",
+      "name": "Deployment and operations",
+      "phase": 7,
+      "tier": "P1",
+      "status": "not_started",
+      "description": "Multi-stage Docker images, health and readiness probes, DB backup and restore drill, staging environment, incident runbook, zero-downtime migration procedure.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "PRD-004",
+        "PRD-005"
+      ],
+      "acceptance_criteria": [
+        "Image size reduced and non-root user",
+        "Restore drill executed successfully from backup",
+        "Staging mirrors production",
+        "Runbook covers the top five failure modes"
+      ],
+      "files": [
+        "docker/",
+        "docs/runbook.md"
+      ],
+      "tests": {
+        "golden": [],
+        "unit": [],
+        "eval": []
+      },
+      "risk": "Medium",
+      "last_verified": null
+    },
+    {
+      "id": "PRD-007",
+      "name": "Load and resilience testing",
+      "phase": 7,
+      "tier": "P1",
+      "status": "not_started",
+      "description": "k6 scenarios at target concurrency, chaos on Redis/Qdrant/Groq outage, graceful degradation verification.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "PRD-006"
+      ],
+      "acceptance_criteria": [
+        "p95 within budget at target concurrency",
+        "Groq outage degrades to deterministic-only output rather than failing",
+        "Redis and Qdrant outages degrade gracefully with a visible notice"
+      ],
+      "files": [
+        "tests/load/"
+      ],
+      "tests": {
+        "golden": [],
+        "unit": [],
+        "eval": []
+      },
+      "risk": "Medium",
+      "last_verified": null
+    },
+    {
+      "id": "AGT-008",
+      "name": "Analyst agent (CA standard)",
+      "phase": 3,
+      "tier": "P0",
+      "status": "verified",
+      "description": "First pass. Understands the question, gathers facts, calls deterministic tools, drafts an explanation to the standard a chartered accountant would apply advising a client. Computes NOTHING: every figure comes from backend/core.",
+      "deterministic": false,
+      "llm_involved": true,
+      "depends_on": [
+        "AGT-001",
+        "AGT-003",
+        "CORE-011"
+      ],
+      "acceptance_criteria": [
+        "No arithmetic on money anywhere in the agent or its prompts",
+        "No prompt asks the model for a rupee amount",
+        "Every claim maps to a tool result it actually received",
+        "States what it could not determine rather than filling the gap"
+      ],
+      "files": [
+        "backend/agents/analyst.py"
+      ],
+      "tests": {
+        "golden": [],
+        "unit": [
+          "test_analyst_makes_no_arithmetic_calls"
+        ],
+        "eval": [
+          "analyst_faithfulness",
+          "analyst_completeness"
+        ]
+      },
+      "risk": "The generator half of the pipeline. Its failure mode is omission, which is exactly what AGT-009 exists to catch.",
+      "last_verified": "2026-08-09"
+    },
+    {
+      "id": "AGT-009",
+      "name": "Reviewer agent — CA file-review pass",
+      "phase": 3,
+      "tier": "P0",
+      "status": "verified",
+      "description": "Adversarial second pass with FULL independent engine access. Checks what the Analyst said and, more importantly, what it did not: omitted regime comparisons, dropped closed windows, misleading framing over correct numbers, unasked questions that would change the answer. Because it can call the engine itself, every challenge it raises is deterministically proven rather than one model's opinion against another's.",
+      "deterministic": false,
+      "llm_involved": true,
+      "depends_on": [
+        "AGT-008",
+        "AGT-004"
+      ],
+      "acceptance_criteria": [
+        "Can independently call the tax engine, eligibility engine and rule packs",
+        "Every challenge cites the engine call that substantiates it",
+        "CANNOT edit or override any figure — a disagreement is a bug report against the engine, never a silent correction",
+        "Catches a seeded omission (better regime not mentioned) in the eval corpus",
+        "Catches a seeded closed-window drop"
+      ],
+      "files": [
+        "backend/agents/reviewer_ca.py"
+      ],
+      "tests": {
+        "golden": [],
+        "unit": [
+          "test_reviewer_cannot_mutate_figures"
+        ],
+        "eval": [
+          "reviewer_catches_omitted_regime",
+          "reviewer_catches_dropped_window"
+        ]
+      },
+      "risk": "Two LLMs marking each other's homework produces CORRELATED error. This is only safe because the reviewer's authority is the deterministic engine, not its own judgement about numbers.",
+      "last_verified": "2026-08-09"
+    },
+    {
+      "id": "AGT-010",
+      "name": "Reviewer agent — assessment risk pass",
+      "phase": 3,
+      "tier": "P1",
+      "status": "verified",
+      "description": "Conditional third pass in the voice of an Assessing Officer: what would draw a query, what looks aggressive, where is documentation thin. Runs only when the output actually contains a claim, deduction or recommendation — a purely informational answer skips it, which is what keeps p95 tolerable.",
+      "deterministic": false,
+      "llm_involved": true,
+      "depends_on": [
+        "AGT-009"
+      ],
+      "acceptance_criteria": [
+        "Skipped for informational answers; triggered by any claim or recommendation",
+        "Flags thin documentation without suppressing a legitimate entitlement",
+        "Over-caution is itself a tracked failure: eval asserts it does not FLAG a fully documented standard claim"
+      ],
+      "files": [
+        "backend/agents/reviewer_risk.py"
+      ],
+      "tests": {
+        "golden": [],
+        "unit": [
+          "test_risk_pass_skipped_for_informational"
+        ],
+        "eval": [
+          "risk_pass_no_false_alarm",
+          "risk_pass_flags_thin_documentation"
+        ]
+      },
+      "risk": "An AO-voiced reviewer drifts toward suppressing valid claims. The false-alarm eval is the counterweight and must stay green.",
+      "last_verified": "2026-08-09"
+    },
+    {
+      "id": "AGT-011",
+      "name": "Graded review verdicts (block / amend / flag)",
+      "phase": 3,
+      "tier": "P0",
+      "status": "verified",
+      "description": "BLOCK withholds the answer and forces one redraft, then fails visibly rather than degrading to the unreviewed draft. AMEND appends the missing caveat verbatim. FLAG shows the answer with a visible note. No verdict may silently rewrite content, so the user always sees what was contested.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "AGT-009"
+      ],
+      "acceptance_criteria": [
+        "Exactly one redraft on BLOCK; a second BLOCK surfaces an explicit failure, never the unreviewed draft",
+        "AMEND text appears verbatim; the Analyst cannot paraphrase it away",
+        "Review findings are recorded in the Evidence Pack, including ones that were resolved",
+        "No code path lets a review verdict alter a figure"
+      ],
+      "files": [
+        "backend/agents/review_protocol.py"
+      ],
+      "tests": {
+        "golden": [],
+        "unit": [
+          "test_single_redraft_then_visible_failure",
+          "test_amend_is_verbatim",
+          "test_verdict_cannot_alter_a_figure"
+        ],
+        "eval": []
+      },
+      "risk": "Silent rewriting would hide disagreement from the user, which defeats the purpose of having a reviewer at all.",
+      "last_verified": "2026-08-09"
+    },
+    {
+      "id": "AGT-012",
+      "name": "Answer-time source freshness check",
+      "phase": 3,
+      "tier": "P1",
+      "status": "not_started",
+      "description": "The Reviewer re-checks Tier-1 official sources for the rules actually used. Served from the PRC-002 cache with per-source TTL, so it is normally a cache hit rather than a network call; a miss degrades to serving the cached fact with a visible staleness badge rather than blocking the answer.",
+      "deterministic": false,
+      "llm_involved": false,
+      "depends_on": [
+        "AGT-009",
+        "EVD-004"
+      ],
+      "acceptance_criteria": [
+        "Cache hit adds under 50ms",
+        "A network failure never blocks an answer — it downgrades confidence and shows a staleness badge",
+        "A detected upstream change flags the affected rule and notifies rather than silently recomputing"
+      ],
+      "files": [
+        "backend/agents/freshness.py"
+      ],
+      "tests": {
+        "golden": [],
+        "unit": [
+          "test_cache_hit_latency",
+          "test_network_failure_degrades_not_blocks"
+        ],
+        "eval": []
+      },
+      "risk": "Naively fetching on every answer would put the network on the critical path of every response.",
+      "last_verified": null
+    }
+  ]
+}

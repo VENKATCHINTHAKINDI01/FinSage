@@ -1,72 +1,86 @@
-# Core Framework
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-starlette==0.27.0
-pydantic==2.5.0
-pydantic-settings==2.1.0
-pydantic-core==2.14.1
-email-validator>=2.0.0
+# FinSage AI — runtime dependencies
+#
+# Dev/test tooling lives in requirements-dev.txt.
+#
+# Pinning policy: compatible-release (~=) on the minor for libraries that
+# respect semver, exact pins only where a break is known. v1 pinned everything
+# exactly and then never moved, which is how it ended up ~2 years behind on
+# FastAPI, Starlette and Pydantic.
+#
+# Audited 2026-08-09 (FND-005).
 
-# Database
-sqlalchemy[asyncio]==2.0.23
-asyncpg==0.29.0
-alembic==1.12.1
-psycopg2-binary==2.9.9
-redis>=4.5.2,<5.0.0,!=4.5.5
+# ── Web framework ────────────────────────────────────────────────────────────
+fastapi~=0.141.1
+uvicorn[standard]~=0.52.1
+python-multipart~=0.0.32
+# starlette is deliberately NOT pinned here — fastapi constrains it, and
+# pinning both is how you get an unsolvable resolution.
 
-# LLM & Agents
-groq>=0.4.2
-langchain>=0.1.10
-langchain-groq>=0.1.0
-langgraph>=0.0.20
-langchain-community>=0.0.25
-langchain-text-splitters>=0.0.1
+# ── Config & validation ──────────────────────────────────────────────────────
+pydantic~=2.13.4
+pydantic-settings~=2.7
+email-validator~=2.2
 
-# Vector DB & Embeddings
-qdrant-client>=1.7.0
-sentence-transformers==2.2.2
-numpy>=1.26.0
+# ── Database ─────────────────────────────────────────────────────────────────
+sqlalchemy[asyncio]~=2.0.51
+asyncpg~=0.31.0
+alembic~=1.19.1
+redis~=8.1.0
+# psycopg2-binary removed: asyncpg is the only driver in use, and alembic is
+# configured against the async engine.
 
-# Search & Web
-tavily-python==0.3.3
-httpx>=0.24.0,<0.26.0
-aiohttp==3.9.1
+# ── LLM & agents ─────────────────────────────────────────────────────────────
+groq~=1.6.0
+langgraph~=0.6
+# langchain / langchain-community / langchain-groq / langchain-text-splitters
+# removed: nothing imports them. Only langgraph is referenced
+# (orchestrator/advanced_orchestrator.py), and that is under review in AGT-002.
 
-# Security & Auth
-python-jose[cryptography]==3.3.0
-cryptography==41.0.7
-passlib[bcrypt]==1.7.4
-argon2-cffi>=23.1.0
-python-multipart==0.0.6
-PyJWT>=2.8.0
+# ── Vector search & embeddings ───────────────────────────────────────────────
+qdrant-client~=1.19.0
+fastembed~=0.7.4
+# Replaces sentence-transformers, which v1 pinned at 2.2.2 (broken against
+# modern huggingface_hub) and never actually used — embeddings are currently
+# md5 -> np.random.seed -> random vector.
+#
+# fastembed is Qdrant's own ONNX-runtime embedding library. It serves the same
+# BAAI/bge-small-en-v1.5 model but pulls no torch, no transformers and no CUDA
+# toolkit: measured against this exact requirement set, sentence-transformers
+# adds torch 2.13 plus ~18 nvidia-* packages (multiple GB) to the image for a
+# CPU-only workload. Real embeddings land in DEM-004.
+numpy~=2.1
 
-# Utilities
-python-dotenv==1.0.0
-loguru==0.7.2
-PyMuPDF==1.23.8
-reportlab>=4.0.0
-python-dateutil==2.8.2
-pytz==2023.3
-requests==2.31.0
+# ── HTTP ─────────────────────────────────────────────────────────────────────
+httpx~=0.28.1
+# tavily-python removed: web_search.py calls the Tavily REST API through httpx
+# directly and never imported the SDK.
+# aiohttp removed: nothing imports it.
 
-# Telegram
-python-telegram-bot==20.3
+# ── Security ─────────────────────────────────────────────────────────────────
+PyJWT~=2.13.0
+bcrypt~=5.0.0
+passlib[bcrypt]~=1.7.4
+# TODO(PRD-002): passlib is effectively unmaintained and its bcrypt backend
+# warns against bcrypt>=4.1. Replace with a direct bcrypt call in
+# backend/security/password.py — existing $2b$ hashes stay valid, so this is a
+# drop-in change, not a migration.
+# python-jose removed: unused, unmaintained, and PyJWT already covers it.
+cryptography~=46.0
 
-# Async & Background Jobs
-celery[redis]==5.3.4
-rq==1.14.1
-APScheduler==3.10.4
+# ── Documents ────────────────────────────────────────────────────────────────
+reportlab~=5.0.0
+PyMuPDF~=1.28.2
 
-# Monitoring & Logging
-prometheus-client==0.19.0
+# ── Background jobs ──────────────────────────────────────────────────────────
+APScheduler~=3.11.3
+# celery and rq removed: both were installed, neither was ever imported.
 
-# Dev & Testing
-pytest==7.4.3
-pytest-asyncio==0.21.1
-pytest-cov==4.1.0
-black==23.12.0
-ruff==0.1.8
-mypy==1.7.1
-
-# Utils
-typer==0.9.0
+# ── Utilities ────────────────────────────────────────────────────────────────
+python-dotenv~=1.0
+python-dateutil~=2.9
+PyYAML~=6.0
+# loguru removed: logging_config.py uses the standard library.
+# typer removed: no CLI exists.
+# requests removed: sync HTTP has no place in an async service; the one caller
+# (india_tax_data_fetcher) imported it and never used it.
+# prometheus-client returns with PRD-004 (observability), not before.

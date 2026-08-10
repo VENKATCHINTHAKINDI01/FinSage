@@ -1,0 +1,62 @@
+{
+  "_comment": "Recorded agent invocation. Every figure in output_text appears in tool_results, so numeric_provenance passes.",
+  "agent": "procurement_advisor",
+  "query": "I'm buying an electric car next month with a loan. What tax benefit do I get?",
+  "profile": {
+    "fy": "2026-27",
+    "regime": "new",
+    "salary": 1800000,
+    "age": 34
+  },
+  "tool_calls": [
+    { "tool": "evaluate_purchase_eligibility", "args": { "asset_type": "electric_vehicle", "sub_type": "car", "fy": "2026-27", "loan_sanction_date": "2026-09-01" } },
+    { "tool": "compute_landed_cost", "args": { "hsn": "8703800000", "base_price": 1800000, "state": "MH" } }
+  ],
+  "tool_results": [
+    {
+      "tool": "evaluate_purchase_eligibility",
+      "success": true,
+      "result": {
+        "benefits": [
+          {
+            "code": "80EEB",
+            "status": "WINDOW_CLOSED",
+            "closed_on": "2023-03-31",
+            "max_deduction": 150000,
+            "note": "Loan must have been sanctioned between 2019-01-01 and 2023-03-31.",
+            "citation": { "act": "Income-tax Act, 2025", "legacy_section": "80EEB" }
+          },
+          {
+            "code": "PM_E_DRIVE",
+            "status": "INELIGIBLE",
+            "reason": "Scheme does not cover electric cars; e-2W and e-3W only.",
+            "citation": { "source": "https://heavyindustries.gov.in/" }
+          }
+        ],
+        "regime_note": "80EEB is available only under the old regime; user is on the new regime."
+      }
+    },
+    {
+      "tool": "compute_landed_cost",
+      "success": true,
+      "result": {
+        "base_price": 1800000,
+        "gst_rate": 0.05,
+        "gst_amount": 90000,
+        "compensation_cess": 0,
+        "landed_cost": 1890000,
+        "as_of": "2026-08-09",
+        "citation": { "source": "https://cbic.gov.in/", "tier": 1 }
+      }
+    }
+  ],
+  "output_text": "Two things to flag before you buy.\n\nSection 80EEB would have given you a deduction of up to ₹1,50,000 on the loan interest, but the sanction window closed on 31 March 2023 — loans sanctioned after that date do not qualify. It is also an old-regime deduction, and you are on the new regime, so it would not have applied to you in any case.\n\nPM E-DRIVE does not cover electric cars; the demand incentive is limited to two- and three-wheelers.\n\nOn cost: GST on electric vehicles is 5%, so on a base price of ₹18,00,000 you pay ₹90,000 GST, giving a landed cost of ₹18,90,000 before registration and insurance. Figures as of 9 August 2026.",
+  "output_data": {
+    "closed_windows": ["80EEB"],
+    "landed_cost": 1890000
+  },
+  "latency_ms": 2140,
+  "prompt_tokens": 1820,
+  "completion_tokens": 210,
+  "error": null
+}

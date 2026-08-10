@@ -21,7 +21,7 @@ export default function Navbar() {
     <nav className="navbar">
       <div className="navbar-container">
         {/* Logo */}
-        <Link to="/" className="navbar-logo">
+        <Link to="/dashboard" className="navbar-logo">
           <span className="logo-icon">₹</span>
           <span className="logo-text">FinSage</span>
         </Link>

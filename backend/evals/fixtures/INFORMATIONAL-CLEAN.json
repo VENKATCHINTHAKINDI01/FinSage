@@ -1,0 +1,14 @@
+{
+  "_comment": "The common case: a straightforward computation, correctly reported. Most answers should look like this, and the harness must not manufacture findings on them.",
+  "agent": "analyst",
+  "query": "What is my tax for this year?",
+  "profile": {"fy": "2026-27", "regime": "new", "salary": 1275000},
+  "tool_results": [
+    {"tool": "compute_tax", "success": true,
+     "result": {"gross_total_income": "1275000.00", "standard_deduction": "75000.00",
+                "taxable_income": "1200000.00", "tax_on_slabs": "60000.00",
+                "rebate_87a": "60000.00", "total_tax": "0.00"}}
+  ],
+  "output_text": "You owe nothing this year. Your salary of ₹12,75,000 less the ₹75,000 standard deduction leaves taxable income of ₹12,00,000, which is exactly the ceiling for the rebate under section 87A. The slab tax of ₹60,000 is fully cancelled by that rebate, so your total tax is ₹0.",
+  "error": null
+}

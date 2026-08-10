@@ -11,7 +11,7 @@ import logging
 from typing import Dict, Any, List
 from datetime import datetime
 
-from backend.agents.base_agent import TaxAgent, AgentOutput
+from backend.agents.base_agent import TaxAgent, AgentOutput, confidence_score, derive_confidence
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +62,7 @@ class EligibilityVerifierAgent(TaxAgent):
                 return self._create_output(
                     result={"message": "No specific scheme mentioned. Which scheme would you like to verify?"},
                     status="info",
-                    confidence=0.5,
+                    confidence=confidence_score(derive_confidence()),
                     reasoning="No scheme code extracted from the query",
                     execution_time_ms=execution_time
                 )
@@ -138,7 +138,7 @@ class EligibilityVerifierAgent(TaxAgent):
             return self._create_output(
                 result=result,
                 status="success",
-                confidence=0.90 if eligible else 0.85,
+                confidence=confidence_score(derive_confidence()) if eligible else 0.85,
                 reasoning=f"Eligibility verification completed for scheme {scheme_code}.",
                 execution_time_ms=execution_time
             )
@@ -150,7 +150,7 @@ class EligibilityVerifierAgent(TaxAgent):
             return self._create_output(
                 result={"error": str(e)},
                 status="error",
-                confidence=0.0,
+                confidence=0.0,  # execution failed — not a score
                 reasoning=f"Error: {str(e)}",
                 execution_time_ms=execution_time
             )

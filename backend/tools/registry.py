@@ -59,6 +59,10 @@ class ToolExecutor:
         self.rag_retriever = ToolRAGRetriever()
         self.online_search = OnlineWebSearchTool()
         
+        # Data validator for cross-checking results
+        from backend.tools.data_validator import DataValidator
+        self.validator = DataValidator()
+        
         # Tool registry
         self.tools = {
             # Calculation tools
@@ -129,7 +133,34 @@ class ToolExecutor:
             "web_search_tavily": self.web_search_tavily,
         }
         
-        self.logger.info(f"Tool registry initialized with {len(self.tools)} tools")
+        self.logger.info(f"Tool registry initialized with {len(self.tools)} tools (with validation)")
+    
+    async def execute_tool(self, tool_name: str, **kwargs) -> Dict[str, Any]:
+        """Execute a tool by name with validation wrapper."""
+        if tool_name not in self.tools:
+            return {
+                "success": False,
+                "error": f"Tool '{tool_name}' not found",
+                "validated": False,
+                "validation_warnings": [f"Unknown tool: {tool_name}"]
+            }
+        
+        try:
+            result = await self.tools[tool_name](**kwargs)
+            
+            # Run validation on the result
+            validated_result, report = self.validator.validate_tool_result(tool_name, result)
+            return validated_result
+            
+        except Exception as e:
+            self.logger.error(f"Tool execution error ({tool_name}): {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "tool": tool_name,
+                "validated": False,
+                "validation_warnings": [f"Execution error: {str(e)}"]
+            }
     
     # ======================================================================
     # CALCULATION TOOLS

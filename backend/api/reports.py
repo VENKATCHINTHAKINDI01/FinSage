@@ -229,7 +229,7 @@ async def generate_report(
         }
     
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise  # DEM-008: handled globally; str(e) must not reach the client
 
 
 # ===== ENDPOINT 2: Get Health Score =====
@@ -409,7 +409,7 @@ async def get_health_score(
             }
     
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise  # DEM-008: handled globally; str(e) must not reach the client
 
 
 # ===== ENDPOINT 3: Get Reports List =====
@@ -430,4 +430,4 @@ async def get_reports_list(
             "reports": reports
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise  # DEM-008: handled globally; str(e) must not reach the client

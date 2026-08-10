@@ -13,7 +13,7 @@ from datetime import datetime, date
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
-from backend.agents.base_agent import TaxAgent, AgentOutput
+from backend.agents.base_agent import TaxAgent, AgentOutput, confidence_score, derive_confidence
 from backend.db.orm_models import ITRFiling
 from backend.services.india_tax_data_fetcher import india_tax_data
 
@@ -187,7 +187,7 @@ class ITRHelperAgent(TaxAgent):
             return self._create_output(
                 result=result,
                 status="success",
-                confidence=0.92,
+                confidence=confidence_score(derive_confidence()),
                 reasoning=f"Identified {applicable_form} as the applicable tax filing form.",
                 execution_time_ms=execution_time
             )
@@ -199,7 +199,7 @@ class ITRHelperAgent(TaxAgent):
             return self._create_output(
                 result={"error": str(e)},
                 status="error",
-                confidence=0.0,
+                confidence=0.0,  # execution failed — not a score
                 reasoning=f"Error providing ITR guidance: {str(e)}",
                 execution_time_ms=execution_time
             )

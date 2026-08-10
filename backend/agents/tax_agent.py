@@ -5,15 +5,13 @@ Tax deduction agent - identifies deductible expenses and calculates savings.
 from typing import Dict, Any
 import logging
 import time
-from groq import Groq
 
-from backend.agents.base_agent import TaxAgent, AgentOutput
+from backend.agents.base_agent import TaxAgent, AgentOutput, confidence_score, derive_confidence
 from backend.config import settings
+from backend.llm import get_llm
 
 logger = logging.getLogger(__name__)
 
-# Initialize Groq client
-client = Groq(api_key=settings.llm.api_key)
 
 
 class TaxDeductionAgent(TaxAgent):
@@ -79,7 +77,7 @@ class TaxDeductionAgent(TaxAgent):
             return self._create_output(
                 result=result,
                 status="success",
-                confidence=0.85,
+                confidence=confidence_score(derive_confidence()),
                 reasoning="Identified deductible expenses based on user's situation",
                 execution_time_ms=execution_time
             )
@@ -91,7 +89,7 @@ class TaxDeductionAgent(TaxAgent):
             return self._create_output(
                 result={"error": str(e)},
                 status="error",
-                confidence=0.0,
+                confidence=0.0,  # execution failed — not a score
                 reasoning=f"Error during analysis: {str(e)}",
                 execution_time_ms=execution_time
             )
@@ -134,13 +132,9 @@ Respond in JSON format:
 Important: Respond ONLY with valid JSON."""
 
         try:
-            message = client.chat.completions.create(
-                model=settings.llm.model,
-                max_tokens=1000,
-                messages=[{"role": "user", "content": prompt}]
-            )
+            message = await get_llm().complete(prompt, max_tokens=1000)
             
-            response_text = message.choices[0].message.content.strip()
+            response_text = message.text.strip()
             if "```json" in response_text:
                 response_text = response_text.split("```json")[1].split("```")[0].strip()
             elif "```" in response_text:

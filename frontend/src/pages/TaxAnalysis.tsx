@@ -1,10 +1,9 @@
 import { useState, useEffect } from 'react';
 import AppLayout from '../components/shared/AppLayout';
-import { Card, SectionHeading, DemoBadge, Badge } from '../components/ui/Primitives';
+import { Card, SectionHeading, Badge } from '../components/ui/Primitives';
 import { DeductionPie } from '../components/shared/Charts';
 import { useApiData } from '../hooks/useApiData';
 import { calculateAdvancedTax } from '../api/services';
-import { mockTaxSummary, mockDeductionBreakdown } from '../utils/mockData';
 import { formatINR, formatPercent } from '../utils/format';
 import {
   Calculator, TrendingDown, PiggyBank, RefreshCw, ArrowRight, CheckCircle, AlertCircle,
@@ -54,15 +53,15 @@ function computeTax(income: number, deductions: number, regime: 'new' | 'old') {
 }
 
 export default function TaxAnalysis() {
-  const { data, isDemo } = useApiData(() => calculateAdvancedTax({}), mockTaxSummary, []);
-  const t = data?.tax_calculation ? data : mockTaxSummary;
+  const state = useApiData<any>(() => calculateAdvancedTax({}), []);
+  const t: any = state.data ?? {};
 
   const { profile } = useProfileStore();
   const profileTax = calculateTax(profile);
   const hasProfile = profileTax.grossIncome > 0;
 
-  const [income, setIncome] = useState(hasProfile ? profileTax.grossIncome : t.gross_income);
-  const [deductions, setDeductions] = useState(hasProfile ? profileTax.totalDeductions - (profile.taxRegime === 'new' ? STD_DEDUCTION_NEW : STD_DEDUCTION_OLD) : (t.deductions?.total_claimed || 218000));
+  const [income, setIncome] = useState(hasProfile ? profileTax.grossIncome : (t.gross_income ?? 0));
+  const [deductions, setDeductions] = useState(hasProfile ? profileTax.totalDeductions - (profile.taxRegime === 'new' ? STD_DEDUCTION_NEW : STD_DEDUCTION_OLD) : (t.deductions?.total_claimed ?? 0));
   const [regime, setRegime] = useState<'new' | 'old'>(profile.taxRegime || 'new');
 
   useEffect(() => {
@@ -82,11 +81,10 @@ export default function TaxAnalysis() {
     { name: 'Sec 24b Home Loan', value: Math.min(profile.homeLoanInterest, SECTION_24B_LIMIT), limit: SECTION_24B_LIMIT },
     { name: '80E Edu Loan', value: profile.eduLoanInterest, limit: null },
     { name: 'HRA + LTA', value: profile.hra + profile.lta, limit: null },
-  ].filter((d) => d.value > 0) : mockDeductionBreakdown;
+  ].filter((d) => d.value > 0) : [];
 
   return (
     <AppLayout title="Tax Analysis" subtitle={`Income, deductions & live what-if calculator · ${TAX_YEAR} / ${ASSESSMENT_YEAR}`}>
-      <div className="flex justify-end mb-4"><DemoBadge show={isDemo && !hasProfile} /></div>
 
       {/* Profile-sourced summary */}
       {hasProfile && (

@@ -5,11 +5,14 @@ Tools Module - Agent Tools Layer
 All tools available to agents.
 """
 
+# DEM-006: `BusinessIncomeTaxCalculator` and `ComprehensiveTaxCalculator` were
+# removed along with the rest of this module's private tax tables. Nothing
+# imported either of them, and both re-derived slab tax rather than calling a
+# shared engine. Business income is an income head on TaxInput; the
+# "comprehensive" case is what compute_tax already does.
 from .calculation import (
-    TaxCalculationEngine,
     CapitalGainsTaxCalculator,
-    BusinessIncomeTaxCalculator,
-    ComprehensiveTaxCalculator
+    TaxCalculationEngine,
 )
 
 from .database import (
@@ -34,6 +37,14 @@ from .reports_notifications import (
     ReportFormatEnum
 )
 
+from .data_validator import (
+    DataValidator,
+    ValidationReport,
+    WebDataValidator,
+    LLMResponseValidator,
+    FinancialDataValidator
+)
+
 from .registry import ToolExecutor
 
 __all__ = [
@@ -54,5 +65,10 @@ __all__ = [
     "ExportTool",
     "ToolExecutor",
     "AnalysisType",
-    "ReportFormatEnum"
+    "ReportFormatEnum",
+    "DataValidator",
+    "ValidationReport",
+    "WebDataValidator",
+    "LLMResponseValidator",
+    "FinancialDataValidator"
 ]

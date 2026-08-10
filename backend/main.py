@@ -34,17 +34,67 @@ async def lifespan(app: FastAPI):
     logger.info(f"Environment: {settings.environment}")
     logger.info(f"Debug: {settings.debug}")
     
-    # Run database initialization & migrations dynamically
+    # ── Startup Health Checks ─────────────────────────────────────────
+    logger.info("🔍 Running startup health checks...")
+    
+    # Check Groq API key
+    if settings.llm.api_key and settings.llm.api_key != "":
+        logger.info("✅ Groq API key configured")
+    else:
+        logger.warning("⚠️ Groq API key missing — LLM features will not work")
+    
+    # Check Tavily API key
+    import os
+    tavily_key = os.getenv("SEARCH_TAVILY_API_KEY") or os.getenv("TAVILY_API_KEY")
+    if tavily_key and not tavily_key.startswith("your_"):
+        logger.info("✅ Tavily API key configured — live web search enabled")
+    else:
+        logger.warning("⚠️ Tavily API key missing — using fallback mock search")
+    
+    # Check Redis connectivity
+    try:
+        from backend.db.redis_client import get_redis
+        redis_client = await get_redis()
+        if redis_client:
+            await redis_client.ping()
+            logger.info("✅ Redis connected")
+        else:
+            logger.warning("⚠️ Redis not available — caching disabled")
+    except Exception as redis_err:
+        logger.warning(f"⚠️ Redis connection failed: {redis_err} — caching disabled")
+    
+    # Check Qdrant connectivity
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(f"{settings.qdrant.url}/collections")
+            if resp.status_code == 200:
+                logger.info("✅ Qdrant vector DB connected")
+            else:
+                logger.warning(f"⚠️ Qdrant returned status {resp.status_code} — RAG search may not work")
+    except Exception as qdrant_err:
+        logger.warning(f"⚠️ Qdrant not reachable: {qdrant_err} — RAG search will use fallback")
+    
+    logger.info("🔍 Health checks complete")
+    
+    # DEM-007: the ALTER TABLE that used to run here is gone.
+    #
+    # It executed `ADD COLUMN IF NOT EXISTS profile_data JSONB` on EVERY
+    # startup, while Alembic sat beside it with three revisions. With more than
+    # one replica booting at once those statements race, and schema drift
+    # becomes invisible because the app repairs it silently on restart.
+    #
+    # Alembic owns the schema. Run `alembic upgrade head` as a deploy step.
     from backend.db.postgres import get_engine
-    from sqlalchemy import text
     try:
         engine = await get_engine()
         async with engine.begin() as conn:
-            logger.info("Running database migration checks...")
-            await conn.execute(text("ALTER TABLE financial_profiles ADD COLUMN IF NOT EXISTS profile_data JSONB;"))
-            logger.info("Database migration checks complete")
+            from sqlalchemy import text as _sql
+            row = await conn.execute(_sql("SELECT 1"))
+            row.scalar()
+        logger.info("Database reachable")
     except Exception as db_err:
-        logger.error(f"Database migration check failed: {db_err}")
+        logger.error(f"Database unreachable at startup: {db_err}")
         
     # Initialize tool components
     from backend.orchestrator.graph import AsyncSessionProxy
@@ -191,6 +241,11 @@ app = FastAPI(
     redoc_url="/redoc" if settings.debug else None,
     lifespan=lifespan,
 )
+
+# DEM-008: correlation ids in, raw exception text out.
+from backend.middleware.errors import install_error_handlers
+
+install_error_handlers(app)
 
 # Add CORS middleware
 app.add_middleware(

@@ -11,25 +11,47 @@ import SmartSavings from './pages/SmartSavings';
 import Login from './pages/Login';
 import Signup from './pages/Register';
 import ForgotPassword from './pages/ForgotPassword';
+import Landing from './pages/Landing';
 import { ProtectedRoute, PublicOnlyRoute } from './components/auth/RouteGuards';
+import PageTransition from './components/common/PageTransition';
 
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-        <Route path="/tax-analysis" element={<ProtectedRoute><TaxAnalysis /></ProtectedRoute>} />
-        <Route path="/smart-savings" element={<ProtectedRoute><SmartSavings /></ProtectedRoute>} />
-        <Route path="/compliance" element={<ProtectedRoute><Compliance /></ProtectedRoute>} />
-        <Route path="/itr-guide" element={<ProtectedRoute><ITRGuide /></ProtectedRoute>} />
-        <Route path="/health-score" element={<ProtectedRoute><HealthScore /></ProtectedRoute>} />
-        <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
-        <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
-        <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
-        <Route path="/login" element={<PublicOnlyRoute><Login /></PublicOnlyRoute>} />
-        <Route path="/register" element={<PublicOnlyRoute><Signup /></PublicOnlyRoute>} />
-        <Route path="/signup" element={<PublicOnlyRoute><Signup /></PublicOnlyRoute>} />
-        <Route path="/forgot-password" element={<PublicOnlyRoute><ForgotPassword /></PublicOnlyRoute>} />
+        {/* Public Landing Page — unauthenticated users see this at / */}
+        <Route path="/" element={
+          <PublicOnlyRoute>
+            <PageTransition variant="ocean">
+              <Landing />
+            </PageTransition>
+          </PublicOnlyRoute>
+        } />
+
+        {/* Dashboard — authenticated users */}
+        <Route path="/dashboard" element={
+          <ProtectedRoute>
+            <PageTransition variant="warp">
+              <Dashboard />
+            </PageTransition>
+          </ProtectedRoute>
+        } />
+
+        {/* Feature Pages */}
+        <Route path="/tax-analysis" element={<ProtectedRoute><PageTransition variant="warp"><TaxAnalysis /></PageTransition></ProtectedRoute>} />
+        <Route path="/smart-savings" element={<ProtectedRoute><PageTransition variant="warp"><SmartSavings /></PageTransition></ProtectedRoute>} />
+        <Route path="/compliance" element={<ProtectedRoute><PageTransition variant="warp"><Compliance /></PageTransition></ProtectedRoute>} />
+        <Route path="/itr-guide" element={<ProtectedRoute><PageTransition variant="warp"><ITRGuide /></PageTransition></ProtectedRoute>} />
+        <Route path="/health-score" element={<ProtectedRoute><PageTransition variant="warp"><HealthScore /></PageTransition></ProtectedRoute>} />
+        <Route path="/reports" element={<ProtectedRoute><PageTransition variant="warp"><Reports /></PageTransition></ProtectedRoute>} />
+        <Route path="/settings" element={<ProtectedRoute><PageTransition variant="fade"><Settings /></PageTransition></ProtectedRoute>} />
+        <Route path="/profile" element={<ProtectedRoute><PageTransition variant="fade"><Profile /></PageTransition></ProtectedRoute>} />
+
+        {/* Auth Pages */}
+        <Route path="/login" element={<PublicOnlyRoute><PageTransition variant="ocean"><Login /></PageTransition></PublicOnlyRoute>} />
+        <Route path="/register" element={<PublicOnlyRoute><PageTransition variant="ocean"><Signup /></PageTransition></PublicOnlyRoute>} />
+        <Route path="/signup" element={<PublicOnlyRoute><PageTransition variant="ocean"><Signup /></PageTransition></PublicOnlyRoute>} />
+        <Route path="/forgot-password" element={<PublicOnlyRoute><PageTransition variant="ocean"><ForgotPassword /></PageTransition></PublicOnlyRoute>} />
       </Routes>
     </BrowserRouter>
   );

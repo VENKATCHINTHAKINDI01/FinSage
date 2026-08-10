@@ -125,13 +125,46 @@ class AgentOrchestrator:
                         "error": str(e)
                     }
             
+            # Aggregate validation reports from all agents
+            all_warnings = []
+            all_corrections = []
+            all_sources = []
+            confidence_scores = []
+            
+            for agent_name, agent_result in results.items():
+                v_report = None
+                if hasattr(agent_result, "validation_report") and agent_result.validation_report:
+                    v_report = agent_result.validation_report
+                elif isinstance(agent_result, dict) and "validation_report" in agent_result:
+                    v_report = agent_result["validation_report"]
+                
+                if v_report and isinstance(v_report, dict):
+                    all_warnings.extend(v_report.get("warnings", []))
+                    all_corrections.extend(v_report.get("corrections_applied", []))
+                    all_sources.extend(v_report.get("sources_verified", []))
+                    cs = v_report.get("confidence_score")
+                    if cs is not None:
+                        confidence_scores.append(cs)
+            
+            avg_confidence = sum(confidence_scores) / len(confidence_scores) if confidence_scores else 0.8
+            
+            validation_summary = {
+                "sources_verified": len(all_sources),
+                "total_warnings": len(all_warnings),
+                "warnings": all_warnings[:10],  # Top 10
+                "corrections_applied": all_corrections[:10],
+                "avg_confidence": round(avg_confidence, 2),
+                "agents_validated": len(confidence_scores),
+            }
+            
             # Return orchestration result
             return {
                 "user_query": user_query,
                 "agents_invoked": agents_to_invoke,
                 "agent_results": results,
                 "execution_log": execution_log,
-                "tools_available": len(self.tools.list_tools()) if self.tools else 0
+                "tools_available": len(self.tools.list_tools()) if self.tools else 0,
+                "validation_summary": validation_summary
             }
         
         except Exception as e:
@@ -139,7 +172,8 @@ class AgentOrchestrator:
             return {
                 "error": str(e),
                 "user_query": user_query,
-                "agent_results": {}
+                "agent_results": {},
+                "validation_summary": {"avg_confidence": 0.0, "total_warnings": 1, "warnings": [str(e)]}
             }
 
 

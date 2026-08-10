@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import AppLayout from '../components/shared/AppLayout';
-import { Card, SectionHeading, Badge, DemoBadge } from '../components/ui/Primitives';
+import { Card, SectionHeading, Badge } from '../components/ui/Primitives';
 import { useApiData } from '../hooks/useApiData';
+import { ErrorState, LoadingState } from '../components/shared/DataState';
 import { getNotificationPreferences, setNotificationPreferences, getNotificationHistory } from '../api/services';
-import { mockNotificationPrefs } from '../utils/mockData';
 import { Mail, Send, Bell, Check } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import clsx from 'clsx';
@@ -104,14 +104,20 @@ interface NotificationItem {
 }
 
 export default function Settings() {
-  const { data: prefs, isDemo } = useApiData(getNotificationPreferences, mockNotificationPrefs, []);
-  const { data: history } = useApiData(getNotificationHistory, { notifications: [] }, []);
-  const p = prefs?.preferences || mockNotificationPrefs.preferences;
+  const state = useApiData<any>(getNotificationPreferences, []);
+  if (state.loading) return <AppLayout title="Settings"><LoadingState /></AppLayout>;
+  if (state.error)
+    return (
+      <AppLayout title="Settings">
+        <ErrorState error={state.error} onRetry={state.refetch} what="your notification preferences" />
+      </AppLayout>
+    );
+  const p: any = (state.data as any)?.preferences ?? {};
+  const { data: history } = useApiData<any>(getNotificationHistory, []);
   const notifications = (history?.notifications || []) as NotificationItem[];
 
   return (
     <AppLayout title="Notifications" subtitle="Choose how and when FinSage AI reaches you">
-      <div className="flex justify-end mb-4"><DemoBadge show={isDemo} /></div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-6 stagger">
         <ChannelCard channelKey="email" icon={Mail} title="Email" description="Weekly tips, deadline reminders, reports" initial={p.email} />

@@ -1,0 +1,438 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# FY 2026-27  ·  AY 2027-28  ·  Income-tax Act, 2025
+#
+# Rules are DATA. Adding a financial year is one new file plus one golden-test
+# file — no Python changes. v1 spread these constants across seven modules that
+# disagreed with each other and then went two years stale.
+#
+# Every figure here must be re-verified against an official source before
+# meta.verified_on ages past conventions.freshness_policy_days in feature.json.
+# scripts/verify_freshness.py fails the build when it does.
+# ═══════════════════════════════════════════════════════════════════════════
+
+meta:
+  financial_year: "2026-27"
+  assessment_year: "2027-28"
+  effective_from: "2026-04-01"
+  effective_to: "2027-03-31"
+  governing_act: "Income-tax Act, 2025"
+  act_note: >
+    The Income-tax Act, 2025 came into force on 1 April 2026, replacing the
+    1961 Act. Section numbering changed throughout (819 sections became 536)
+    while the underlying policy largely did not. Every citation below carries
+    both numberings; see aliases_1961_to_2025.yaml.
+  verified_on: "2026-08-09"
+  sources:
+    - https://www.incometax.gov.in/
+    - https://www.incometaxindia.gov.in/
+    - https://www.pib.gov.in/PressReleasePage.aspx?PRID=2248005
+  budget_note: >
+    Budget 2026 made no change to slabs or rates for either regime; the
+    FY 2025-26 structure continues unchanged.
+
+# ── Rounding ────────────────────────────────────────────────────────────────
+rounding:
+  total_income_nearest: 10      # legacy s.288A
+  tax_payable_nearest: 10       # legacy s.288B
+  note: >
+    Published worked examples usually omit statutory rounding, so the engine
+    reports both the exact figure and the rounded one rather than silently
+    choosing whichever matches a particular source.
+
+# ── Health & education cess ─────────────────────────────────────────────────
+cess:
+  rate: "0.04"
+  name: Health and Education Cess
+  applies_to: income_tax_plus_surcharge
+  legacy_section: "2(11)"
+
+# ═══════════════════════════════════════════════════════════════════════════
+# REGIMES
+# ═══════════════════════════════════════════════════════════════════════════
+regimes:
+
+  new:
+    name: New regime (default)
+    legacy_section: "115BAC"
+    is_default: true
+    # Seven bands. v1 shipped the FY 2023-24 structure (3L/6L/9L/12L with 30%
+    # starting at 12L), which overtaxes everyone above ~₹12L.
+    slabs:
+      - { upto: 400000, rate: "0.00" }
+      - { upto: 800000, rate: "0.05" }
+      - { upto: 1200000, rate: "0.10" }
+      - { upto: 1600000, rate: "0.15" }
+      - { upto: 2000000, rate: "0.20" }
+      - { upto: 2400000, rate: "0.25" }
+      - { upto: null, rate: "0.30" }
+    # No senior-citizen slab distinction under the new regime. v1 auto-switched
+    # to OLD-regime senior slabs at age 60 inside a new-regime table, taxing a
+    # 62-year-old on ₹30L at a 20% top rate instead of 30%.
+    age_bands: false
+    rebate_87a:
+      max_taxable_income: 1200000
+      max_rebate: 60000
+      marginal_relief: true
+      excludes_special_rate_income: true
+      excluded_sections: ["111A", "112A", "112", "115BB"]
+      legacy_section: "87A"
+      note: >
+        Rebate wipes out tax entirely up to ₹12,00,000 of taxable income. With
+        the ₹75,000 standard deduction that is ₹12,75,000 of gross salary.
+        Marginal relief caps tax just above the threshold at the excess over
+        ₹12,00,000. It does not apply against special-rate capital gains.
+    standard_deduction_salary: 75000
+    family_pension_deduction: 25000
+    surcharge_cap: "0.25"
+    allowed_deductions:
+      - standard_deduction_salary
+      - family_pension_deduction
+      - 80CCD_2
+      - 80CCH
+      - 80JJAA
+      - 24b_let_out
+    disallowed_note: >
+      80C, 80D, 80E, 80G, 80TTA, 80TTB, HRA (10(13A)), LTA and 24(b) on a
+      self-occupied property are all unavailable under the new regime.
+
+  old:
+    name: Old regime (opt-in)
+    is_default: false
+    slabs:
+      - { upto: 250000, rate: "0.00" }
+      - { upto: 500000, rate: "0.05" }
+      - { upto: 1000000, rate: "0.20" }
+      - { upto: null, rate: "0.30" }
+    age_bands: true
+    slabs_senior: # resident, 60 to 79
+      - { upto: 300000, rate: "0.00" }
+      - { upto: 500000, rate: "0.05" }
+      - { upto: 1000000, rate: "0.20" }
+      - { upto: null, rate: "0.30" }
+    slabs_super_senior: # resident, 80 and above
+      - { upto: 500000, rate: "0.00" }
+      - { upto: 1000000, rate: "0.20" }
+      - { upto: null, rate: "0.30" }
+    rebate_87a:
+      max_taxable_income: 500000
+      max_rebate: 12500
+      marginal_relief: false
+      excludes_special_rate_income: true
+      excluded_sections: ["112A"]
+      legacy_section: "87A"
+    standard_deduction_salary: 50000
+    family_pension_deduction: 15000
+    surcharge_cap: "0.37"
+    allowed_deductions: all_chapter_via
+
+# ── Surcharge ───────────────────────────────────────────────────────────────
+# Marginal relief applies at EVERY threshold. v1 had none, creating a ~₹1.4
+# lakh cliff at ₹50,00,001 — earning one more rupee made you materially poorer.
+surcharge:
+  marginal_relief: true
+  bands:
+    - { above: 5000000, upto: 10000000, rate: "0.10" }
+    - { above: 10000000, upto: 20000000, rate: "0.15" }
+    - { above: 20000000, upto: 50000000, rate: "0.25" }
+    - { above: 50000000, upto: null, rate: "0.37" }
+  special_income_cap: "0.15"
+  special_income_sections: ["111A", "112A", "112", "115AD"]
+  special_income_note: >
+    Surcharge on capital gains under 111A/112A/112 and on dividend income is
+    capped at 15% regardless of total income.
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CHAPTER VI-A DEDUCTIONS  (old regime unless marked otherwise)
+# ═══════════════════════════════════════════════════════════════════════════
+deductions:
+
+  80C:
+    name: Life insurance, ELSS, PPF, NSC, principal repayment, tuition fees
+    limit: 150000
+    combined_ceiling: 80CCE
+    regimes: [old]
+    legacy_section: "80C"
+
+  80CCC:
+    name: Pension fund contribution
+    limit: 150000
+    combined_ceiling: 80CCE
+    regimes: [old]
+
+  80CCD_1:
+    name: NPS — employee contribution
+    limit: 150000
+    combined_ceiling: 80CCE
+    regimes: [old]
+    note: >
+      Sits INSIDE the ₹1,50,000 aggregate ceiling of s.80CCE together with 80C
+      and 80CCC. v1 modelled 80CCD as a separate ₹1,50,000, double-counting the
+      allowance.
+
+  80CCD_1B:
+    name: NPS — additional self contribution
+    limit: 50000
+    combined_ceiling: null
+    regimes: [old]
+    note: Over and above the 80CCE ceiling.
+
+  80CCD_2:
+    name: NPS — employer contribution
+    limit: null
+    percent_of_salary_new_regime: "0.14"
+    percent_of_salary_old_regime: "0.10"
+    percent_of_salary_govt_employee: "0.14"
+    regimes: [old, new]
+    note: >
+      One of the very few deductions that survives into the new regime, and the
+      single largest lever available to a salaried taxpayer who has opted in.
+      Not modelled at all in v1.
+
+  # 80D is a four-way matrix, not the flat ₹1,50,000 v1 used.
+  80D:
+    name: Health insurance premium
+    regimes: [old]
+    self_family:
+      standard: 25000
+      if_senior: 50000
+    parents:
+      standard: 25000
+      if_senior: 50000
+    preventive_health_checkup:
+      limit: 5000
+      note: Within the limits above, not additional.
+    absolute_maximum: 100000
+    note: >
+      Maximum ₹1,00,000 arises only where both the assessee and the parents are
+      senior citizens (₹50,000 + ₹50,000).
+
+  80DD:
+    name: Maintenance of a dependant with disability
+    limit: 75000
+    limit_severe: 125000
+    regimes: [old]
+
+  80DDB:
+    name: Treatment of specified diseases
+    limit: 40000
+    limit_senior: 100000
+    regimes: [old]
+    note: >
+      ₹1,00,000 applies only where the patient is a senior citizen. v1 used
+      ₹1,00,000 unconditionally.
+
+  80E:
+    name: Interest on education loan
+    limit: null
+    max_years: 8
+    regimes: [old]
+
+  80EE:
+    name: Interest on housing loan (first-time buyer)
+    limit: 50000
+    regimes: [old]
+    window: { field: loan_sanction_date, from: "2016-04-01", to: "2017-03-31" }
+
+  80EEA:
+    name: Interest on housing loan (affordable housing)
+    limit: 150000
+    regimes: [old]
+    window: { field: loan_sanction_date, from: "2019-04-01", to: "2022-03-31" }
+
+  80EEB:
+    name: Interest on electric vehicle loan
+    limit: 150000
+    regimes: [old]
+    window: { field: loan_sanction_date, from: "2019-01-01", to: "2023-03-31" }
+    note: >
+      THE canonical closed-window trap. The section still exists and still
+      reads "₹1,50,000", so every naive system quotes it to someone buying an
+      EV today. The sanction window closed on 31 March 2023.
+
+  80G:
+    name: Donations to specified funds and institutions
+    limit: null
+    rates: ["1.00", "0.50"]
+    qualifying_limit_percent_of_agti: "0.10"
+    regimes: [old]
+    note: Cash donations above ₹2,000 are not deductible.
+
+  80GG:
+    name: Rent paid where no HRA is received
+    limit_annual: 60000
+    percent_of_income: "0.25"
+    excess_over_income_percent: "0.10"
+    regimes: [old]
+    mutually_exclusive_with: ["10_13A"]
+
+  80TTA:
+    name: Interest on savings account
+    limit: 10000
+    regimes: [old]
+    max_age: 59
+
+  80TTB:
+    name: Interest on deposits — senior citizens
+    limit: 50000
+    regimes: [old]
+    min_age: 60
+    mutually_exclusive_with: ["80TTA"]
+
+  80U:
+    name: Self with disability
+    limit: 75000
+    limit_severe: 125000
+    regimes: [old]
+
+  10_13A:
+    name: House rent allowance
+    computed: hra_exemption
+    regimes: [old]
+    legacy_section: "10(13A)"
+    formula_note: >
+      Least of: actual HRA received; rent paid minus 10% of salary; 50% of
+      salary in a metro or 40% elsewhere.
+    metros: [Mumbai, Delhi, Kolkata, Chennai]
+
+  24b:
+    name: Interest on housing loan
+    limit_self_occupied: 200000
+    limit_let_out: null
+    loss_set_off_cap: 200000
+    regimes: [old]
+    legacy_section: "24(b)"
+
+  80CCE:
+    name: Aggregate ceiling for 80C + 80CCC + 80CCD(1)
+    limit: 150000
+    is_ceiling: true
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CAPITAL GAINS  (regime introduced 23 July 2024)
+# ═══════════════════════════════════════════════════════════════════════════
+capital_gains:
+  regime_change_date: "2024-07-23"
+
+  equity_stcg:
+    legacy_section: "111A"
+    rate: "0.20"
+    holding_months: 12
+    applies_to: Listed equity shares, equity-oriented funds, business trust units (STT paid)
+    note: >
+      A flat 20%, NOT the slab rate. v1 added equity STCG to total income and
+      applied slabs, which is wrong in both directions depending on bracket.
+
+  equity_ltcg:
+    legacy_section: "112A"
+    rate: "0.125"
+    holding_months: 12
+    annual_exemption: 125000
+    indexation: false
+    grandfather_date: "2018-01-31"
+    grandfather_note: >
+      For equity acquired before 31 Jan 2018, cost is stepped up to the higher
+      of actual cost and the fair market value on that date (capped at the sale
+      consideration).
+    note: >
+      12.5%, not the 20% v1 applied, and the ₹1,25,000 annual exemption was
+      absent entirely.
+
+  other_ltcg:
+    legacy_section: "112"
+    rate: "0.125"
+    holding_months: 24
+    indexation: false
+    note: Indexation abolished for transfers on or after 23 July 2024.
+
+  immovable_property_pre_23jul2024:
+    legacy_section: "112 proviso"
+    option_a: { rate: "0.125", indexation: false }
+    option_b: { rate: "0.20", indexation: true }
+    available_to: [resident_individual, resident_huf]
+    condition: acquired_before_2024_07_23
+    note: >
+      The taxpayer may take whichever is lower. The engine computes both and
+      states which it applied — this is the only surviving use of the CII.
+
+  debt_mutual_funds_post_apr2023:
+    rate: slab
+    note: Always short-term for units acquired on or after 1 April 2023.
+
+  set_off:
+    stcl_against: [STCG, LTCG]
+    ltcl_against: [LTCG]
+    carry_forward_years: 8
+    carry_forward_condition: return filed within the due date
+
+# ── Cost Inflation Index ────────────────────────────────────────────────────
+# Retained solely for grandfathered pre-23-July-2024 immovable property.
+cost_inflation_index:
+  "2001-02": 100
+  "2011-12": 184
+  "2012-13": 200
+  "2013-14": 220
+  "2014-15": 240
+  "2015-16": 254
+  "2016-17": 264
+  "2017-18": 272
+  "2018-19": 280
+  "2019-20": 289
+  "2020-21": 301
+  "2021-22": 317
+  "2022-23": 331
+  "2023-24": 348
+  "2024-25": 363
+  "2025-26": 376   # CBDT Notification 70/2025 dated 01-07-2025
+  "2026-27": 384   # CBDT Notification 85/2026 dated 15-07-2026
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PRESUMPTIVE TAXATION
+# ═══════════════════════════════════════════════════════════════════════════
+presumptive:
+  44AD:
+    name: Small business
+    turnover_limit: 20000000
+    turnover_limit_digital: 30000000
+    digital_receipts_threshold: "0.95"
+    rate_cash: "0.08"
+    rate_digital: "0.06"
+    lock_in_years: 5
+  44ADA:
+    name: Specified professions
+    gross_receipts_limit: 5000000
+    gross_receipts_limit_digital: 7500000
+    digital_receipts_threshold: "0.95"
+    rate: "0.50"
+  advance_tax_note: >
+    Presumptive taxpayers pay 100% of advance tax by 15 March in a single
+    instalment, not in four.
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ADVANCE TAX & INTEREST
+# ═══════════════════════════════════════════════════════════════════════════
+advance_tax:
+  threshold: 10000
+  senior_citizen_exempt_without_business_income: true
+  instalments:
+    - { due: "06-15", cumulative_percent: "0.15" }
+    - { due: "09-15", cumulative_percent: "0.45" }
+    - { due: "12-15", cumulative_percent: "0.75" }
+    - { due: "03-15", cumulative_percent: "1.00" }
+  interest:
+    234A: { rate_monthly: "0.01", on: unpaid tax, from: due date of return }
+    234B: { rate_monthly: "0.01", trigger_percent: "0.90" }
+    234C: { rate_monthly: "0.01", note: Shortfall per instalment }
+    244A: { rate_monthly: "0.005", note: Interest payable ON refunds }
+  refund_interest_note: >
+    Legacy s.244A is 0.5% per month. v1 used "1% per annum simplified",
+    understating refund interest by a factor of six.
+
+# ═══════════════════════════════════════════════════════════════════════════
+# FILING
+# ═══════════════════════════════════════════════════════════════════════════
+deadlines:
+  itr_non_audit: "2027-07-31"
+  itr_audit: "2027-10-31"
+  itr_transfer_pricing: "2027-11-30"
+  belated_revised: "2027-12-31"
+  updated_return_itr_u_months: 48

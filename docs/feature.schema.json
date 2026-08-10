@@ -1,0 +1,211 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://finsage.ai/schemas/feature.schema.json",
+  "title": "FinSage AI feature registry",
+  "description": "Machine-readable source of truth for what exists, what it depends on, what proves it works, and when its legal basis was last verified. PROGRESS.md is generated from this file.",
+  "type": "object",
+  "required": [
+    "project",
+    "version",
+    "generated_at",
+    "plan_ref",
+    "fy_supported",
+    "governing_act",
+    "conventions",
+    "phases",
+    "features"
+  ],
+  "additionalProperties": false,
+
+  "properties": {
+    "$schema": { "type": "string" },
+    "project": { "type": "string" },
+    "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "generated_at": { "$ref": "#/definitions/isoDate" },
+    "plan_ref": { "type": "string" },
+    "review_ref": { "type": "string" },
+    "fy_supported": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "pattern": "^\\d{4}-\\d{2}$" }
+    },
+    "governing_act": { "type": "string" },
+
+    "conventions": {
+      "type": "object",
+      "required": ["status_vocabulary", "tier", "freshness_policy_days"],
+      "properties": {
+        "status_vocabulary": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/status" }
+        },
+        "status_notes": { "type": "string" },
+        "tier": { "type": "object" },
+        "freshness_policy_days": { "type": "integer", "minimum": 1, "maximum": 365 },
+        "freshness_note": { "type": "string" },
+        "invariants": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+
+    "phases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "gate", "status"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "integer", "minimum": 0 },
+          "name": { "type": "string", "minLength": 3 },
+          "gate": {
+            "type": "string",
+            "minLength": 10,
+            "description": "Objective, checkable exit condition. No phase starts before the previous gate is green."
+          },
+          "status": { "$ref": "#/definitions/status" }
+        }
+      }
+    },
+
+    "features": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/definitions/feature" }
+    }
+  },
+
+  "definitions": {
+    "isoDate": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+
+    "status": {
+      "type": "string",
+      "enum": [
+        "not_started",
+        "in_progress",
+        "blocked",
+        "implemented",
+        "tested",
+        "verified"
+      ],
+      "description": "Only 'verified' — legal basis confirmed against an official source — counts toward completion."
+    },
+
+    "featureId": {
+      "type": "string",
+      "pattern": "^(FND|CORE|DEM|AGT|DOC|PLN|PRC|EVD|PRD)-\\d{3}$"
+    },
+
+    "feature": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "phase",
+        "tier",
+        "status",
+        "description",
+        "deterministic",
+        "llm_involved",
+        "depends_on",
+        "acceptance_criteria",
+        "files",
+        "tests",
+        "risk",
+        "last_verified"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/definitions/featureId" },
+        "name": { "type": "string", "minLength": 3 },
+        "phase": { "type": "integer", "minimum": 0 },
+        "tier": { "type": "string", "enum": ["P0", "P1", "P2", "P3"] },
+        "status": { "$ref": "#/definitions/status" },
+        "description": { "type": "string", "minLength": 20 },
+
+        "deterministic": {
+          "type": "boolean",
+          "description": "Computation path contains no LLM and no non-reproducible input."
+        },
+        "llm_involved": {
+          "type": "boolean",
+          "description": "An LLM participates. Must never be true alongside deterministic:true — enforced by gen_progress.py."
+        },
+
+        "depends_on": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/featureId" },
+          "uniqueItems": true
+        },
+
+        "acceptance_criteria": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 10 },
+          "description": "Objective and checkable. 'Works well' is not acceptance criteria."
+        },
+
+        "rules_refs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Dotted paths into the rule packs. Presence requires at least one source and makes the feature subject to the freshness gate."
+        },
+
+        "legal_refs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["act"],
+            "additionalProperties": false,
+            "properties": {
+              "act": { "type": "string" },
+              "section": { "type": "string" },
+              "legacy_section": {
+                "type": "string",
+                "description": "Corresponding Income-tax Act 1961 section, for the transition period."
+              },
+              "window": { "type": "string" },
+              "note": { "type": "string" }
+            }
+          }
+        },
+
+        "sources": {
+          "type": "array",
+          "items": { "type": "string", "format": "uri", "pattern": "^https?://" }
+        },
+
+        "endpoints": { "type": "array", "items": { "type": "string" } },
+        "files": { "type": "array", "items": { "type": "string" } },
+
+        "tests": {
+          "type": "object",
+          "required": ["golden", "unit", "eval"],
+          "additionalProperties": false,
+          "properties": {
+            "golden": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Verified input-to-exact-output cases. Required for any feature producing a user-facing rupee figure."
+            },
+            "unit": { "type": "array", "items": { "type": "string" } },
+            "eval": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Agent eval scenario ids. Required for any feature with llm_involved:true."
+            }
+          }
+        },
+
+        "risk": { "type": "string", "minLength": 3 },
+
+        "last_verified": {
+          "oneOf": [{ "$ref": "#/definitions/isoDate" }, { "type": "null" }],
+          "description": "Date a human confirmed this feature's legal basis against an official source. CI fails when a feature with rules_refs exceeds conventions.freshness_policy_days."
+        }
+      }
+    }
+  }
+}

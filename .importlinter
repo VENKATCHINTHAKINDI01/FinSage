@@ -1,0 +1,90 @@
+; Architectural boundaries, enforced in CI.
+;   pip install import-linter
+;   lint-imports
+
+[importlinter]
+root_packages =
+    backend
+include_external_packages = True
+
+
+; ─────────────────────────────────────────────────────────────────────────────
+; The one that matters. backend.core produces every rupee figure in the
+; product; if it can reach the network, a database or an LLM, it stops being
+; deterministic and stops being exhaustively testable.
+; ─────────────────────────────────────────────────────────────────────────────
+[importlinter:contract:core-purity]
+name = backend.core is pure — no I/O, no persistence, no language models
+type = forbidden
+source_modules =
+    backend.core
+forbidden_modules =
+    backend.api
+    backend.agents
+    backend.db
+    backend.services
+    backend.rag
+    backend.tools
+    backend.orchestrator
+    backend.security
+    groq
+    openai
+    anthropic
+    langchain
+    langgraph
+    transformers
+    sentence_transformers
+    fastembed
+    onnxruntime
+    httpx
+    requests
+    aiohttp
+    sqlalchemy
+    asyncpg
+    psycopg2
+    redis
+    qdrant_client
+    boto3
+allow_indirect_imports = False
+
+
+; ─────────────────────────────────────────────────────────────────────────────
+; Dependencies point one way only. Prevents the circular import knots that
+; forced v1 into function-level imports scattered through main.py.
+; ─────────────────────────────────────────────────────────────────────────────
+[importlinter:contract:layering]
+name = Layered architecture — api > orchestrator > agents > tools > core
+type = layers
+layers =
+    backend.api
+    backend.orchestrator
+    backend.agents
+    backend.tools
+    backend.core
+ignore_imports =
+    ; TODO(DEM-006, AGT-003): v1 wires globals from main.py at lifespan and
+    ; several modules import upward to reach them. Removed in Phase 2/3.
+    backend.tools.* -> backend.db.*
+    backend.agents.* -> backend.rag.*
+    ; TODO(AGT-003): these three reach up into the orchestrator for the
+    ; request-scoped DB session held in a module-level ContextVar. Listed
+    ; individually rather than wildcarded so a NEW upward import still fails
+    ; the build — this is a shrinking exemption list, not an open door.
+    backend.agents.itr_helper -> backend.orchestrator.graph
+    backend.agents.compliance_checker -> backend.orchestrator.graph
+    backend.agents.advanced_calculator -> backend.orchestrator.graph
+
+
+; ─────────────────────────────────────────────────────────────────────────────
+; Agents explain; they do not calculate. Routing arithmetic through the tool
+; layer is what makes the numeric_provenance gate (AGT-004) meaningful.
+; ─────────────────────────────────────────────────────────────────────────────
+[importlinter:contract:agents-have-no-arithmetic-authority]
+name = Agents reach the core only through tools
+type = forbidden
+source_modules =
+    backend.agents
+forbidden_modules =
+    backend.core.tax_engine
+    backend.core.costing
+allow_indirect_imports = True

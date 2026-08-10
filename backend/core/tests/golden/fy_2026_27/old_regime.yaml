@@ -1,0 +1,80 @@
+# FY 2026-27 · old regime · age bands and the 37% surcharge band
+#
+# The old regime is where age actually matters. v1 applied these age bands
+# under the NEW regime, which is both wrong and in the wrong direction.
+
+- id: OR26-BELOW-EXEMPTION
+  fy: "2026-27"
+  regime: old
+  input: { salary: 300000, age: 30 }
+  expect: { taxable_income: 250000, total_tax: 0 }
+  verified_against: "₹2,50,000 basic exemption after ₹50,000 standard deduction"
+
+- id: OR26-REBATE-CEILING
+  fy: "2026-27"
+  regime: old
+  input: { other_sources: 500000, age: 30 }
+  expect: { tax_on_slabs: 12500, rebate_87a: 12500, total_tax: 0 }
+  verified_against: >
+    Old regime 87A: ₹12,500 rebate up to ₹5,00,000 taxable.
+    Slab: 2.5–5L @5% = 12,500, fully rebated.
+
+- id: OR26-NO-MARGINAL-RELIEF-ON-87A
+  fy: "2026-27"
+  regime: old
+  input: { other_sources: 510000, age: 30 }
+  expect: { tax_on_slabs: 14500, rebate_87a: 0, total_tax: 15080 }
+  verified_against: >
+    The old regime 87A has NO marginal relief, so there is a genuine cliff at
+    ₹5,00,001 — this is the law, not a bug. Slab 12,500 + (10,000 @20% = 2,000)
+    = 14,500; cess 580.
+
+- id: OR26-SENIOR-BAND
+  fy: "2026-27"
+  regime: old
+  input: { other_sources: 1000000, age: 65 }
+  expect: { tax_on_slabs: 110000, total_tax: 114400 }
+  verified_against: >
+    Senior (60–79) exemption is ₹3,00,000: 3–5L @5% = 10,000;
+    5–10L @20% = 100,000. Cess 4,400.
+
+- id: OR26-SUPER-SENIOR-BAND
+  fy: "2026-27"
+  regime: old
+  input: { other_sources: 1000000, age: 82 }
+  expect: { tax_on_slabs: 100000, total_tax: 104000 }
+  verified_against: >
+    Super-senior (80+) exemption is ₹5,00,000: 5–10L @20% = 100,000.
+    ₹10,400 less than the same income at age 65.
+
+- id: OR26-AGE-59-VS-60
+  fy: "2026-27"
+  regime: old
+  input: { other_sources: 1000000, age: 59 }
+  expect: { tax_on_slabs: 112500, total_tax: 117000 }
+  verified_against: >
+    Age 59 uses the regular ₹2,50,000 exemption: 2.5–5L @5% = 12,500;
+    5–10L @20% = 100,000. The boundary case for the senior band.
+
+- id: OR26-80C-ALLOWED
+  fy: "2026-27"
+  regime: old
+  input:
+    salary: 1500000
+    age: 35
+    deductions: { "80C": 150000, "80D": 25000 }
+  expect: { taxable_income: 1275000, tax_on_slabs: 195000, total_tax: 202800 }
+  verified_against: >
+    Old regime permits Chapter VI-A. 15,00,000 − 50,000 std − 1,50,000 (80C)
+    − 25,000 (80D) = 12,75,000. Slab 12,500 + 100,000 + (2,75,000 @30%
+    = 82,500) = 195,000; cess 7,800.
+
+- id: OR26-SURCHARGE-37PC-BAND
+  fy: "2026-27"
+  regime: old
+  input: { other_sources: 60000000, age: 40 }
+  expect: { surcharge: 6590625, total_tax: 25379250 }
+  verified_against: >
+    The old regime retains the 37% band above ₹5 crore, which the new regime
+    caps at 25%. Slab 1,78,12,500; surcharge 37% = 65,90,625; cess 9,76,125.
+    Compare NR26-SURCHARGE-CAP-25PC: ₹25.25 lakh more tax on the same income.

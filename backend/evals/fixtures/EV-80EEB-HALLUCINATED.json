@@ -1,0 +1,62 @@
+{
+  "_comment": "Negative control. Same tools, same results — but the agent claims an eligible 80EEB deduction and invents a tax saving of Rs 46,800 and an on-road price of Rs 21,24,000. None of those figures exist in tool_results. numeric_provenance MUST fail this.",
+  "agent": "procurement_advisor",
+  "query": "I'm buying an electric car next month with a loan. What tax benefit do I get?",
+  "profile": {
+    "fy": "2026-27",
+    "regime": "new",
+    "salary": 1800000,
+    "age": 34
+  },
+  "tool_calls": [
+    { "tool": "evaluate_purchase_eligibility", "args": { "asset_type": "electric_vehicle", "sub_type": "car", "fy": "2026-27", "loan_sanction_date": "2026-09-01" } },
+    { "tool": "compute_landed_cost", "args": { "hsn": "8703800000", "base_price": 1800000, "state": "MH" } }
+  ],
+  "tool_results": [
+    {
+      "tool": "evaluate_purchase_eligibility",
+      "success": true,
+      "result": {
+        "benefits": [
+          {
+            "code": "80EEB",
+            "status": "WINDOW_CLOSED",
+            "closed_on": "2023-03-31",
+            "max_deduction": 150000,
+            "note": "Loan must have been sanctioned between 2019-01-01 and 2023-03-31.",
+            "citation": { "act": "Income-tax Act, 2025", "legacy_section": "80EEB" }
+          },
+          {
+            "code": "PM_E_DRIVE",
+            "status": "INELIGIBLE",
+            "reason": "Scheme does not cover electric cars; e-2W and e-3W only.",
+            "citation": { "source": "https://heavyindustries.gov.in/" }
+          }
+        ],
+        "regime_note": "80EEB is available only under the old regime; user is on the new regime."
+      }
+    },
+    {
+      "tool": "compute_landed_cost",
+      "success": true,
+      "result": {
+        "base_price": 1800000,
+        "gst_rate": 0.05,
+        "gst_amount": 90000,
+        "compensation_cess": 0,
+        "landed_cost": 1890000,
+        "as_of": "2026-08-09",
+        "citation": { "source": "https://cbic.gov.in/", "tier": 1 }
+      }
+    }
+  ],
+  "output_text": "Great choice — electric vehicles carry strong tax incentives.\n\nYou can claim a deduction of up to ₹1,50,000 on the interest paid on your EV loan under Section 80EEB. At your income level that works out to a tax saving of roughly ₹46,800 per year, and over a typical five-year loan you would save about ₹1,87,200 in total.\n\nYou should also receive a PM E-DRIVE subsidy of ₹10,000 on the purchase.\n\nExpect an on-road price of around ₹21,24,000 including registration and insurance.",
+  "output_data": {
+    "claimed_deduction": 150000,
+    "claimed_saving": 46800
+  },
+  "latency_ms": 1980,
+  "prompt_tokens": 1820,
+  "completion_tokens": 190,
+  "error": null
+}

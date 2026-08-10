@@ -1,0 +1,188 @@
+# FY 2026-27 · new regime · verified against the slab table and s.87A mechanics
+# published at incometax.gov.in and cross-checked against the worked example in
+# the Section 87A marginal relief literature (taxable ₹12,10,000 → ₹10,000 tax).
+#
+# Every case states `verified_against`. An expected value nobody checked is
+# just the implementation restated back to itself.
+
+- id: NR26-NIL-BELOW-EXEMPTION
+  fy: "2026-27"
+  regime: new
+  input: { salary: 350000, age: 30 }
+  expect: { taxable_income: 275000, tax_on_slabs: 0, rebate_87a: 0, total_tax: 0 }
+  verified_against: "FY 2026-27 new regime slab table; below the ₹4,00,000 basic exemption"
+
+- id: NR26-FIRST-BAND-EDGE
+  fy: "2026-27"
+  regime: new
+  input: { salary: 475000, age: 30 }
+  expect: { taxable_income: 400000, tax_on_slabs: 0, total_tax: 0 }
+  verified_against: "exact top of the nil band after ₹75,000 standard deduction"
+
+- id: NR26-THE-V1-BUG
+  fy: "2026-27"
+  regime: new
+  input: { salary: 1100000, age: 34 }
+  expect: { taxable_income: 1025000, tax_on_slabs: 42500, rebate_87a: 42500, total_tax: 0 }
+  verified_against: >
+    Slab: 4–8L @5% = 20,000; 8–10.25L @10% = 22,500. Rebate u/s 87A cancels it.
+    v1 reported roughly ₹75,000 for this taxpayer because it had no rebate at all.
+
+- id: NR26-REBATE-CEILING
+  fy: "2026-27"
+  regime: new
+  input: { salary: 1275000, age: 34 }
+  expect:
+    taxable_income: 1200000
+    tax_on_slabs: 60000
+    rebate_87a: 60000
+    total_tax: 0
+  verified_against: >
+    The headline "₹12.75 lakh is tax-free": ₹12,00,000 rebate ceiling plus the
+    ₹75,000 salaried standard deduction.
+
+- id: NR26-MARGINAL-RELIEF-PUBLISHED-EXAMPLE
+  fy: "2026-27"
+  regime: new
+  input: { other_sources: 1210000, age: 34 }
+  expect:
+    taxable_income: 1210000
+    tax_on_slabs: 61500
+    rebate_87a: 51500
+    tax_after_rebate: 10000
+    cess: 400
+    total_tax: 10400
+  verified_against: >
+    Published s.87A marginal relief worked example: tax 61,500, excess over
+    ₹12,00,000 is 10,000, relief 51,500, tax payable 10,000 plus 4% cess.
+
+- id: NR26-MARGINAL-RELIEF-JUST-INSIDE
+  fy: "2026-27"
+  regime: new
+  input: { other_sources: 1200010, age: 34 }
+  expect: { tax_after_rebate: 10, cess: 0.40, total_tax: 10.40 }
+  verified_against: >
+    ₹10 above the ceiling — relief caps tax at exactly the excess, then 4% cess
+    applies on top of the relieved figure (cess is computed AFTER relief).
+
+- id: NR26-MARGINAL-RELIEF-CROSSOVER
+  fy: "2026-27"
+  regime: new
+  input: { other_sources: 1280000, age: 34 }
+  expect: { tax_on_slabs: 72000, rebate_87a: 0, total_tax: 74880 }
+  verified_against: >
+    Past the crossover (60,000 + 0.15E = E at about ₹12,70,588), so no relief.
+    Slab 60,000 + 80,000 @15% = 72,000; cess 2,880.
+
+- id: NR26-NO-AGE-BAND-AT-60
+  fy: "2026-27"
+  regime: new
+  input: { other_sources: 3000000, age: 62 }
+  expect: { total_tax: 499200 }
+  verified_against: >
+    The new regime has NO senior-citizen slab. v1 switched to an old-regime
+    senior table at age 60 and taxed this person at a 20% top rate.
+
+- id: NR26-NO-AGE-BAND-AT-60-CONTROL
+  fy: "2026-27"
+  regime: new
+  input: { other_sources: 3000000, age: 45 }
+  expect: { total_tax: 499200 }
+  verified_against: "identical to the age-62 case — proves no age band applies"
+
+- id: NR26-TOP-SLAB-ENTRY
+  fy: "2026-27"
+  regime: new
+  input: { other_sources: 2400000, age: 40 }
+  expect: { tax_on_slabs: 300000, total_tax: 312000 }
+  verified_against: >
+    20,000 + 40,000 + 60,000 + 80,000 + 100,000 = 300,000 at the exact top of
+    the 25% band; cess 12,000.
+
+- id: NR26-SURCHARGE-THRESHOLD-EXACT
+  fy: "2026-27"
+  regime: new
+  input: { other_sources: 5000000, age: 40 }
+  expect: { surcharge: 0, tax_on_slabs: 1080000, total_tax: 1123200 }
+  verified_against: "exactly ₹50,00,000 — surcharge applies only ABOVE the threshold"
+
+- id: NR26-SURCHARGE-MARGINAL-RELIEF
+  fy: "2026-27"
+  regime: new
+  input: { other_sources: 5050000, age: 40 }
+  expect:
+    tax_on_slabs: 1095000
+    surcharge: 35000
+    pre_cess_liability: 1130000
+    total_tax: 1175200
+  verified_against: >
+    Relief formula: liability 1,095,000 + 109,500 = 1,204,500; permitted
+    1,080,000 + 50,000 = 1,130,000; relief 74,500; surcharge 35,000.
+    Without relief v1 would charge ₹109,500 of surcharge here.
+
+- id: NR26-SURCHARGE-FULL-10PC
+  fy: "2026-27"
+  regime: new
+  input: { other_sources: 7000000, age: 40 }
+  expect: { surcharge: 168000, total_tax: 1921920 }
+  verified_against: "well past the relief zone; 10% of ₹16,80,000 tax"
+
+- id: NR26-SURCHARGE-CAP-25PC
+  fy: "2026-27"
+  regime: new
+  input: { other_sources: 60000000, age: 40 }
+  expect: { surcharge: 4395000, total_tax: 22854000 }
+  verified_against: >
+    New regime caps surcharge at 25% even above ₹5 crore; the 37% band is old
+    regime only.
+
+- id: NR26-ZERO-INCOME
+  fy: "2026-27"
+  regime: new
+  input: { salary: 0, age: 30 }
+  expect: { taxable_income: 0, total_tax: 0 }
+  verified_against: "no income, no tax"
+
+- id: NR26-80C-DISALLOWED
+  fy: "2026-27"
+  regime: new
+  input:
+    salary: 1500000
+    age: 35
+    deductions: { "80C": 150000 }
+  expect: { taxable_income: 1425000, tax_on_slabs: 93750, total_tax: 97500 }
+  verified_against: >
+    80C is unavailable under the new regime, so the ₹1,50,000 must NOT reduce
+    taxable income. Only the ₹75,000 standard deduction applies.
+    Slab: 20,000 + 40,000 + (2,25,000 @15% = 33,750) = 93,750; cess 3,750.
+
+- id: NR26-80CCD2-ALLOWED
+  fy: "2026-27"
+  regime: new
+  input:
+    salary: 1500000
+    age: 35
+    deductions: { "80CCD_2": 210000 }
+  expect:
+    taxable_income: 1215000
+    tax_on_slabs: 62250
+    rebate_87a: 47250
+    tax_after_rebate: 15000
+    total_tax: 15600
+  verified_against: >
+    80CCD(2) employer NPS survives into the new regime at 14% of salary
+    (₹2,10,000 on ₹15,00,000). Slab 62,250; the contribution pulls taxable
+    income to ₹12,15,000, INSIDE the 87A marginal relief zone, so tax is
+    capped at the ₹15,000 excess plus cess. Compare NR26-80C-DISALLOWED at
+    ₹97,500 on the same salary: an ₹81,900 swing from one deduction.
+
+- id: NR26-CROSS-YEAR-CONTROL
+  fy: "2026-27"
+  regime: new
+  input: { other_sources: 1500000, age: 34 }
+  expect: { tax_on_slabs: 105000, total_tax: 109200 }
+  verified_against: >
+    Control for NR2425-DIFFERENT-SLABS-FROM-2026. Same ₹15,00,000 income:
+    4,00,000 @5% = 20,000; 4,00,000 @10% = 40,000; 3,00,000 @15% = 45,000
+    = 1,05,000; cess 4,200. FY 2024-25 gives ₹1,45,600 on the same income —
+    a ₹36,400 difference that only appears if the engine honours the year.

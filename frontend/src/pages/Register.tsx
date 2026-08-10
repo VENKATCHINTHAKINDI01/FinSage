@@ -45,7 +45,7 @@ export default function Signup() {
     setSubmitting(false);
 
     if (result.success) {
-      navigate('/', { replace: true });
+      navigate('/dashboard', { replace: true });
     } else {
       setError(result.error || 'Something went wrong. Please try again.');
     }

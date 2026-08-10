@@ -10,7 +10,7 @@ import logging
 from typing import Dict, Any, List
 from datetime import datetime
 
-from backend.agents.base_agent import TaxAgent, AgentOutput
+from backend.agents.base_agent import TaxAgent, AgentOutput, confidence_score, derive_confidence
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +77,13 @@ class TaxStrategyAgent(TaxAgent):
             new_deductions_total = 75000.0
             
             # 1. 3-Year Projection Model
+            #
+            # The financial year is resolved explicitly: backend.core has no
+            # default year, which is what stops a projection silently using
+            # last year's slabs.
+            from backend.tools.calculation import current_fy
+            fy = user_context.get("fy") or current_fy()
+
             projections = []
             growth_rate = 0.10 # 10% annual income growth
             
@@ -84,11 +91,11 @@ class TaxStrategyAgent(TaxAgent):
             for year in range(1, 4):
                 # Calculate Old regime tax
                 old_taxable = max(0.0, current_income - old_deductions_total)
-                old_tax = self._calculate_old_regime_tax(old_taxable)
+                old_tax = self._regime_tax(old_taxable, "old", fy)
                 
-                # Calculate New regime tax (FY 2024-25 rates)
+                # Calculate New regime tax
                 new_taxable = max(0.0, current_income - new_deductions_total)
-                new_tax = self._calculate_new_regime_tax(new_taxable)
+                new_tax = self._regime_tax(new_taxable, "new", fy)
                 
                 better_regime = "New Regime" if new_tax < old_tax else "Old Regime"
                 savings = abs(old_tax - new_tax)
@@ -144,7 +151,7 @@ class TaxStrategyAgent(TaxAgent):
             return self._create_output(
                 result=result,
                 status="success",
-                confidence=0.92,
+                confidence=confidence_score(derive_confidence()),
                 reasoning="Completed 3-year income/tax regime projections and formulated transition strategies.",
                 execution_time_ms=execution_time
             )
@@ -155,74 +162,22 @@ class TaxStrategyAgent(TaxAgent):
             return self._create_output(
                 result={"error": str(e)},
                 status="error",
-                confidence=0.0,
+                confidence=0.0,  # execution failed — not a score
                 reasoning=f"Failure generating tax strategy projections: {str(e)}",
                 execution_time_ms=execution_time
             )
-            
-    def _calculate_old_regime_tax(self, taxable_income: float) -> float:
-        """Old tax slabs for Individuals (FY 2024-25 / AY 2025-26)"""
-        tax = 0.0
-        if taxable_income <= 250000:
-            return 0.0
-        
-        # Slabs
-        # 2.5L to 5L @ 5%
-        # 5L to 10L @ 20%
-        # Above 10L @ 30%
-        if taxable_income > 1000000:
-            tax += (taxable_income - 1000000) * 0.30
-            tax += 100000 # 20% of 5L
-            tax += 12500  # 5% of 2.5L
-        elif taxable_income > 500000:
-            tax += (taxable_income - 500000) * 0.20
-            tax += 12500
-        elif taxable_income > 250000:
-            tax += (taxable_income - 250000) * 0.05
-            
-        # Rebate under Section 87A (taxable income <= 5L tax is fully rebated)
-        if taxable_income <= 500000:
-            tax = 0.0
-            
-        # Health & Education Cess @ 4%
-        return tax * 1.04
-        
-    def _calculate_new_regime_tax(self, taxable_income: float) -> float:
-        """New tax slabs under Section 115BAC (FY 2024-25 / AY 2025-26)"""
-        tax = 0.0
-        if taxable_income <= 300000:
-            return 0.0
-            
-        # Slabs
-        # 3L to 6L @ 5%
-        # 6L to 9L @ 10%
-        # 9L to 12L @ 15%
-        # 12L to 15L @ 20%
-        # Above 15L @ 30%
-        if taxable_income > 1500000:
-            tax += (taxable_income - 1500000) * 0.30
-            tax += 60000 # 20% of 3L
-            tax += 45000 # 15% of 3L
-            tax += 30000 # 10% of 3L
-            tax += 15000 # 5% of 3L
-        elif taxable_income > 1200000:
-            tax += (taxable_income - 1200000) * 0.20
-            tax += 45000
-            tax += 30000
-            tax += 15000
-        elif taxable_income > 900000:
-            tax += (taxable_income - 900000) * 0.15
-            tax += 30000
-            tax += 15000
-        elif taxable_income > 600000:
-            tax += (taxable_income - 600000) * 0.10
-            tax += 15000
-        elif taxable_income > 300000:
-            tax += (taxable_income - 300000) * 0.05
-            
-        # Rebate under Section 87A for New Regime (taxable income <= 7L has full rebate)
-        # Standard deduction is already subtracted from gross income to get taxable_income.
-        if taxable_income <= 700000:
-            tax = 0.0
-            
-        return tax * 1.04
+
+    # ── DEM-006 ──────────────────────────────────────────────────────────
+    # `_calculate_old_regime_tax` and `_calculate_new_regime_tax` deleted.
+    # They were a second, divergent tax engine: FY 2024-25 slabs, no surcharge,
+    # no marginal relief, and a hard rebate cliff at Rs 7,00,001 where one extra
+    # rupee of income added about Rs 26,000 of tax. Both regimes now come from
+    # one engine and one rule pack, so the comparison is internally consistent.
+
+    @staticmethod
+    def _regime_tax(taxable_income: float, regime: str, fy: str, age: int = 0) -> float:
+        from backend.tools.calculation import TaxCalculationEngine
+        result = TaxCalculationEngine.calculate_income_tax(
+            taxable_income, fy=fy, regime=regime, age=age
+        )
+        return float(result["total_tax"])
