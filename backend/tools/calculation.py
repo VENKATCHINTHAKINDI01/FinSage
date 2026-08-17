@@ -28,15 +28,19 @@ from __future__ import annotations
 
 import logging
 from datetime import date
+from decimal import Decimal
 from typing import Any
 
+from backend.core.provenance.ledger import ledger_from_trace as _ledger_from_trace
 from backend.core.provenance.money import ZERO, Money
+from backend.core.provenance.panel import build_panel as _build_panel
 from backend.core.rules import RuleError, fy_for_date, load_ruleset
 from backend.core.tax_engine import (
     AssetClass,
     DeductionClaim,
     Disposal,
     TaxInput,
+    compare_regimes,
     compute_80ccd2,
     compute_80cce_group,
     compute_80d,
@@ -44,6 +48,25 @@ from backend.core.tax_engine import (
     compute_hra_exemption,
     compute_tax,
 )
+
+# Aliased because the adapter exposes static methods of the same names, and a
+# method shadowing the function it delegates to is a recursion waiting to be
+# written. `compare_regimes` gets away with it only because the class body is
+# not in the method's lookup chain — not a distinction worth relying on twice.
+from backend.core.tax_engine import GainBucket as _GainBucket
+from backend.core.tax_engine import Position as _Position
+from backend.core.tax_engine import build_calendar as _build_calendar
+from backend.core.tax_engine import harvest as _harvest
+from backend.core.tax_engine import optimise_salary as _optimise_salary
+from backend.core.tax_engine import plan_advance_tax as _plan_advance_tax
+from backend.core.tax_engine import refund_interest as _refund_interest
+from backend.core.tax_engine import select_itr_form as _select_itr_form
+from backend.core.tax_engine import set_off_losses as _set_off_losses
+from backend.core.tax_engine.deadlines import TaxpayerProfile as _TaxpayerProfile
+from backend.core.tax_engine.itr_form import EntityType as _EntityType
+from backend.core.tax_engine.itr_form import FilerProfile as _FilerProfile
+from backend.core.tax_engine.itr_form import Residency as _Residency
+from backend.core.tax_engine.salary_structure import SalaryStructure as _SalaryStructure
 
 logger = logging.getLogger(__name__)
 
@@ -95,12 +118,18 @@ class TaxCalculationEngine:
             "surcharge": result.surcharge.to_json(),
             "cess": result.cess.to_json(),
             "total_tax": result.total_tax.to_json(),
-            "total_tax_rounded": result.total_tax_rounded.to_json(),
             "effective_rate": result.effective_rate,
             "marginal_rate": result.marginal_rate,
             "worksheet": result.trace.render(),
             "trace": result.trace.to_dict(),
             "confidence": result.confidence.to_dict(),
+            # PLN-007: one ledger entry per figure, so the UI can make every
+            # number click-through rather than rendering bare digits.
+            "ledger": _ledger_from_trace(result.trace, fy).to_dict(),
+            # EVD-005: the four evidence tabs, assembled from THIS result so
+            # they cannot show a worksheet from one run beside a confidence
+            # score from another.
+            "evidence_panel": _build_panel(result, fy).to_dict(),
         }
 
     @staticmethod
@@ -132,7 +161,6 @@ class TaxCalculationEngine:
             "total_deductions": result.total_deductions.to_json(),
             "taxable_income": result.taxable_income.to_json(),
             "total_tax": result.total_tax.to_json(),
-            "total_tax_rounded": result.total_tax_rounded.to_json(),
             "effective_rate": result.effective_rate,
             "worksheet": result.trace.render(),
             "trace": result.trace.to_dict(),
@@ -147,50 +175,21 @@ class TaxCalculationEngine:
         age: int = 0,
         is_salary: bool = True,
     ) -> dict[str, Any]:
-        """Old versus new on the same facts.
+        """Old versus new on the same facts, plus the exact breakeven.
 
-        Both sides come from one engine and one rule pack, so the comparison is
-        internally consistent. v1 computed the two regimes in a different module
-        with FY 2024-25 slabs and a hard rebate cliff at ₹7,00,001.
+        Delegates to `backend.core.tax_engine.regime_compare` — this adapter had
+        its own copy of the comparison, which is how two implementations drift.
+        The core version adds what the agent actually needs to give useful
+        advice: the deduction total at which the answer would change, and the
+        notes about lock-in and about 80CCD(2) being regime-neutral.
         """
-        fy = fy or current_fy()
-        income = _money(gross_income)
-        claims = {k: _money(v) for k, v in (deductions or {}).items()}
-
-        outcomes = {}
-        for regime in ("old", "new"):
-            r = compute_tax(
-                TaxInput(
-                    fy=fy,
-                    regime=regime,
-                    age=age,
-                    salary=income if is_salary else ZERO,
-                    other_sources=ZERO if is_salary else income,
-                    deductions=claims,
-                )
-            )
-            outcomes[regime] = r
-
-        better = min(outcomes, key=lambda k: outcomes[k].total_tax)
-        saving = (
-            outcomes["old" if better == "new" else "new"].total_tax
-            - outcomes[better].total_tax
-        )
-        return {
-            "fy": fy,
-            "old": {
-                "taxable_income": outcomes["old"].taxable_income.to_json(),
-                "total_tax": outcomes["old"].total_tax.to_json(),
-            },
-            "new": {
-                "taxable_income": outcomes["new"].taxable_income.to_json(),
-                "total_tax": outcomes["new"].total_tax.to_json(),
-            },
-            "better_regime": better,
-            "saving": saving.to_json(),
-            "worksheet_old": outcomes["old"].trace.render(),
-            "worksheet_new": outcomes["new"].trace.render(),
-        }
+        return compare_regimes(
+            _money(gross_income),
+            {k: _money(v) for k, v in (deductions or {}).items()},
+            fy=fy or current_fy(),
+            age=age,
+            is_salary=is_salary,
+        ).to_dict()
 
     @staticmethod
     def calculate_deduction_benefit(
@@ -229,6 +228,193 @@ class TaxCalculationEngine:
                 f"{(saving.amount / amount.amount * 100):.2f}%" if amount > ZERO else "0.00%"
             ),
         }
+
+    @staticmethod
+    def plan_advance_tax(
+        total_tax: float,
+        fy: str | None = None,
+        taxes_deducted: float = 0,
+        payments: dict[str, float] | None = None,
+        age: int = 0,
+        has_business_income: bool = False,
+        is_presumptive: bool = False,
+        excused_tax_by_date: dict[str, float] | None = None,
+        assessed_on: str | None = None,
+    ) -> dict[str, Any]:
+        """Instalment schedule and ss.234B/234C interest.
+
+        Dates arrive as ISO strings from the tool layer and are parsed here;
+        the core takes real dates, because "15/06/2026" and "06-15" are the
+        kind of thing that silently becomes the wrong year.
+        """
+        return _plan_advance_tax(
+            _money(total_tax),
+            fy or current_fy(),
+            taxes_deducted=_money(taxes_deducted),
+            payments={
+                date.fromisoformat(k): _money(v) for k, v in (payments or {}).items()
+            },
+            age=age,
+            has_business_income=has_business_income,
+            is_presumptive=is_presumptive,
+            excused_tax_by_date={
+                date.fromisoformat(k): _money(v)
+                for k, v in (excused_tax_by_date or {}).items()
+            },
+            assessed_on=date.fromisoformat(assessed_on) if assessed_on else None,
+        ).to_dict()
+
+    @staticmethod
+    def refund_interest(
+        refund: float,
+        fy: str | None = None,
+        granted_on: str | None = None,
+    ) -> dict[str, Any]:
+        """Interest the department owes on a refund, s.244A at 0.5% a month."""
+        return _refund_interest(
+            _money(refund),
+            fy or current_fy(),
+            granted_on=date.fromisoformat(granted_on) if granted_on else None,
+        ).to_dict()
+
+    @staticmethod
+    def set_off_capital_losses(
+        gains: dict[str, float],
+        fy: str | None = None,
+        stcl: float = 0,
+        ltcl: float = 0,
+        brought_forward_stcl: float = 0,
+        brought_forward_ltcl: float = 0,
+        marginal_rate: str = "0.30",
+    ) -> dict[str, Any]:
+        """Allocate capital losses across gain buckets.
+
+        `gains` is keyed by `GainBucket` value — how the gain is TAXED, not what
+        the asset is. Two holdings in the same bucket are interchangeable for
+        set-off; two in different buckets are not, and that difference is the
+        entire point of the feature.
+        """
+        return _set_off_losses(
+            {_GainBucket(k): _money(v) for k, v in gains.items()},
+            fy or current_fy(),
+            stcl=_money(stcl),
+            ltcl=_money(ltcl),
+            brought_forward_stcl=_money(brought_forward_stcl),
+            brought_forward_ltcl=_money(brought_forward_ltcl),
+            slab_rate=Decimal(marginal_rate),
+        ).to_dict()
+
+    @staticmethod
+    def harvest_opportunities(
+        positions: list[dict[str, Any]],
+        fy: str | None = None,
+        as_of: str | None = None,
+        realised_equity_ltcg: float = 0,
+        realised_equity_stcg: float = 0,
+    ) -> dict[str, Any]:
+        """What to do with open holdings before 31 March, quantified."""
+        return _harvest(
+            [
+                _Position(
+                    name=str(p["name"]),
+                    acquired_on=date.fromisoformat(p["acquired_on"]),
+                    cost=_money(p["cost"]),
+                    market_value=_money(p["market_value"]),
+                    asset=str(p.get("asset", "listed_equity")),
+                )
+                for p in positions
+            ],
+            fy or current_fy(),
+            as_of=date.fromisoformat(as_of) if as_of else date.today(),
+            realised_equity_ltcg=_money(realised_equity_ltcg),
+            realised_equity_stcg=_money(realised_equity_stcg),
+        ).to_dict()
+
+    @staticmethod
+    def select_itr_form(
+        profile: dict[str, Any],
+        fy: str | None = None,
+    ) -> dict[str, Any]:
+        """Which ITR form to file, and why every simpler one was ruled out.
+
+        Unknown profile keys are rejected rather than ignored. A typo'd
+        `has_foreign_asset` silently dropping would make the selector
+        recommend ITR-1 to someone who must disclose foreign holdings.
+        """
+        fields = set(_FilerProfile.__slots__)
+        unknown = set(profile) - fields
+        if unknown:
+            raise ValueError(
+                f"unknown filer profile field(s): {sorted(unknown)}. "
+                f"Known fields: {sorted(fields)}"
+            )
+
+        kwargs: dict[str, Any] = {}
+        for key, value in profile.items():
+            if key == "entity":
+                kwargs[key] = _EntityType(value)
+            elif key == "residency":
+                kwargs[key] = _Residency(value)
+            elif key in ("total_income", "ltcg_112a", "agricultural_income"):
+                kwargs[key] = _money(value)
+            else:
+                kwargs[key] = value
+
+        return _select_itr_form(
+            _FilerProfile(**kwargs), fy or current_fy()
+        ).to_dict()
+
+    @staticmethod
+    def deadline_calendar(
+        profile: dict[str, Any],
+        fy: str | None = None,
+        as_of: str | None = None,
+    ) -> dict[str, Any]:
+        """Only the deadlines this taxpayer actually has.
+
+        Unknown keys are rejected rather than ignored, for the same reason as
+        the ITR selector: a typo'd `is_audit_liable` silently dropping would
+        tell a company's accountant 31 July.
+        """
+        fields = set(_TaxpayerProfile.__slots__)
+        unknown = set(profile) - fields
+        if unknown:
+            raise ValueError(
+                f"unknown taxpayer profile field(s): {sorted(unknown)}. "
+                f"Known fields: {sorted(fields)}"
+            )
+        return _build_calendar(
+            _TaxpayerProfile(**profile),
+            fy or current_fy(),
+            as_of=date.fromisoformat(as_of) if as_of else date.today(),
+        ).to_dict()
+
+    @staticmethod
+    def optimise_salary_structure(
+        structure: dict[str, Any],
+        fy: str | None = None,
+    ) -> dict[str, Any]:
+        """Price each salary lever by recomputation, flagging those that need
+        the employer to act."""
+        fields = set(_SalaryStructure.__slots__)
+        unknown = set(structure) - fields
+        if unknown:
+            raise ValueError(
+                f"unknown salary structure field(s): {sorted(unknown)}. "
+                f"Known fields: {sorted(fields)}"
+            )
+        money_fields = {
+            "gross_salary", "basic_salary", "hra_received", "rent_paid",
+            "employer_nps", "section_80c", "section_80d",
+            "section_80ccd_1b", "home_loan_interest",
+        }
+        kwargs = {
+            k: (_money(v) if k in money_fields else v)
+            for k, v in structure.items()
+        }
+        return _optimise_salary(
+            _SalaryStructure(**kwargs), fy or current_fy()
+        ).to_dict()
 
     @staticmethod
     def calculate_hra_exemption(

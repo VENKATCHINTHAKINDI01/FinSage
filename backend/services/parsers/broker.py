@@ -40,7 +40,7 @@ from backend.core.tax_engine.capital_gains import AssetClass, Disposal
 GRANDFATHER_DATE = date(2018, 1, 31)
 
 
-class Broker(str, Enum):  # noqa: UP042
+class Broker(str, Enum):
     ZERODHA = "zerodha"
     GROWW = "groww"
     CAMS = "cams"

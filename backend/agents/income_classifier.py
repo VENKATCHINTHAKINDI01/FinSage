@@ -3,12 +3,11 @@ Income Classifier Agent - analyzes user's income sources and structures.
 Categorizes income into salary, freelance, passive, investments, etc.
 """
 
-import time
 import logging
-from typing import Dict, Any
+import time
+from typing import Any
 
-from backend.agents.base_agent import TaxAgent, AgentOutput, confidence_score, derive_confidence
-from backend.config import settings
+from backend.agents.base_agent import AgentOutput, TaxAgent, confidence_score, derive_confidence
 from backend.llm import get_llm
 
 logger = logging.getLogger(__name__)
@@ -34,27 +33,27 @@ class IncomeClassifierAgent(TaxAgent):
             {"annual_income": 850000}
         )
     """
-    
+
     def __init__(self):
         super().__init__("income_classifier_agent")
-    
+
     async def execute(
         self,
         user_query: str,
-        user_context: Dict[str, Any],
+        user_context: dict[str, Any],
         tools: Any = None,
         **kwargs
     ) -> AgentOutput:
         """Analyze income sources using tools."""
         start_time = time.time()
-        
+
         if tools is not None:
             self.set_tools(tools)
-            
+
         try:
             # Preprocess query
             processed_query = await self.preprocess(user_query)
-            
+
             # Get actual user financial data / profile
             user_financial_data = {}
             if self.tools:
@@ -66,16 +65,16 @@ class IncomeClassifierAgent(TaxAgent):
                     res_payload = user_data.get("result", {})
                     if res_payload:
                         user_financial_data = res_payload.get("financial_profile", {})
-            
+
             # Use real data merged with context for LLM analysis
             merged_context = {**user_context, **user_financial_data}
-            
+
             # Extract income sources using LLM
             income_sources = await self._extract_income_sources(
                 processed_query,
                 merged_context
             )
-            
+
             # Fetch Form 26AS to verify and supplement income sources
             if self.tools:
                 form26as = await self.call_tool(
@@ -106,7 +105,7 @@ class IncomeClassifierAgent(TaxAgent):
                 )
                 if pt_calc.get("success"):
                     professional_tax_deduction = pt_calc.get("result", {}).get("annual_professional_tax", 0)
-            
+
             # Calculate tax implications using tools
             for source in income_sources:
                 if self.tools:
@@ -118,10 +117,10 @@ class IncomeClassifierAgent(TaxAgent):
                     source["tax_impact"] = impact.get("result", {}).get("tax_savings", 0)
                 else:
                     source["tax_impact"] = 0
-            
+
             # Calculate totals
             total_income = sum(src.get("amount", 0) for src in income_sources)
-            
+
             result = {
                 "income_sources": income_sources,
                 "total_income": total_income,
@@ -129,7 +128,7 @@ class IncomeClassifierAgent(TaxAgent):
                 "income_composition": await self._analyze_composition(income_sources),
                 "tax_implications": await self._get_tax_implications(income_sources)
             }
-            
+
             # Save analysis
             if self.tools:
                 await self.call_tool(
@@ -139,13 +138,13 @@ class IncomeClassifierAgent(TaxAgent):
                     analysis_data=result,
                     agent_name=self.name
                 )
-            
+
             result = await self.postprocess(result)
-            
+
             execution_time = (time.time() - start_time) * 1000
-            
+
             logger.info(f"Income classified: {len(income_sources)} sources, total ₹{total_income:,.0f}")
-            
+
             return self._create_output(
                 result=result,
                 status="success",
@@ -153,27 +152,27 @@ class IncomeClassifierAgent(TaxAgent):
                 reasoning="Income sources identified and analyzed using tools",
                 execution_time_ms=execution_time
             )
-        
+
         except Exception as e:
             logger.error(f"Error in income classifier: {e}")
             execution_time = (time.time() - start_time) * 1000
-            
+
             return self._create_output(
                 result={"error": str(e)},
                 status="error",
                 confidence=0.0,  # execution failed — not a score
-                reasoning=f"Error: {str(e)}",
+                reasoning=f"Error: {e!s}",
                 execution_time_ms=execution_time
             )
-    
-    
+
+
     async def _extract_income_sources(
         self,
         user_query: str,
-        user_context: Dict[str, Any]
-    ) -> list[Dict[str, Any]]:
+        user_context: dict[str, Any]
+    ) -> list[dict[str, Any]]:
         """Use LLM to identify and classify income sources from user query."""
-        
+
         prompt = f"""Analyze the user's income sources and classify them.
 
 User's statement: "{user_query}"
@@ -209,93 +208,93 @@ Important: Respond ONLY with valid JSON."""
         try:
             from backend.tools.data_validator import LLMResponseValidator
             validator = LLMResponseValidator()
-            
+
             message = await get_llm().complete(prompt, max_tokens=1500)
-            
+
             response_text = message.text.strip()
-            
+
             # Use robust JSON parser with multiple fallback strategies
             response_data, parse_report = validator.parse_json_response(response_text)
-            
+
             if response_data is None:
                 logger.warning(f"Failed to parse income sources JSON: {parse_report.warnings}")
                 return []
-            
+
             raw_sources = response_data.get("income_sources", [])
-            
+
             # Validate income sources (amounts, required fields)
             validated_sources, validation_report = validator.validate_income_sources(raw_sources)
-            
+
             if validation_report.warnings:
                 logger.info(f"Income validation warnings: {validation_report.warnings}")
-            
+
             return validated_sources
-        
+
         except Exception as e:
             logger.error(f"Error extracting income sources: {e}")
             return []
-    
+
     async def _analyze_composition(
         self,
-        income_sources: list[Dict[str, Any]]
-    ) -> Dict[str, Any]:
+        income_sources: list[dict[str, Any]]
+    ) -> dict[str, Any]:
         """Analyze income composition (percentage breakdown by type)."""
-        
+
         total = sum(src.get("amount", 0) for src in income_sources)
         if total == 0:
             return {}
-        
+
         composition = {}
         for source in income_sources:
             source_type = source.get("type", "Other")
             amount = source.get("amount", 0)
             percentage = (amount / total) * 100
-            
+
             if source_type not in composition:
                 composition[source_type] = {
                     "amount": 0,
                     "percentage": 0,
                     "count": 0
                 }
-            
+
             composition[source_type]["amount"] += amount
             composition[source_type]["percentage"] = (composition[source_type]["amount"] / total) * 100
             composition[source_type]["count"] += 1
-        
+
         return composition
-    
+
     async def _get_tax_implications(
         self,
-        income_sources: list[Dict[str, Any]]
+        income_sources: list[dict[str, Any]]
     ) -> list[str]:
         """Generate tax implications based on income sources."""
-        
+
         implications = []
-        
+
         for source in income_sources:
             source_type = source.get("type", "Other")
             amount = source.get("amount", 0)
-            
+
             if source_type == "Salary":
                 if amount > 500000:
                     implications.append("High salary may put you in higher tax bracket")
                 implications.append("Employer should file Form 16 for tax compliance")
-            
+
             elif source_type == "Freelance":
                 implications.append("Freelance income must be reported in Schedule Business")
                 implications.append("Eligible for professional deductions (office, equipment, etc)")
-            
+
             elif source_type == "Business":
                 implications.append("Self-employed: must file income tax return")
                 implications.append("Eligible for business-related expense deductions")
                 implications.append("Consider quarterly estimated tax payments")
-            
+
             elif source_type == "Rental":
                 implications.append("Rental income subject to tax (even if not received)")
                 implications.append("Eligible for property depreciation and maintenance deductions")
-            
+
             elif source_type == "Investments":
                 implications.append("Capital gains tax applies (short-term vs long-term rates)")
                 implications.append("Dividend income may qualify for dividend tax credit")
-        
+
         return implications

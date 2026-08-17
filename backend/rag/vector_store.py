@@ -9,13 +9,20 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
 
 from backend.config import settings
+from backend.rag.embeddings import EMBEDDING_DIM
 
 logger = logging.getLogger(__name__)
 
 # Qdrant connection settings
 QDRANT_URL = settings.qdrant.url or "http://localhost:6333"
 COLLECTION_NAME = "finsage_knowledge"
-VECTOR_DIM = 768
+# DEM-004 bugfix: this was a hardcoded 768, left over from whatever embedding
+# model preceded BAAI/bge-small-en-v1.5 (384-dim). A live collection created
+# against this default cannot accept a single real embedding — Qdrant rejects
+# any vector whose length does not match the collection's declared size.
+# Imported from embeddings.py rather than restated so the two can never drift
+# apart again the way they had.
+VECTOR_DIM = EMBEDDING_DIM
 
 
 class QdrantStore:
@@ -47,14 +54,23 @@ class QdrantStore:
             raise
     
     def _ensure_collection_exists(self):
-        """Create collection if it doesn't exist."""
+        """Create the collection if it doesn't exist, or verify it if it does.
+
+        DEM-004 bugfix: this used to only handle the "doesn't exist" branch,
+        so a collection created under a previous, different `VECTOR_DIM`
+        (768, before the real-embeddings model settled on 384) kept silently
+        serving Qdrant `insert` failures on every real embedding forever —
+        the code "worked" because it never looked at what was actually there.
+        A dimension mismatch on an existing collection now fails loudly, the
+        same policy the document parsers use for malformed input.
+        """
         try:
             collections = self.client.get_collections()
             collection_names = [c.name for c in collections.collections]
-            
+
             if self.collection_name not in collection_names:
                 logger.info(f"Creating collection: {self.collection_name}")
-                
+
                 self.client.create_collection(
                     collection_name=self.collection_name,
                     vectors_config=VectorParams(
@@ -63,7 +79,26 @@ class QdrantStore:
                     )
                 )
                 logger.info(f"Collection created: {self.collection_name}")
-        
+                return
+
+            info = self.client.get_collection(self.collection_name)
+            vectors_config = info.config.params.vectors
+            if not isinstance(vectors_config, VectorParams):
+                raise RuntimeError(
+                    f"Qdrant collection {self.collection_name!r} uses named/multi-vector "
+                    f"config, not the single unnamed vector this client assumes."
+                )
+            existing_size = vectors_config.size
+            if existing_size != VECTOR_DIM:
+                raise RuntimeError(
+                    f"Qdrant collection {self.collection_name!r} was created with "
+                    f"vector size {existing_size}, but the embedding model produces "
+                    f"{VECTOR_DIM}-dimensional vectors. Every insert against it will "
+                    f"fail. Re-ingest into a fresh collection (DEM-004: 'Corpus "
+                    f"re-ingested with chunking and metadata') rather than let this "
+                    f"resolve itself silently."
+                )
+
         except Exception as e:
             logger.error(f"Error ensuring collection exists: {e}")
             raise
@@ -175,7 +210,7 @@ class QdrantStore:
         self,
         query_embedding: List[float],
         top_k: int = 5,
-        threshold: float = 0.7
+        threshold: float = 0.55  # DEM-004: see the note on RAGRetriever.__init__
     ) -> List[Dict[str, Any]]:
         """
         Search for similar documents.
@@ -195,15 +230,23 @@ class QdrantStore:
         """
         
         try:
-            search_result = self.client.search(
+            # DEM-004 bugfix: `QdrantClient.search()` was removed in
+            # qdrant-client 1.10+ in favour of `query_points()`, which wraps
+            # the same scored points in a `QueryResponse.points` rather than
+            # returning them bare. This call site was never actually
+            # exercised against a live client until now — `search()` failing
+            # was swallowed by the `except Exception` below and silently
+            # returned an empty list on every query, which looks identical to
+            # "no relevant results" from the caller's side.
+            response = self.client.query_points(
                 collection_name=self.collection_name,
-                query_vector=query_embedding,
+                query=query_embedding,
                 limit=top_k,
                 score_threshold=threshold
             )
-            
+
             results = []
-            for point in search_result:
+            for point in response.points:
                 result = {
                     "document_id": str(point.id),
                     "score": point.score,

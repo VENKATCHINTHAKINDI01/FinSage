@@ -58,7 +58,7 @@ _TAN = re.compile(r"\b([A-Z]{4}[0-9]{5}[A-Z])\b")
 _ASSESSMENT_YEAR = re.compile(r"\b(20\d{2})\s*[-–/]\s*(\d{2,4})\b")
 
 
-class Confidence(str, Enum):  # noqa: UP042
+class Confidence(str, Enum):
     HIGH = "high"        # matched a canonical label, one unambiguous amount
     REVIEW = "review"    # matched, but ambiguous — show it to the user
     ABSENT = "absent"    # not found; the caller must ask

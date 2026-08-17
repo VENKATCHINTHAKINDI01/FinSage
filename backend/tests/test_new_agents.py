@@ -105,56 +105,44 @@ async def test_cross_border_tax_agent_nri():
 
 
 @pytest.mark.asyncio
-async def test_price_intelligence_agent_cii():
-    """Test PriceIntelligenceAgent Cost Inflation Index calculation."""
+async def test_price_intelligence_agent_needs_dates_not_years():
+    """PRC-008 changed the contract, and the change is the point.
+
+    v1 took `purchase_year: "2015-16"` and `sell_year: "2024-25"`. A YEAR is
+    not enough: FY 2024-25 straddles 23 July 2024, and which side of that date
+    a transfer falls on decides whether indexation is available at all. The
+    agent now requires the actual dates and names them when they are absent
+    rather than indexing against a guessed year.
+    """
     agent = PriceIntelligenceAgent()
-    mock_tools = MockAgentToolExecutor(income=1000000)
-    
-    user_context = {
-        "user_id": "user-123",
-        "asset_type": "real_estate",
-        "purchase_year": "2015-16", # CII: 254
-        "sell_year": "2024-25", # CII: 363
-        "purchase_price": 5000000.0,
-        "sale_price": 8000000.0
-    }
     output = await agent.execute(
         user_query="Calculate my indexation tax benefits for property sale",
-        user_context=user_context,
-        tools=mock_tools
+        user_context={"user_id": "user-123", "asset_type": "immovable_property"},
+        tools=MockAgentToolExecutor(income=1000000),
     )
-    
-    assert output.status == "success"
-    assert output.result["calculation_type"] == "indexation_ltcg"
-    # Indexed Cost: 50L * (363 / 254) = ~71.45L
-    assert 7100000.0 < output.result["indexed_cost"] < 7200000.0
-    assert output.result["capital_gains"] > 0
-    assert output.result["estimated_ltcg_tax"] > 0
-    assert any("indexed cost" in rec.lower() for rec in output.result["recommendations"])
+
+    assert output.status == "needs_input"
+    assert "acquired_on" in output.result["missing_fields"]
+    assert "sold_on" in output.result["missing_fields"]
 
 
 @pytest.mark.asyncio
-async def test_price_intelligence_agent_yields():
-    """Test PriceIntelligenceAgent post-tax yield comparison."""
+async def test_price_intelligence_agent_declines_yield_comparison():
+    """v1 returned four instruments ranked by post-tax yield, every figure
+    invented, and recommended Sovereign Gold Bonds that cannot be bought at
+    primary issue. The comparison is gone, not corrected: ranking investments
+    by projected return is SEBI-regulated advice."""
     agent = PriceIntelligenceAgent()
-    mock_tools = MockAgentToolExecutor(income=1600000) # Marginal 30% slab
-    
-    user_context = {
-        "user_id": "user-123",
-        "investment_amount": 200000.0
-    }
     output = await agent.execute(
         user_query="Compare investment returns post tax",
-        user_context=user_context,
-        tools=mock_tools
+        user_context={"user_id": "user-123", "investment_amount": 200000.0},
+        tools=MockAgentToolExecutor(income=1600000),
     )
-    
-    assert output.status == "success"
-    assert output.result["calculation_type"] == "post_tax_yields"
-    assert len(output.result["yield_comparison"]) == 4
-    # FD yield post tax should be 7.5% * (1 - 0.3) = 5.25%
-    fd_data = next(item for item in output.result["yield_comparison"] if "Fixed Deposit" in item["instrument"])
-    assert fd_data["post_tax_yield"] == "5.25%"
+
+    assert output.status == "declined"
+    assert "yield_comparison" not in output.result
+    assert "SEBI" in output.result["explanation"]
+    assert "February 2024" in output.result["sovereign_gold_bonds"]
 
 
 @pytest.mark.asyncio

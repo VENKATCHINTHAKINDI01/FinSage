@@ -1,0 +1,139 @@
+# FY 2026-27 (AY 2027-28) · ITR form selection · PLN-004
+#
+# Scoping is the AY 2026-27 notification (CBDT, 30 March 2026), which is the
+# most recent in force. The AY 2027-28 forms are notified around March 2027.
+#
+# Every case names the rule that decides it. The three v1 got wrong are marked.
+
+- id: ITR26-ORDINARY-SALARIED
+  profile: { has_salary: true, house_properties: 1, total_income: 1800000 }
+  expect: { form: ITR-1, blocking_reasons: 0 }
+  verified_against: >
+    Resident individual, salary and one property, under ₹50 lakh, no
+    disqualifiers. The base case ITR-1 exists for.
+
+- id: ITR26-TWO-HOUSE-PROPERTIES-NOW-ALLOWED
+  profile: { has_salary: true, house_properties: 2, total_income: 1800000 }
+  expect: { form: ITR-1 }
+  verified_against: >
+    New for AY 2026-27. Before the 30 March 2026 notification a second flat
+    forced ITR-2. A selector written from older guidance sends every
+    two-property filer to the wrong form.
+
+- id: ITR26-THREE-HOUSE-PROPERTIES-DO-NOT
+  profile: { has_salary: true, house_properties: 3, total_income: 1800000 }
+  expect: { form: ITR-2 }
+  verified_against: The relaxation stops at two. Three or more is ITR-2.
+
+- id: ITR26-EQUITY-LTCG-WITHIN-THE-EXEMPTION
+  profile: { has_salary: true, house_properties: 1, total_income: 1800000,
+             ltcg_112a: 125000 }
+  expect: { form: ITR-1 }
+  verified_against: >
+    LTCG u/s 112A up to ₹1,25,000 may now be reported in ITR-1, provided there
+    is no loss to carry forward. Guidance still circulating says any capital
+    gain disqualifies, which pushes people onto a harder form for nothing.
+
+- id: ITR26-EQUITY-LTCG-ONE-RUPEE-OVER
+  profile: { has_salary: true, house_properties: 1, total_income: 1800000,
+             ltcg_112a: 125001 }
+  expect: { form: ITR-2 }
+  verified_against: The concession is capped at ₹1,25,000 exactly.
+
+- id: ITR26-ANY-SHORT-TERM-GAIN-DISQUALIFIES
+  profile: { has_salary: true, house_properties: 1, total_income: 1800000,
+             has_short_term_capital_gains: true }
+  expect: { form: ITR-2 }
+  verified_against: >
+    The concession is for s.112A LTCG only. Short-term capital gains appear in
+    the department's ITR-1 exclusion list without any threshold, so one equity
+    sale inside twelve months is enough.
+
+- id: ITR26-DIRECTOR-CANNOT-USE-THE-SIMPLE-FORMS
+  profile: { has_salary: true, house_properties: 1, total_income: 1800000,
+             is_company_director: true }
+  expect: { form: ITR-2 }
+  verified_against: >
+    Directorship is an absolute bar on ITR-1 and ITR-4 regardless of income
+    size or composition.
+
+- id: ITR26-UNLISTED-SHARES-HELD-AT-ANY-POINT
+  profile: { has_salary: true, house_properties: 1, total_income: 1800000,
+             holds_unlisted_equity_shares: true }
+  expect: { form: ITR-2 }
+  verified_against: >
+    "Held any unlisted equity shares at any time during the previous year" —
+    including shares sold before year end, and including ESOPs in an unlisted
+    employer, which catches a great many startup employees.
+
+- id: ITR26-PRESUMPTIVE-FREELANCER
+  profile: { has_business_income: true, uses_presumptive_scheme: true,
+             total_income: 4000000 }
+  expect: { form: ITR-4 }
+  verified_against: s.44ADA professional under the ₹50 lakh total-income limit.
+
+- id: ITR26-THE-ITR4-LIMIT-IS-INCOME-NOT-TURNOVER
+  profile: { has_business_income: true, uses_presumptive_scheme: true,
+             total_income: 5000001 }
+  expect: { form: ITR-3 }
+  verified_against: >
+    v1 SAID "turnover < 5 crore", a figure taken from the audit provisions.
+    The form is conditioned on ₹50 lakh of TOTAL INCOME — a different number
+    measuring a different thing. One rupee over and it is ITR-3.
+
+- id: ITR26-BUSINESS-WITHOUT-PRESUMPTIVE-IS-ITR3
+  profile: { has_business_income: true, total_income: 1000000 }
+  expect: { form: ITR-3, needs_form_10iea: true }
+  verified_against: >
+    v1's table OMITTED ITR-3 ENTIRELY — the form most people with business
+    income actually need. Also needs Form 10-IEA before filing if leaving the
+    new regime, which ITR-1 and ITR-2 filers do not.
+
+- id: ITR26-A-HUF-MAY-NOT-USE-ITR1
+  profile: { entity: huf, house_properties: 1, total_income: 1000000 }
+  expect: { form: ITR-2 }
+  verified_against: >
+    ITR-1 is for individuals only. A HUF with nothing but rental income passes
+    every other test and is still ineligible.
+
+- id: ITR26-A-FIRM-ON-PRESUMPTIVE-USES-ITR4
+  profile: { entity: firm, has_business_income: true,
+             uses_presumptive_scheme: true, total_income: 1000000 }
+  expect: { form: ITR-4 }
+  verified_against: >
+    ITR-4 is open to an individual, HUF or firm. This is why the entity check
+    cannot route every firm-like entity straight to ITR-5.
+
+- id: ITR26-BUT-AN-LLP-MAY-NOT
+  profile: { entity: llp, has_business_income: true,
+             uses_presumptive_scheme: true, total_income: 1000000 }
+  expect: { form: ITR-5 }
+  verified_against: The single exception — an LLP is excluded from ITR-4.
+
+- id: ITR26-COMPANY
+  profile: { entity: company, total_income: 100000000 }
+  expect: { form: ITR-6 }
+  verified_against: >
+    v1 DESCRIBED ITR-5 AS "high income individuals > 50 lakh". ITR-5 is for
+    firms, LLPs, AOPs and BOIs; a company files ITR-6; and no individual may
+    file either, at any income.
+
+- id: ITR26-COMPANY-CLAIMING-SECTION-11
+  profile: { entity: company, claims_section_11_exemption: true }
+  expect: { form: ITR-7 }
+  verified_against: >
+    ITR-6 is for companies OTHER than those claiming exemption under s.11.
+    A s.11 claimant files ITR-7 even though it is a company.
+
+- id: ITR26-CHARITABLE-TRUST
+  profile: { entity: trust }
+  expect: { form: ITR-7 }
+  verified_against: s.139(4A) filers.
+
+- id: ITR26-NON-RESIDENT-SALARIED
+  profile: { has_salary: true, house_properties: 1, total_income: 1800000,
+             residency: non_resident }
+  expect: { form: ITR-2 }
+  verified_against: >
+    ITR-1 is confined to the ordinarily resident. Both non-residents and the
+    not-ordinarily-resident use ITR-2.

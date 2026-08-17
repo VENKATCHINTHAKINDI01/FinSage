@@ -1,0 +1,268 @@
+{
+  "_comment": "Recorded from a live pipeline.run() call against Groq — AGT-005. tool_results are the real, unmodified output of backend.core.tax_engine.compute_tax.",
+  "agent": "analyst_reviewer_pipeline",
+  "query": "My taxable income is 12,00,010. What is my tax?",
+  "profile": {
+    "fy": "2026-27",
+    "regime": "new",
+    "other_sources": 1200010,
+    "age": 34
+  },
+  "tool_calls": [
+    {
+      "tool": "compute_tax",
+      "args": {
+        "fy": "2026-27",
+        "regime": "new",
+        "other_sources": "₹12,00,010",
+        "age": "34"
+      }
+    }
+  ],
+  "tool_results": [
+    {
+      "tool": "compute_tax",
+      "success": true,
+      "result": {
+        "fy": "2026-27",
+        "regime": "new",
+        "gross_total_income": "1200010.00",
+        "total_deductions": "0.00",
+        "taxable_income": "1200010.00",
+        "tax_on_slabs": "60001.50",
+        "special_rate_tax": "0.00",
+        "rebate_87a": "59991.50",
+        "surcharge": "0.00",
+        "pre_cess_liability": "10.00",
+        "cess": "0.40",
+        "total_tax_exact": "10.40",
+        "total_tax": "10.00",
+        "balance_payable": "0.00",
+        "refund_due": "0.00",
+        "effective_rate": "0.00%",
+        "marginal_rate": "15%",
+        "trace": {
+          "title": "Income tax — FY 2026-27 (AY 2027-28) · New regime (default)",
+          "result": "10.00",
+          "steps": [
+            {
+              "label": "Other sources",
+              "op": "literal",
+              "result": "1200010.00",
+              "operands": [],
+              "factor": null,
+              "citation": null,
+              "note": "source: user stated",
+              "children": []
+            },
+            {
+              "label": "Gross total income",
+              "op": "sum",
+              "result": "1200010.00",
+              "operands": [
+                "1200010.00"
+              ],
+              "factor": null,
+              "citation": null,
+              "note": null,
+              "children": []
+            },
+            {
+              "label": "Tax on slabs — New regime (default)",
+              "op": "slab",
+              "result": "60001.50",
+              "operands": [],
+              "factor": null,
+              "citation": {
+                "act": "Income-tax Act, 2025",
+                "section": null,
+                "legacy_section": "115BAC",
+                "fy": "2026-27",
+                "source_url": null,
+                "retrieved_at": null,
+                "note": "Income-tax Act 2025 equivalent is provisionally s.202; mapping not yet verified against the published concordance.",
+                "display": "Income-tax Act, 2025 · s.115BAC · FY 2026-27"
+              },
+              "note": null,
+              "children": [
+                {
+                  "label": "₹0 – ₹4,00,000 @ 0%",
+                  "op": "multiply",
+                  "result": "0.00",
+                  "operands": [
+                    "400000.00"
+                  ],
+                  "factor": "0.00",
+                  "citation": null,
+                  "note": "on ₹4,00,000",
+                  "children": []
+                },
+                {
+                  "label": "₹4,00,000 – ₹8,00,000 @ 5%",
+                  "op": "multiply",
+                  "result": "20000.00",
+                  "operands": [
+                    "400000.00"
+                  ],
+                  "factor": "0.05",
+                  "citation": null,
+                  "note": "on ₹4,00,000",
+                  "children": []
+                },
+                {
+                  "label": "₹8,00,000 – ₹12,00,000 @ 10%",
+                  "op": "multiply",
+                  "result": "40000.00",
+                  "operands": [
+                    "400000.00"
+                  ],
+                  "factor": "0.10",
+                  "citation": null,
+                  "note": "on ₹4,00,000",
+                  "children": []
+                },
+                {
+                  "label": "₹12,00,000 – ₹16,00,000 @ 15%",
+                  "op": "multiply",
+                  "result": "1.50",
+                  "operands": [
+                    "10.00"
+                  ],
+                  "factor": "0.15",
+                  "citation": null,
+                  "note": "on ₹10",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "label": "Marginal relief u/s 87A",
+              "op": "subtract",
+              "result": "59991.50",
+              "operands": [
+                "60001.50",
+                "10.00"
+              ],
+              "factor": null,
+              "citation": {
+                "act": "Income-tax Act, 2025",
+                "section": null,
+                "legacy_section": "87A",
+                "fy": "2026-27",
+                "source_url": null,
+                "retrieved_at": null,
+                "note": "Income-tax Act 2025 equivalent is provisionally s.156; mapping not yet verified against the published concordance.",
+                "display": "Income-tax Act, 2025 · s.87A · FY 2026-27"
+              },
+              "note": "income exceeds ₹12,00,000 by ₹10; tax is capped at that excess so extra tax never exceeds extra income",
+              "children": []
+            },
+            {
+              "label": "Tax after rebate",
+              "op": "subtract",
+              "result": "10.00",
+              "operands": [
+                "60001.50",
+                "59991.50"
+              ],
+              "factor": null,
+              "citation": null,
+              "note": null,
+              "children": []
+            },
+            {
+              "label": "Health & Education Cess @ 4%",
+              "op": "multiply",
+              "result": "0.40",
+              "operands": [
+                "10.00"
+              ],
+              "factor": "0.04",
+              "citation": null,
+              "note": "on income tax plus surcharge",
+              "children": []
+            },
+            {
+              "label": "Total tax liability",
+              "op": "sum",
+              "result": "10.40",
+              "operands": [
+                "10.00",
+                "0.40"
+              ],
+              "factor": null,
+              "citation": null,
+              "note": null,
+              "children": []
+            },
+            {
+              "label": "Tax payable (rounded to nearest ₹10)",
+              "op": "round",
+              "result": "10.00",
+              "operands": [
+                "10.40"
+              ],
+              "factor": null,
+              "citation": null,
+              "note": "legacy s.288B",
+              "children": []
+            }
+          ],
+          "citations": [
+            {
+              "act": "Income-tax Act, 2025",
+              "section": null,
+              "legacy_section": "115BAC",
+              "fy": "2026-27",
+              "source_url": null,
+              "retrieved_at": null,
+              "note": "Income-tax Act 2025 equivalent is provisionally s.202; mapping not yet verified against the published concordance.",
+              "display": "Income-tax Act, 2025 · s.115BAC · FY 2026-27"
+            },
+            {
+              "act": "Income-tax Act, 2025",
+              "section": null,
+              "legacy_section": "87A",
+              "fy": "2026-27",
+              "source_url": null,
+              "retrieved_at": null,
+              "note": "Income-tax Act 2025 equivalent is provisionally s.156; mapping not yet verified against the published concordance.",
+              "display": "Income-tax Act, 2025 · s.87A · FY 2026-27"
+            }
+          ]
+        },
+        "confidence": {
+          "level": "high",
+          "display": "High confidence",
+          "score": "0.95",
+          "is_certain": false,
+          "deterministic": true,
+          "summary": "High confidence — mainly because other sources: user stated.",
+          "signals": [
+            {
+              "kind": "input_provenance",
+              "detail": "other sources: user stated",
+              "penalty": "0.05",
+              "remedy": "upload the source document for other sources"
+            }
+          ],
+          "blocking": [],
+          "improvements": [
+            "upload the source document for other sources"
+          ],
+          "improvements_with_gain": [
+            {
+              "remedy": "upload the source document for other sources",
+              "gain": "0.05",
+              "because": "other sources: user stated",
+              "kind": "input_provenance"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "output_text": "**Your total income‑tax payable for FY 2026‑27 (new‑regime) is ₹10 (rounded to the nearest ₹10).**  \n\n**Why this is so**\n\n1. **Tax on the slabs** – Under the new‑regime rates (s.115BAC of the Income‑tax Act, 2025) the tax computed on a taxable income of ₹12,00,010 is **₹60,001.50** (see the “Tax on slabs — New regime (default)” line).\n\n2. **Rebate under section 87A** – Because the income exceeds the ₹12 lakh threshold by only **₹10**, the marginal‑relief provision of s.87A caps the rebate at **₹59,991.50**, leaving a tax after rebate of **₹10.00** (see the “Marginal relief u/s 87A” and “Tax after rebate” steps).\n\n3. **Health & Education Cess** – A 4 % cess is levied on the tax after rebate, giving a cess amount of **₹0.40** (see “Health & Education Cess @ 4%”).\n\n4. **Total exact liability** – Adding tax and cess gives **₹10.40** (see “Total tax liability”).\n\n5. **Rounding** – Under the rounding rule (legacy s.288B), the liability is rounded to the nearest ₹10, resulting in a payable tax of **₹10.00** (see “Tax payable (rounded to nearest ₹10)”).\n\n**Key figures (as given):**  \n\n| Item | Amount (₹) |\n|------|------------|\n| Tax on slabs | 60,001.50 |\n| Rebate under s.87A | 59,991.50 |\n| Tax after rebate | 10.00 |\n| Health & Education Cess (4 %) | 0.40 |\n| Total exact tax liability | 10.40 |\n| **Rounded tax payable** | **10.00** |\n\n**Assumptions**  \n- No deductions have been claimed (total deductions = ₹0.00 as per the input).  \n- The figures supplied by the tax‑computation tool are taken as final; no further arithmetic has been performed beyond the rounding already applied by the tool.\n\nIf you have any other income components, deductions, or tax‑payment details (e.g., TDS, advance tax), please share them so we can confirm whether any balance payable or refund is due.",
+  "output_data": {},
+  "latency_ms": 6117.9
+}

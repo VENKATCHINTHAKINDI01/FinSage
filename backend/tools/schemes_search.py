@@ -9,8 +9,8 @@ Tools for:
 """
 
 import logging
-from typing import Dict, Any, List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 class GovernmentSchemesDatabase:
     """Comprehensive database of Indian government tax saving schemes."""
-    
+
     SCHEMES = {
         "80C": {
             "name": "Life Insurance, Investments and Savings",
@@ -46,7 +46,7 @@ class GovernmentSchemesDatabase:
             "effectiveness": "High - direct reduction in taxable income",
             "risk": "Low"
         },
-        
+
         "80D": {
             "name": "Health Insurance Premium",
             "section": "Section 80D",
@@ -76,7 +76,7 @@ class GovernmentSchemesDatabase:
             "effectiveness": "High - direct reduction in taxable income",
             "risk": "Very Low"
         },
-        
+
         "80E": {
             "name": "Education Loan Interest",
             "section": "Section 80E",
@@ -98,7 +98,7 @@ class GovernmentSchemesDatabase:
             "effectiveness": "Very High - no limit on deduction",
             "risk": "Very Low"
         },
-        
+
         "80TTA": {
             "name": "Savings Account Interest (Regular Citizens)",
             "section": "Section 80TTA",
@@ -116,7 +116,7 @@ class GovernmentSchemesDatabase:
             "effectiveness": "Low to Medium - small deduction",
             "risk": "Very Low"
         },
-        
+
         "80TTB": {
             "name": "Senior Citizen Interest Income",
             "section": "Section 80TTB",
@@ -135,7 +135,7 @@ class GovernmentSchemesDatabase:
             "effectiveness": "Medium",
             "risk": "Very Low"
         },
-        
+
         "80CCD": {
             "name": "National Pension Scheme (NPS)",
             "section": "Section 80CCD",
@@ -161,7 +161,7 @@ class GovernmentSchemesDatabase:
             "effectiveness": "Very High - deduction + pension",
             "risk": "Low - Government regulated"
         },
-        
+
         "80DDB": {
             "name": "Medical Treatment of Serious Illness",
             "section": "Section 80DDB",
@@ -187,7 +187,7 @@ class GovernmentSchemesDatabase:
             "effectiveness": "High - when applicable",
             "risk": "Very Low"
         },
-        
+
         "80G": {
             "name": "Donations to Charitable Institutions",
             "section": "Section 80G",
@@ -210,7 +210,7 @@ class GovernmentSchemesDatabase:
             "effectiveness": "Medium",
             "risk": "Very Low"
         },
-        
+
         "80U": {
             "name": "Disabilities",
             "section": "Section 80U",
@@ -231,14 +231,14 @@ class GovernmentSchemesDatabase:
             "risk": "Very Low"
         }
     }
-    
+
     @classmethod
-    def get_scheme(cls, scheme_code: str) -> Optional[Dict[str, Any]]:
+    def get_scheme(cls, scheme_code: str) -> dict[str, Any] | None:
         """Get details of a specific scheme."""
         return cls.SCHEMES.get(scheme_code.upper())
-    
+
     @classmethod
-    def list_all_schemes(cls) -> List[Dict[str, Any]]:
+    def list_all_schemes(cls) -> list[dict[str, Any]]:
         """List all available schemes."""
         return [
             {
@@ -249,13 +249,13 @@ class GovernmentSchemesDatabase:
             }
             for code, details in cls.SCHEMES.items()
         ]
-    
+
     @classmethod
-    def search_schemes(cls, keyword: str) -> List[Dict[str, Any]]:
+    def search_schemes(cls, keyword: str) -> list[dict[str, Any]]:
         """Search schemes by keyword."""
         results = []
         keyword_lower = keyword.lower()
-        
+
         for code, details in cls.SCHEMES.items():
             if (keyword_lower in details["name"].lower() or
                 keyword_lower in details.get("description", "").lower()):
@@ -264,7 +264,7 @@ class GovernmentSchemesDatabase:
                     "name": details["name"],
                     "description": details.get("description")
                 })
-        
+
         return results
 
 
@@ -274,11 +274,11 @@ class GovernmentSchemesDatabase:
 
 class SchemeLookupTool:
     """Look up government scheme details."""
-    
+
     def __init__(self):
         self.logger = logging.getLogger("tool.scheme_lookup")
-    
-    async def get_scheme_details(self, scheme_code: str) -> Dict[str, Any]:
+
+    async def get_scheme_details(self, scheme_code: str) -> dict[str, Any]:
         """
         Get detailed information about a scheme.
         
@@ -290,29 +290,29 @@ class SchemeLookupTool:
         """
         try:
             scheme = GovernmentSchemesDatabase.get_scheme(scheme_code)
-            
+
             if not scheme:
                 return {
                     "success": False,
                     "message": f"Scheme {scheme_code} not found",
                     "available_schemes": [s["code"] for s in GovernmentSchemesDatabase.list_all_schemes()]
                 }
-            
+
             return {
                 "success": True,
                 "scheme_code": scheme_code,
                 "details": scheme
             }
-        
+
         except Exception as e:
             self.logger.error(f"Error getting scheme details: {e}")
             return {"success": False, "error": str(e)}
-    
-    async def search_schemes_by_keyword(self, keyword: str) -> Dict[str, Any]:
+
+    async def search_schemes_by_keyword(self, keyword: str) -> dict[str, Any]:
         """Search schemes by keyword."""
         try:
             results = GovernmentSchemesDatabase.search_schemes(keyword)
-            
+
             return {
                 "success": True,
                 "keyword": keyword,
@@ -322,14 +322,14 @@ class SchemeLookupTool:
         except Exception as e:
             self.logger.error(f"Error searching schemes: {e}")
             return {"success": False, "error": str(e)}
-    
+
     async def get_applicable_schemes(
         self,
         age: int,
         employment_type: str,
         has_health_insurance: bool = False,
         has_education_loan: bool = False
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Get schemes applicable to user based on profile.
         
@@ -344,37 +344,37 @@ class SchemeLookupTool:
         """
         try:
             applicable = []
-            
+
             for code, scheme in GovernmentSchemesDatabase.SCHEMES.items():
                 is_applicable = True
                 reason = []
-                
+
                 # Age checks
                 if "age_restriction" in scheme:
                     if "60+" in scheme["age_restriction"]:
                         if age < 60:
                             is_applicable = False
-                            reason.append(f"Requires age 60+")
+                            reason.append("Requires age 60+")
                     elif "< 60" in scheme["age_restriction"]:
                         if age >= 60:
                             is_applicable = False
-                            reason.append(f"For individuals under 60 years")
-                
+                            reason.append("For individuals under 60 years")
+
                 # Employment type checks
                 if employment_type == "salaried" and code == "44ADA":
                     is_applicable = False
                     reason.append("Not applicable to salaried employees")
-                
+
                 # Insurance checks
                 if code == "80D" and not has_health_insurance:
                     # Can still be applicable if buying insurance
                     reason.append("Requires health insurance policy")
-                
+
                 # Education loan checks
                 if code == "80E" and not has_education_loan:
                     is_applicable = False
                     reason.append("Requires active education loan")
-                
+
                 if is_applicable:
                     applicable.append({
                         "code": code,
@@ -383,7 +383,7 @@ class SchemeLookupTool:
                         "description": scheme.get("description"),
                         "recommendation_strength": "High" if not reason else "Medium"
                     })
-            
+
             return {
                 "success": True,
                 "user_profile": {
@@ -404,7 +404,7 @@ class SchemeLookupTool:
         user_income: float,
         has_health_insurance: bool = False,
         has_education_loan: bool = False
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Check if user is eligible for a specific scheme.
         """
@@ -417,10 +417,10 @@ class SchemeLookupTool:
                     "eligible": False,
                     "reasons": [f"Scheme {scheme_code} is not recognized in database"]
                 }
-            
+
             eligible = True
             reasons = []
-            
+
             # Age restriction check
             if "age_restriction" in scheme:
                 age_rest = scheme["age_restriction"]
@@ -430,20 +430,20 @@ class SchemeLookupTool:
                 elif "< 60" in age_rest and user_age >= 60:
                     eligible = False
                     reasons.append(f"For individuals under 60 years (User age: {user_age})")
-            
+
             # Health insurance check
             if scheme_code.upper() == "80D" and not has_health_insurance:
                 eligible = False
                 reasons.append("Requires active health insurance policy")
-                
+
             # Education loan check
             if scheme_code.upper() == "80E" and not has_education_loan:
                 eligible = False
                 reasons.append("Requires active education loan")
-                
+
             if eligible:
                 reasons.append("Meets basic eligibility criteria")
-                
+
             return {
                 "success": True,
                 "scheme_code": scheme_code,
@@ -456,7 +456,7 @@ class SchemeLookupTool:
                 "success": False,
                 "error": str(e),
                 "eligible": False,
-                "reasons": [f"Internal error checking eligibility: {str(e)}"]
+                "reasons": [f"Internal error checking eligibility: {e!s}"]
             }
 
 
@@ -466,10 +466,10 @@ class SchemeLookupTool:
 
 class WebSearchTool:
     """Search for latest tax information and news."""
-    
+
     def __init__(self):
         self.logger = logging.getLogger("tool.web_search")
-        
+
         # Pre-indexed information (in production, use Tavily or similar)
         self.indexed_info = {
             "latest_tax_rules": [
@@ -511,55 +511,55 @@ class WebSearchTool:
                 }
             ]
         }
-    
-    async def search_latest_tax_rules(self, keyword: str = "") -> Dict[str, Any]:
+
+    async def search_latest_tax_rules(self, keyword: str = "") -> dict[str, Any]:
         """Search for latest tax rules and updates."""
         try:
             results = self.indexed_info.get("latest_tax_rules", [])
-            
+
             if keyword:
                 results = [r for r in results if keyword.lower() in r.get("summary", "").lower()]
-            
+
             return {
                 "success": True,
                 "query": keyword,
                 "results": results,
-                "last_updated": datetime.utcnow().isoformat(),
+                "last_updated": datetime.now(timezone.utc).isoformat(),
                 "note": "In production, integrate with Tavily API for real-time search"
             }
         except Exception as e:
             self.logger.error(f"Error searching tax rules: {e}")
             return {"success": False, "error": str(e)}
-    
-    async def search_government_schemes(self, keyword: str = "") -> Dict[str, Any]:
+
+    async def search_government_schemes(self, keyword: str = "") -> dict[str, Any]:
         """Search for government schemes and announcements."""
         try:
             results = self.indexed_info.get("government_schemes", [])
-            
+
             if keyword:
                 results = [
                     r for r in results
                     if (keyword.lower() in r.get("name", "").lower() or
                         keyword.lower() in r.get("description", "").lower())
                 ]
-            
+
             return {
                 "success": True,
                 "query": keyword,
                 "results": results,
-                "last_updated": datetime.utcnow().isoformat()
+                "last_updated": datetime.now(timezone.utc).isoformat()
             }
         except Exception as e:
             self.logger.error(f"Error searching schemes: {e}")
             return {"success": False, "error": str(e)}
-    
-    async def get_tax_deadlines(self) -> Dict[str, Any]:
+
+    async def get_tax_deadlines(self) -> dict[str, Any]:
         """Get important tax deadlines."""
         try:
             return {
                 "success": True,
                 "deadlines": self.indexed_info.get("tax_deadlines", []),
-                "last_updated": datetime.utcnow().isoformat()
+                "last_updated": datetime.now(timezone.utc).isoformat()
             }
         except Exception as e:
             self.logger.error(f"Error fetching deadlines: {e}")

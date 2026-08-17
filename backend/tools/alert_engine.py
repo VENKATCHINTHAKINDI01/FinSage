@@ -6,26 +6,26 @@ Proactive alert and notifications generator for tax planning.
 """
 
 import logging
-from typing import Dict, Any, List
-from datetime import datetime
+from datetime import datetime, timezone
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
 class TaxAlertEngine:
     """Generates tax optimization warnings and monitors key filing deadlines."""
-    
+
     @staticmethod
     def generate_tax_saving_alerts(
-        investments: Dict[str, float],
-        deductions: Dict[str, float]
-    ) -> Dict[str, Any]:
+        investments: dict[str, float],
+        deductions: dict[str, float]
+    ) -> dict[str, Any]:
         """
         Generate optimization suggestions and alerts if limits are under-utilized.
         """
         try:
             alerts = []
-            
+
             # 80C Check (Limit: 1,50,000)
             total_80c = sum([
                 investments.get("elss", 0.0),
@@ -43,7 +43,7 @@ class TaxAlertEngine:
                     "message": f"You have utilized ₹{total_80c:,.0f} out of ₹{limit_80c:,.0f} under Section 80C. You can invest an additional ₹{gap:,.0f} in ELSS or PPF to maximize your tax savings.",
                     "potential_saving": gap * 0.30  # estimated at max tax rate
                 })
-                
+
             # 80D Check (Health Insurance Premium, limit depends on parents etc., let's mock 25000/50000)
             health_premium = deductions.get("80d", 0.0) or deductions.get("health_insurance", 0.0) or 0.0
             limit_80d = 25000.0
@@ -55,7 +55,7 @@ class TaxAlertEngine:
                     "message": "You haven't claimed any tax benefits for health insurance premium under Section 80D. Premium paid for self, spouse, or children is deductible up to ₹25,000.",
                     "potential_saving": limit_80d * 0.20
                 })
-                
+
             # NPS Check (80CCD(1B) additional limit of 50000)
             nps_contrib = investments.get("nps", 0.0) or deductions.get("80ccd", 0.0) or 0.0
             limit_nps = 50000.0
@@ -68,19 +68,19 @@ class TaxAlertEngine:
                     "message": f"You can claim an additional deduction up to ₹{limit_nps:,.0f} for National Pension Scheme (NPS) contributions. You currently claim ₹{nps_contrib:,.0f}.",
                     "potential_saving": gap * 0.30
                 })
-                
+
             return {
                 "success": True,
                 "alerts": alerts,
                 "count": len(alerts),
-                "generated_at": datetime.utcnow().isoformat()
+                "generated_at": datetime.now(timezone.utc).isoformat()
             }
         except Exception as e:
             logger.error(f"Error generating tax alerts: {e}")
             return {"success": False, "error": str(e)}
 
     @staticmethod
-    def check_upcoming_deadlines() -> Dict[str, Any]:
+    def check_upcoming_deadlines() -> dict[str, Any]:
         """
         Check and calculate days remaining for important tax deadlines.
         """
@@ -113,22 +113,22 @@ class TaxAlertEngine:
                     "description": "Filing final installment (100%) of advance tax"
                 }
             ]
-            
+
             # Correct years for deadlines
             updated_deadlines = []
             for d in deadlines:
                 target_year = current_date.year
                 if d["event"] == "Q4 Advance Tax Payment Due Date" and current_date.month > 3:
                     target_year += 1
-                    
+
                 target_date = d["date"].replace(year=target_year)
                 days_left = (target_date - current_date).days
-                
+
                 # If deadline has passed for this year, bump to next year
                 if days_left < 0:
                     target_date = target_date.replace(year=target_date.year + 1)
                     days_left = (target_date - current_date).days
-                    
+
                 updated_deadlines.append({
                     "event": d["event"],
                     "due_date": target_date.date().isoformat(),
@@ -136,7 +136,7 @@ class TaxAlertEngine:
                     "days_remaining": days_left,
                     "status": "critical" if days_left <= 7 else ("warning" if days_left <= 30 else "normal")
                 })
-                
+
             return {
                 "success": True,
                 "deadlines": sorted(updated_deadlines, key=lambda x: x["days_remaining"]),

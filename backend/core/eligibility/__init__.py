@@ -10,6 +10,7 @@ to have been sanctioned between 2019-01-01 and 2023-03-31, and the section text
 still reads "Rs 1,50,000".
 """
 
+from backend.core.eligibility.benefit import BenefitAmount, BenefitKind, compute_benefit
 from backend.core.eligibility.evaluator import (
     Facts,
     Outcome,
@@ -18,14 +19,19 @@ from backend.core.eligibility.evaluator import (
     closed_windows,
     evaluate_all,
     evaluate_rule,
+    total_claimable,
 )
 
 __all__ = [
+    "BenefitAmount",
+    "BenefitKind",
     "Facts",
     "Outcome",
     "Status",
     "claimable",
     "closed_windows",
+    "compute_benefit",
     "evaluate_all",
     "evaluate_rule",
+    "total_claimable",
 ]

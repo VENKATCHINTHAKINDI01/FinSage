@@ -137,7 +137,7 @@ def _numbers_in(obj: Any) -> Iterable[Decimal]:
     """Every numeric value anywhere in a tool-result payload."""
     if isinstance(obj, bool):
         return
-    if isinstance(obj, (int, float, Decimal)):
+    if isinstance(obj, int | float | Decimal):
         yield Decimal(str(obj))
     elif isinstance(obj, str):
         for m in _NUMBER.finditer(obj):
@@ -147,7 +147,7 @@ def _numbers_in(obj: Any) -> Iterable[Decimal]:
     elif isinstance(obj, dict):
         for v in obj.values():
             yield from _numbers_in(v)
-    elif isinstance(obj, (list, tuple, set)):
+    elif isinstance(obj, list | tuple | set):
         for v in obj:
             yield from _numbers_in(v)
 

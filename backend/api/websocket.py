@@ -4,9 +4,9 @@ Stream agent activity in real-time to frontend.
 Clients see live agent thinking and results.
 """
 
-import asyncio
 import logging
-from datetime import datetime, timezone  # noqa: UP017 — UTC is 3.11+
+import time
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
@@ -158,8 +158,7 @@ async def websocket_agent_stream(
 
                 logger.info(f"Received query on WebSocket: {query_text[:50]}")
 
-                # Simulate agent execution with streaming
-                await simulate_agent_execution(conversation_id, query_text)
+                await run_agent_execution(conversation_id, query_text, user_id)
 
             elif data.get("type") == "ping":
                 # Respond to ping
@@ -191,87 +190,98 @@ async def websocket_agent_stream(
             logger.debug('failed to notify a closing client', exc_info=True)
 
 
-async def simulate_agent_execution(conversation_id: str, query: str):
+async def run_agent_execution(conversation_id: str, query: str, user_id: str) -> None:
+    """Run the real orchestrator and stream its actual results.
+
+    AGT-007. This used to be `simulate_agent_execution`: a fixed script that
+    broadcast invented figures — a hardcoded "₹1,600 in savings" no computation
+    ever produced. That is precisely what `docs/IMPLEMENTATION_PLAN.md` §1
+    forbids ("no rupee figure shown to a user may originate from a language
+    model" applies just as much to one that never even ran). This calls the
+    same orchestration path `/api/v1/chat/query` uses and broadcasts only what
+    it actually returns.
+
+    A failure here becomes a broadcast `error` event, not a dropped
+    connection — the socket stays open for the next query.
     """
-    Simulate multi-agent execution with live streaming.
-    In production, this would call the actual orchestrator.
-    """
+    from backend.db.postgres import get_session_maker
+    from backend.orchestrator.graph import db_session_var, get_orchestrator
 
+    started = time.perf_counter()
+    try:
+        orch = get_orchestrator()
+        if orch is None:
+            raise RuntimeError("orchestrator not initialized")
 
-    # Agent 1: Tax Agent
-    await manager.broadcast(conversation_id, {
-        "type": "agent_start",
-        "agent": "tax_deduction_agent",
-        "timestamp": datetime.now(timezone.utc).isoformat()
-    })
+        session_maker = await get_session_maker()
+        async with session_maker() as session:
+            token = db_session_var.set(session)
+            try:
+                from backend.api.chat import get_user_context, intent_detector
 
-    # Simulate thinking
-    for i in range(3):
-        await asyncio.sleep(0.5)
+                context_data = await get_user_context(user_id, session)
+                intent_result = await intent_detector.detect_intent(query)
+                intent = intent_result.intent.value if hasattr(intent_result, "intent") else "general"
+                agents_to_invoke = getattr(intent_result, "agents_to_invoke", None)
+
+                user_context = {
+                    "user_id": user_id,
+                    "annual_income": context_data.get("annual_income", 0.0),
+                    "employment_type": context_data.get("employment_type", "individual"),
+                    **context_data,
+                }
+
+                result = await orch.orchestrate(
+                    user_query=query,
+                    user_id=user_id,
+                    user_context=user_context,
+                    intent=intent,
+                    agents_to_invoke=agents_to_invoke,
+                    conversation_id=conversation_id,
+                )
+            finally:
+                db_session_var.reset(token)
+
+        agent_results = result.get("agent_results", {})
+        for agent_name, agent_result in agent_results.items():
+            await manager.broadcast(conversation_id, {
+                "type": "agent_start",
+                "agent": agent_name,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            })
+
+            if hasattr(agent_result, "result"):
+                res_dict = agent_result.result
+            elif isinstance(agent_result, dict):
+                res_dict = agent_result.get("result", {})
+            else:
+                res_dict = {}
+
+            await manager.broadcast(conversation_id, {
+                "type": "agent_complete",
+                "agent": agent_name,
+                "result": res_dict,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            })
+
         await manager.broadcast(conversation_id, {
-            "type": "agent_thinking",
-            "agent": "tax_deduction_agent",
-            "reasoning": f"Analyzing deductions... step {i+1}/3",
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "type": "final_response",
+            "response": result.get("response", ""),
+            "agent_responses": {
+                name: (r.result if hasattr(r, "result") else r.get("result", {}) if isinstance(r, dict) else {})
+                for name, r in agent_results.items()
+            },
+            "total_execution_time_ms": round((time.perf_counter() - started) * 1000, 1),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         })
 
-    # Send result
-    await manager.broadcast(conversation_id, {
-        "type": "agent_complete",
-        "agent": "tax_deduction_agent",
-        "result": {
-            "deductions": [
-                {"category": "Home Office", "amount": 5000},
-                {"category": "Equipment", "amount": 3000}
-            ],
-            "total": 8000,
-            "estimated_savings": 1600
-        },
-        "execution_time_ms": 1500,
-        "timestamp": datetime.now(timezone.utc).isoformat()
-    })
-
-    # Agent 2: Investment Agent
-    await asyncio.sleep(0.5)
-
-    await manager.broadcast(conversation_id, {
-        "type": "agent_start",
-        "agent": "investment_optimizer_agent",
-        "timestamp": datetime.now(timezone.utc).isoformat()
-    })
-
-    await asyncio.sleep(1.5)
-
-    await manager.broadcast(conversation_id, {
-        "type": "agent_complete",
-        "agent": "investment_optimizer_agent",
-        "result": {
-            "recommendations": [
-                {"type": "diversify", "action": "Move 20% to index funds"},
-                {"type": "rebalance", "action": "Increase bonds to 40%"}
-            ]
-        },
-        "execution_time_ms": 1000,
-        "timestamp": datetime.now(timezone.utc).isoformat()
-    })
-
-    # Aggregation
-    await asyncio.sleep(0.3)
-
-    await manager.broadcast(conversation_id, {
-        "type": "aggregation_start",
-        "timestamp": datetime.now(timezone.utc).isoformat()
-    })
-
-    await asyncio.sleep(0.5)
-
-    # Final response
-    await manager.broadcast(conversation_id, {
-        "type": "final_response",
-        "response": "Based on analysis: Your estimated tax savings are ₹1,600. Consider diversifying your investments as recommended.",
-        "total_execution_time_ms": 3000,
-        "timestamp": datetime.now(timezone.utc).isoformat()
-    })
+    except Exception as exc:
+        logger.exception("Agent execution failed for conversation %s", conversation_id)
+        await manager.broadcast(conversation_id, {
+            "type": "error",
+            "message": str(exc),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
 
 
 @router.get("/connections-count")

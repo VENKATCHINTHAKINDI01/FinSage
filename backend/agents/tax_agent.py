@@ -2,12 +2,11 @@
 Tax deduction agent - identifies deductible expenses and calculates savings.
 """
 
-from typing import Dict, Any
 import logging
 import time
+from typing import Any
 
-from backend.agents.base_agent import TaxAgent, AgentOutput, confidence_score, derive_confidence
-from backend.config import settings
+from backend.agents.base_agent import AgentOutput, TaxAgent, confidence_score, derive_confidence
 from backend.llm import get_llm
 
 logger = logging.getLogger(__name__)
@@ -25,14 +24,14 @@ class TaxDeductionAgent(TaxAgent):
             {"employment_type": "business", "annual_income": 100000}
         )
     """
-    
+
     def __init__(self):
         super().__init__("tax_deduction_agent")
-    
+
     async def execute(
         self,
         user_query: str,
-        user_context: Dict[str, Any],
+        user_context: dict[str, Any],
         **kwargs
     ) -> AgentOutput:
         """
@@ -42,23 +41,23 @@ class TaxDeductionAgent(TaxAgent):
             AgentOutput with deduction recommendations
         """
         start_time = time.time()
-        
+
         try:
             # Preprocess query
             processed_query = await self.preprocess(user_query)
-            
+
             # Get deductions using LLM
             deductions = await self._identify_deductions(
                 processed_query,
                 user_context
             )
-            
+
             # Calculate tax savings
             annual_income = user_context.get("annual_income", 0)
             tax_bracket = self._estimate_tax_bracket(annual_income)
             total_deduction = sum(d.get("amount", 0) for d in deductions)
             estimated_savings = total_deduction * tax_bracket
-            
+
             # Postprocess result
             result = {
                 "deductions": deductions,
@@ -67,13 +66,13 @@ class TaxDeductionAgent(TaxAgent):
                 "estimated_tax_savings": estimated_savings,
                 "recommendations": await self._get_recommendations(deductions)
             }
-            
+
             result = await self.postprocess(result)
-            
+
             execution_time = (time.time() - start_time) * 1000  # Convert to ms
-            
+
             logger.info(f"Tax deduction analysis completed: ${total_deduction} deductions identified")
-            
+
             return self._create_output(
                 result=result,
                 status="success",
@@ -81,28 +80,28 @@ class TaxDeductionAgent(TaxAgent):
                 reasoning="Identified deductible expenses based on user's situation",
                 execution_time_ms=execution_time
             )
-        
+
         except Exception as e:
             logger.error(f"Error in tax deduction agent: {e}")
             execution_time = (time.time() - start_time) * 1000
-            
+
             return self._create_output(
                 result={"error": str(e)},
                 status="error",
                 confidence=0.0,  # execution failed — not a score
-                reasoning=f"Error during analysis: {str(e)}",
+                reasoning=f"Error during analysis: {e!s}",
                 execution_time_ms=execution_time
             )
-    
+
     async def _identify_deductions(
         self,
         user_query: str,
-        user_context: Dict[str, Any]
-    ) -> list[Dict[str, Any]]:
+        user_context: dict[str, Any]
+    ) -> list[dict[str, Any]]:
         """Use LLM to identify deductible expenses from user query."""
-        
+
         employment_type = user_context.get("employment_type", "individual")
-        
+
         prompt = f"""Based on the user's situation, identify tax-deductible expenses.
 
 User's situation:
@@ -133,7 +132,7 @@ Important: Respond ONLY with valid JSON."""
 
         try:
             message = await get_llm().complete(prompt, max_tokens=1000)
-            
+
             response_text = message.text.strip()
             if "```json" in response_text:
                 response_text = response_text.split("```json")[1].split("```")[0].strip()
@@ -141,21 +140,21 @@ Important: Respond ONLY with valid JSON."""
                 response_text = response_text.split("```")[1].split("```")[0].strip()
             import json
             response_data = json.loads(response_text)
-            
+
             return response_data.get("deductions", [])
-        
+
         except Exception as e:
             logger.error(f"Error identifying deductions: {e}")
             return []
-    
+
     async def _get_recommendations(
         self,
-        deductions: list[Dict[str, Any]]
+        deductions: list[dict[str, Any]]
     ) -> list[str]:
         """Generate recommendations based on identified deductions."""
-        
+
         recommendations = []
-        
+
         for deduction in deductions:
             if deduction.get("deductibility") == "high":
                 recommendations.append(
@@ -165,15 +164,15 @@ Important: Respond ONLY with valid JSON."""
                 recommendations.append(
                     f"Consult tax professional about {deduction.get('category')} deductibility"
                 )
-        
+
         if not recommendations:
             recommendations.append("Maintain detailed records of all potential expenses")
-        
+
         return recommendations
-    
+
     def _estimate_tax_bracket(self, annual_income: float) -> float:
         """Estimate user's tax bracket (simplified for India)."""
-        
+
         if annual_income <= 250000:
             return 0.0
         elif annual_income <= 500000:

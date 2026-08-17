@@ -7,24 +7,24 @@ Simulates official Income Tax Department portal utilities (PAN verification, For
 
 import logging
 import re
-from typing import Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
 class GovtPortalClient:
     """Mock connector for official India income tax API gateway."""
-    
+
     @staticmethod
-    def verify_pan_details(pan_number: str) -> Dict[str, Any]:
+    def verify_pan_details(pan_number: str) -> dict[str, Any]:
         """
         Validate PAN (Permanent Account Number) format and return status.
         Format: 5 alphabets, 4 digits, 1 alphabet (e.g. ABCDE1234F).
         """
         try:
             pan_clean = pan_number.strip().upper()
-            
+
             # Standard PAN regex pattern
             pan_pattern = re.compile(r"^[A-Z]{5}[0-9]{4}[A-Z]$")
             if not pan_pattern.match(pan_clean):
@@ -32,8 +32,8 @@ class GovtPortalClient:
                     "success": False,
                     "error": "Invalid PAN format. Must be in standard 10-character alphanumeric format (e.g. ABCDE1234F)."
                 }
-                
-            # Fifth character represents last name first letter. 
+
+            # Fifth character represents last name first letter.
             # Fourth character represents card holder type (P = Individual, C = Company, H = HUF, F = Firm)
             holder_type_code = pan_clean[3]
             holder_types = {
@@ -45,7 +45,7 @@ class GovtPortalClient:
                 "T": "Trust"
             }
             holder_type = holder_types.get(holder_type_code, "Other/Unknown")
-            
+
             return {
                 "success": True,
                 "pan": pan_clean,
@@ -53,7 +53,7 @@ class GovtPortalClient:
                     "status": "Active & Linked",
                     "holder_type": holder_type,
                     "aadhaar_linked": True,
-                    "verified_at": datetime.utcnow().isoformat()
+                    "verified_at": datetime.now(timezone.utc).isoformat()
                 }
             }
         except Exception as e:
@@ -61,18 +61,18 @@ class GovtPortalClient:
             return {"success": False, "error": str(e)}
 
     @staticmethod
-    def fetch_form_26as_statement(pan_number: str) -> Dict[str, Any]:
+    def fetch_form_26as_statement(pan_number: str) -> dict[str, Any]:
         """
         Fetch summary of Form 26AS (Tax Credit Statement) from income tax portal.
         """
         try:
             pan_clean = pan_number.strip().upper()
-            
+
             # Simple PAN check
             pan_pattern = re.compile(r"^[A-Z]{5}[0-9]{4}[A-Z]$")
             if not pan_pattern.match(pan_clean):
                 return {"success": False, "error": "Invalid PAN format"}
-                
+
             return {
                 "success": True,
                 "pan": pan_clean,
@@ -105,7 +105,7 @@ class GovtPortalClient:
                         }
                     ],
                     "total_tax_credits": 135000.0,
-                    "last_updated": datetime.utcnow().isoformat()
+                    "last_updated": datetime.now(timezone.utc).isoformat()
                 }
             }
         except Exception as e:

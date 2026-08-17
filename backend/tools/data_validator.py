@@ -12,12 +12,12 @@ Ensures reliability by:
 - Generating structured validation reports with confidence scores
 """
 
-import re
 import json
 import logging
-from typing import Dict, Any, List, Optional, Tuple
-from datetime import datetime, timedelta
+import re
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from typing import Any
 from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
@@ -32,10 +32,10 @@ class ValidationReport:
     """Structured validation output attached to every agent/tool result."""
     is_valid: bool = True
     confidence_score: float = 1.0
-    warnings: List[str] = field(default_factory=list)
-    corrections_applied: List[str] = field(default_factory=list)
-    sources_verified: List[Dict[str, Any]] = field(default_factory=list)
-    validation_timestamp: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    warnings: list[str] = field(default_factory=list)
+    corrections_applied: list[str] = field(default_factory=list)
+    sources_verified: list[dict[str, Any]] = field(default_factory=list)
+    validation_timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
     def add_warning(self, warning: str):
         self.warnings.append(warning)
@@ -50,10 +50,10 @@ class ValidationReport:
             "url": url,
             "credibility_score": credibility,
             "domain": domain,
-            "verified_at": datetime.utcnow().isoformat()
+            "verified_at": datetime.now(timezone.utc).isoformat()
         })
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "is_valid": self.is_valid,
             "confidence_score": round(self.confidence_score, 2),
@@ -130,9 +130,9 @@ class WebDataValidator:
 
     def validate_search_results(
         self,
-        results: Dict[str, Any],
+        results: dict[str, Any],
         query: str
-    ) -> Tuple[Dict[str, Any], ValidationReport]:
+    ) -> tuple[dict[str, Any], ValidationReport]:
         """
         Validate web search results and add credibility metadata.
 
@@ -179,9 +179,9 @@ class WebDataValidator:
 
     def _validate_single_result(
         self,
-        item: Dict[str, Any],
+        item: dict[str, Any],
         report: ValidationReport
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Validate a single search result item."""
         url = item.get("url", "")
         title = item.get("title", "")
@@ -256,7 +256,7 @@ class WebDataValidator:
             content = content[:5000] + "..."
         return content
 
-    def _check_freshness(self, date_str: Optional[str]) -> Optional[str]:
+    def _check_freshness(self, date_str: str | None) -> str | None:
         """Check if the data is fresh enough."""
         if not date_str:
             return None
@@ -266,7 +266,7 @@ class WebDataValidator:
             for fmt in ["%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%d-%m-%Y", "%Y/%m/%d"]:
                 try:
                     date = datetime.strptime(date_str.split("T")[0] if "T" in date_str else date_str, fmt)
-                    age_days = (datetime.utcnow() - date).days
+                    age_days = (datetime.now(timezone.utc) - date).days
                     if age_days > 365:
                         return f"Source data is {age_days} days old — may be outdated"
                     elif age_days > 180:
@@ -290,7 +290,7 @@ class LLMResponseValidator:
     def __init__(self):
         self.logger = logging.getLogger("validator.llm")
 
-    def parse_json_response(self, raw_response: str) -> Tuple[Optional[Dict], ValidationReport]:
+    def parse_json_response(self, raw_response: str) -> tuple[dict | None, ValidationReport]:
         """
         Robustly parse JSON from LLM response with multiple fallback strategies.
 
@@ -382,8 +382,8 @@ class LLMResponseValidator:
 
     def validate_income_sources(
         self,
-        sources: List[Dict[str, Any]]
-    ) -> Tuple[List[Dict[str, Any]], ValidationReport]:
+        sources: list[dict[str, Any]]
+    ) -> tuple[list[dict[str, Any]], ValidationReport]:
         """Validate extracted income sources."""
         report = ValidationReport()
         validated = []
@@ -420,8 +420,8 @@ class LLMResponseValidator:
 
     def validate_deductions(
         self,
-        deductions: List[Dict[str, Any]]
-    ) -> Tuple[List[Dict[str, Any]], ValidationReport]:
+        deductions: list[dict[str, Any]]
+    ) -> tuple[list[dict[str, Any]], ValidationReport]:
         """Validate and enforce deduction limits against ground truth."""
         report = ValidationReport()
         validated = []
@@ -467,8 +467,8 @@ class LLMResponseValidator:
 
     def validate_intent_response(
         self,
-        response_data: Optional[Dict[str, Any]]
-    ) -> Tuple[Dict[str, Any], ValidationReport]:
+        response_data: dict[str, Any] | None
+    ) -> tuple[dict[str, Any], ValidationReport]:
         """Validate intent detection response from LLM."""
         report = ValidationReport()
 
@@ -518,8 +518,8 @@ class FinancialDataValidator:
 
     def validate_tax_calculation(
         self,
-        calculation: Dict[str, Any]
-    ) -> Tuple[Dict[str, Any], ValidationReport]:
+        calculation: dict[str, Any]
+    ) -> tuple[dict[str, Any], ValidationReport]:
         """Validate tax calculation results."""
         report = ValidationReport()
 
@@ -566,7 +566,7 @@ class FinancialDataValidator:
         savings: float,
         total_income: float,
         total_deductions: float
-    ) -> Tuple[float, ValidationReport]:
+    ) -> tuple[float, ValidationReport]:
         """Validate that estimated savings are realistic."""
         report = ValidationReport()
 
@@ -606,8 +606,8 @@ class DataValidator:
     def validate_tool_result(
         self,
         tool_name: str,
-        result: Dict[str, Any]
-    ) -> Tuple[Dict[str, Any], ValidationReport]:
+        result: dict[str, Any]
+    ) -> tuple[dict[str, Any], ValidationReport]:
         """
         Validate a tool's result based on its category.
 

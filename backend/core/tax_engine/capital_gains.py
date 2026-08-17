@@ -33,7 +33,7 @@ from backend.core.rules.aliases import cite
 from backend.core.rules.loader import RuleError, TaxRuleset
 
 
-class AssetClass(str, Enum):  # noqa: UP042
+class AssetClass(str, Enum):
     LISTED_EQUITY = "listed_equity"        # STT paid — 111A / 112A
     EQUITY_MF = "equity_mf"
     IMMOVABLE_PROPERTY = "immovable_property"

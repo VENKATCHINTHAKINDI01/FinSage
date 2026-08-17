@@ -17,7 +17,11 @@ import pytest
 from backend.core.provenance.money import Money
 from backend.core.tax_engine import TaxInput, compute_tax
 
-GOLDEN = Path(__file__).resolve().parent / "golden"
+# Only the compute_tax corpus. Sibling directories under golden/ hold corpora
+# for other engines with different case shapes — `regime_comparison/` is loaded
+# by test_regime_compare.py. An earlier layout put them all in one tree, and
+# this loader tried to parse a regime-comparison case as a TaxResult.
+GOLDEN = Path(__file__).resolve().parent / "golden" / "tax_computation"
 
 REQUIRED_KEYS = {"id", "fy", "input", "expect", "verified_against"}
 
@@ -33,8 +37,8 @@ ASSERTABLE = {
     "surcharge",
     "pre_cess_liability",
     "cess",
+    "total_tax_exact",
     "total_tax",
-    "total_tax_rounded",
     "balance_payable",
     "refund_due",
 }

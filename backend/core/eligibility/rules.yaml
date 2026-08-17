@@ -15,11 +15,29 @@
 
 meta:
   verified_on: "2026-08-09"
+  # The PRC-004 rules below were verified separately on 2026-08-13 against
+  # mnre.gov.in. Kept as a second date rather than bumping the first, because
+  # bumping it would claim the 80EEB-era rules were re-read that day too.
+  procurement_rules_verified_on: "2026-08-13"
+
+  # The vocabulary a `buyer_profile` condition may use. Enforced by test:
+  # a condition naming a profile that is not here NEVER MATCHES and NEVER
+  # ERRORS, so a typo produces a rule that is silently dead for everyone.
+  buyer_profiles:
+    - government_employee
+    - salaried_private
+    - self_employed
+    - gst_registered_business
+    - farmer
+
   sources:
     - https://www.incometaxindia.gov.in/
     - https://cleartax.in/s/section-80eeb-deduction-purchase-electric-vehicle
     - https://www.evselect.in/ev-subsidies-india
     - https://www.personalfn.com/dwl/Precious-Metals/sovereign-gold-bond-scheme-discontinued-why-this-is-done-and-what-it-means-for-investors
+    - https://mnre.gov.in/en/pradhan-mantri-kisan-urja-suraksha-evam-utthaan-mahabhiyaan-pm-kusum/
+    - https://mnre.gov.in/en/grid-connected-solar-rooftop-programme/
+    - https://cdnbbsr.s3waas.gov.in/s3716e1b8c6cd17b771da77391355749f3/uploads/2024/07/202407021768035484.pdf
 
 rules:
 
@@ -102,8 +120,16 @@ rules:
   - id: PM_E_DRIVE_2W
     name: PM E-DRIVE demand incentive — electric two-wheeler
     kind: subsidy
-    benefit_per_kwh: 2500
-    max_benefit: 5000
+    # `benefit_per_kwh: 2500` sat here alongside `max_benefit: 5000` and the
+    # evaluator read only the second, so every scooter was quoted ₹5,000 —
+    # including a 1.5 kWh model actually worth ₹3,750. The per-kWh figure was
+    # declared and never multiplied. PRC-004 gives it somewhere to be used.
+    benefit:
+      kind: per_unit
+      rate: 2500
+      unit: kWh
+      per: battery_kwh
+      cap: 5000
     windows:
       - field: purchase_date
         to: "2026-07-31"
@@ -118,8 +144,12 @@ rules:
   - id: PM_E_DRIVE_3W
     name: PM E-DRIVE demand incentive — electric three-wheeler
     kind: subsidy
-    benefit_per_kwh: 2500
-    max_benefit: 5000
+    benefit:
+      kind: per_unit
+      rate: 2500
+      unit: kWh
+      per: battery_kwh
+      cap: 5000
     windows:
       - field: purchase_date
         to: "2028-03-31"
@@ -139,6 +169,149 @@ rules:
     conditions:
       - { field: vehicle_category, equals: car }
     citation: { source_url: "https://heavyindustries.gov.in/" }
+
+  # ── Beyond vehicles — PRC-004 ─────────────────────────────────────────────
+  # Verified 2026-08-13 against mnre.gov.in and the MNRE operational
+  # guidelines. Two schemes, two different answers, and the difference is only
+  # visible in the primary documents:
+  #
+  #   PM-KUSUM        period published as "Till 31.03.2026"  → CLOSED
+  #   PM-Surya Ghar   guidelines §2(d): "till 31st March, 2027" → OPEN
+  #
+  # A first pass here applied the 31.03.2026 date to both, because the MNRE
+  # rooftop programme page leads with the Phase-II period. §4(a) of the
+  # guidelines says Phase-II "stands subsumed within" PM-Surya Ghar, so that
+  # date describes the superseded scheme. Being wrong in that direction tells
+  # a user they missed money they can still claim.
+
+  - id: PM_KUSUM_B
+    name: PM-KUSUM Component B — standalone solar agriculture pump
+    kind: subsidy
+    # 30% central financial assistance of the benchmark cost or the tender
+    # cost, whichever is LOWER. The state adds at least 30% and the farmer
+    # pays at most 40%; only the central share is modelled, because the state
+    # share varies by state and by year and is not verified here.
+    benefit:
+      kind: percentage
+      rate: "0.30"
+      of: benchmark_cost
+    windows:
+      - field: purchase_date
+        from: "2019-03-08"
+        to: "2026-03-31"
+        closed_message: >
+          MNRE publishes the PM-KUSUM scheme period as running till
+          31 March 2026. An extension may have been notified since — confirm
+          on mnre.gov.in before assuming this is closed, and confirm the
+          state share with your state nodal agency either way.
+    conditions:
+      - { field: buyer_profile, equals: farmer }
+      - { field: asset_type, equals: solar_pump }
+      - { field: grid_connected, equals: false }
+    citation:
+      source_url: "https://mnre.gov.in/en/pradhan-mantri-kisan-urja-suraksha-evam-utthaan-mahabhiyaan-pm-kusum/"
+
+  - id: PM_KUSUM_B_SPECIAL_STATES
+    name: PM-KUSUM Component B — standalone solar pump (special-category states)
+    kind: subsidy
+    # A separate rule rather than a rate lookup, because the two carry
+    # different citations in the same document and a lookup table would hide
+    # which sentence each rate came from.
+    benefit:
+      kind: percentage
+      rate: "0.50"
+      of: benchmark_cost
+    windows:
+      - field: purchase_date
+        from: "2019-03-08"
+        to: "2026-03-31"
+        closed_message: >
+          MNRE publishes the PM-KUSUM scheme period as running till
+          31 March 2026.
+    conditions:
+      - { field: buyer_profile, equals: farmer }
+      - { field: asset_type, equals: solar_pump }
+      - { field: grid_connected, equals: false }
+      - field: state
+        in: [AR, AS, MN, ML, MZ, NL, SK, TR, JK, HP, UK, LD, AN]
+    citation:
+      source_url: "https://mnre.gov.in/en/pradhan-mantri-kisan-urja-suraksha-evam-utthaan-mahabhiyaan-pm-kusum/"
+
+  # Verified 2026-08-13 against the MNRE operational guidelines PDF for the
+  # component "Central Financial Assistance to Residential Consumers".
+  #
+  # Two corrections came out of reading the primary document, and they went in
+  # OPPOSITE directions — which is the argument for reading it.
+  #
+  # 1. The MNRE programme page says "Period of existing Phase-II scheme: Till
+  #    31.03.2026", and an earlier pass here applied that date to PM-Surya
+  #    Ghar. Wrong. §4(a) of the guidelines: Phase-II "stands subsumed within
+  #    the PM Surya Ghar: Muft Bijli Yojana", and §2(d): "The implementation
+  #    period of the scheme shall be till 31st March, 2027." Closing a live
+  #    scheme tells a user they missed money they can still claim.
+  #
+  # 2. The CFA is a MARGINAL TIERED RATE, not a capacity slab — see the
+  #    `tiered` docstring in benefit.py. Every secondary summary gets this
+  #    wrong and it overstates a 1.5 kW system by ₹15,000.
+  - id: PM_SURYA_GHAR_CFA
+    name: PM-Surya Ghar — rooftop solar central financial assistance
+    kind: subsidy
+    benefit:
+      kind: tiered
+      measure: capacity_kw
+      unit: kWp
+      tiers:
+        - { upto: 2, rate: 30000, label: "first 2 kWp" }
+        - { upto: 3, rate: 18000, label: "additional 1 kWp" }
+        - { upto: null, rate: 0, label: "beyond 3 kWp — no additional CFA" }
+    windows:
+      - field: purchase_date
+        from: "2024-02-13"
+        to: "2027-03-31"
+        closed_message: >
+          The PM-Surya Ghar implementation period runs to 31 March 2027.
+          Applications are accepted on the National Portal from the scheme
+          launch date of 13 February 2024.
+    conditions:
+      # Residential CONNECTION, not the buyer's employer. The guidelines
+      # exclude the "government segment, commercial and industrial segment" —
+      # that is about the electricity connection the plant is tagged to, and
+      # an earlier pass here mistook it for the buyer's occupation, which
+      # would have denied the subsidy to every government employee installing
+      # solar on their own house.
+      - { field: asset_type, equals: rooftop_solar }
+      - { field: connection_type, equals: residential }
+      - { field: installation_mode, equals: capex }
+      - { field: domestic_content_modules, equals: true }
+    citation:
+      source_url: "https://cdnbbsr.s3waas.gov.in/s3716e1b8c6cd17b771da77391355749f3/uploads/2024/07/202407021768035484.pdf"
+
+  - id: PM_SURYA_GHAR_CFA_SPECIAL_STATES
+    name: PM-Surya Ghar — rooftop solar CFA (special-category states)
+    kind: subsidy
+    benefit:
+      kind: tiered
+      measure: capacity_kw
+      unit: kWp
+      tiers:
+        - { upto: 2, rate: 33000, label: "first 2 kWp" }
+        - { upto: 3, rate: 19800, label: "additional 1 kWp" }
+        - { upto: null, rate: 0, label: "beyond 3 kWp — no additional CFA" }
+    windows:
+      - field: purchase_date
+        from: "2024-02-13"
+        to: "2027-03-31"
+    conditions:
+      - { field: asset_type, equals: rooftop_solar }
+      - { field: connection_type, equals: residential }
+      - { field: installation_mode, equals: capex }
+      - { field: domestic_content_modules, equals: true }
+      # Uttarakhand, Himachal Pradesh, J&K, Ladakh, the North-Eastern states
+      # including Sikkim, and the UTs of A&N and Lakshadweep.
+      - field: state
+        in: [UK, HP, JK, LA, AR, AS, MN, ML, MZ, NL, SK, TR, AN, LD]
+    citation:
+      source_url: "https://cdnbbsr.s3waas.gov.in/s3716e1b8c6cd17b771da77391355749f3/uploads/2024/07/202407021768035484.pdf"
 
   # ── Availability, not eligibility ─────────────────────────────────────────
   - id: SGB_PRIMARY

@@ -4,7 +4,7 @@ Conversation and Semantic Memory
 
 import logging
 from typing import List, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ class ConversationMemory:
             "query": query,
             "responses": agent_responses,
             "savings": total_savings,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
         
         self.turns.append(turn)

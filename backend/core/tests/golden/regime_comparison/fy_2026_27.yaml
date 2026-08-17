@@ -1,0 +1,109 @@
+# FY 2026-27 · old versus new regime · PLN-001
+#
+# Every case is hand-derived in `verified_against` before being written down.
+# An expected value read off the engine is the implementation restated back to
+# itself, which proves nothing.
+#
+# Shorthand used throughout:
+#   new regime  std deduction ₹75,000 · slabs 0/4/8/12/16/20/24L at
+#               0/5/10/15/20/25/30% · s.87A ₹60,000 up to ₹12,00,000 taxable,
+#               with marginal relief
+#   old regime  std deduction ₹50,000 · slabs 2.5/5/10L at 5/20/30% ·
+#               s.87A ₹12,500 up to ₹5,00,000 taxable, NO marginal relief
+#   both        4% cess, applied AFTER any marginal relief
+
+- id: RC26-NIL-UNDER-BOTH-NO-BREAKEVEN
+  salary: 800000
+  age: 30
+  deductions: {}
+  expect:
+    better: new
+    old_total_tax: 65000
+    new_total_tax: 0
+    breakeven: null
+  verified_against: >
+    New: 8,00,000 − 75,000 = 7,25,000 taxable. Slab 4–7.25L @5% = 16,250.
+    Below the ₹12,00,000 rebate ceiling, so s.87A cancels it → ₹0.
+    Old: 8,00,000 − 50,000 = 7,50,000. Slab 2.5–5L @5% = 12,500;
+    5–7.5L @20% = 50,000; total 62,500. Above ₹5,00,000 so no rebate.
+    Cess 4% = 2,500 → 65,000.
+    Breakeven is null, not a number: the new regime is already at nil, and the
+    old regime can only match nil, never beat it. Reporting the ₹2,50,000 that
+    would tie would be advice to lock up ₹2.5L for nothing.
+
+- id: RC26-ORDINARY-DEDUCTIONS-NEW-WINS
+  salary: 1500000
+  age: 35
+  deductions: { 80C: 150000, 80D: 25000, 80CCD_1B: 50000 }
+  expect:
+    better: new
+    old_total_tax: 187200
+    new_total_tax: 97500
+    saving: 89700
+  verified_against: >
+    New (deductions all disallowed): 15,00,000 − 75,000 = 14,25,000.
+    4–8L @5% = 20,000; 8–12L @10% = 40,000; 12–14.25L @15% = 33,750.
+    Total 93,750 + 4% cess 3,750 = 97,500.
+    Old: 15,00,000 − 50,000 − 2,25,000 = 12,25,000.
+    2.5–5L @5% = 12,500; 5–10L @20% = 1,00,000; 10–12.25L @30% = 67,500.
+    Total 1,80,000 + 4% cess 7,200 = 1,87,200.
+    This is the common salaried case, and the new regime wins by a wide margin.
+
+- id: RC26-HOME-LOAN-AND-HRA-OLD-WINS
+  salary: 1500000
+  age: 35
+  deductions:
+    { 80C: 150000, 80D: 25000, 80CCD_1B: 50000, 24b: 200000, 10_13A: 200000 }
+  expect:
+    better: old
+    old_total_tax: 80600
+    new_total_tax: 97500
+    saving: 16900
+  verified_against: >
+    Old: 15,00,000 − 50,000 − 6,25,000 = 8,25,000 taxable.
+    2.5–5L @5% = 12,500; 5–8.25L @20% = 65,000. Total 77,500 + cess 3,100
+    = 80,600. New is unchanged at 97,500.
+    The narrowest realistic win for the old regime: it needs a home-loan
+    interest claim AND full HRA on top of a maxed 80C. Recorded because the
+    product's honest message to most users is the opposite of the folk wisdom.
+
+- id: RC26-BREAKEVEN-IS-EIGHT-LAKH-AT-HIGH-INCOME
+  salary: 3000000
+  age: 40
+  deductions: {}
+  expect:
+    better: new
+    breakeven: 800000
+  verified_against: >
+    With both regimes in the 30% band the breakeven is a constant and falls out
+    of the algebra with the salary cancelling:
+      new (pre-cess) = 3,00,000 + 0.30 × (S − 75,000 − 24,00,000)
+      old (pre-cess) = 1,12,500 + 0.30 × (S − 50,000 − D − 10,00,000)
+    Equating: −4,42,500 = −2,02,500 − 0.30D, so D = ₹8,00,000 exactly.
+
+- id: RC26-SENIOR-CITIZEN-HIGHER-BASIC-EXEMPTION
+  salary: 1000000
+  age: 65
+  deductions: { 80C: 150000, 80D: 50000, 80TTB: 50000 }
+  expect:
+    better: new
+  verified_against: >
+    The old regime's basic exemption rises to ₹3,00,000 at 60 and 80D doubles
+    to ₹50,000 for a senior. The new regime has no age bands at all. Included
+    because an engine that silently ignored age would still pass every case
+    above; here the old regime's exemption genuinely differs.
+
+- id: RC26-NON-SALARY-INCOME-GETS-NO-STANDARD-DEDUCTION
+  salary: 1500000
+  age: 40
+  is_salary: false
+  deductions: {}
+  expect:
+    better: new
+    new_taxable_income: 1500000
+  verified_against: >
+    Pension drawn as annuity, interest and rental income are not salary, so
+    s.16(ia) does not apply and taxable income equals gross. Contrast
+    RC26-ORDINARY-DEDUCTIONS-NEW-WINS where the same ₹15,00,000 as salary is
+    taxed on ₹14,25,000. Misclassifying non-salary income as salary hands over
+    ₹75,000 of relief that is not due.

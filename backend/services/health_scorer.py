@@ -5,7 +5,7 @@ Service to calculate and track financial health scores.
 import logging
 import asyncio
 from typing import Dict, Any, List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -128,7 +128,7 @@ class FinancialHealthScorer:
                 "breakdown": breakdown,
                 "trend": trend,
                 "recommendations": recommendations,
-                "score_date": datetime.utcnow().isoformat(),
+                "score_date": datetime.now(timezone.utc).isoformat(),
                 
                 "action_items": [
                     f"Priority 1: {self._get_priority_action(overall_score, breakdown)}"
@@ -376,7 +376,7 @@ class FinancialHealthScorer:
                 }
             
             # Get last month's score
-            one_month_ago = datetime.utcnow() - timedelta(days=30)
+            one_month_ago = datetime.now(timezone.utc) - timedelta(days=30)
             
             if hasattr(self.db, "execute"):
                 # AsyncSession style

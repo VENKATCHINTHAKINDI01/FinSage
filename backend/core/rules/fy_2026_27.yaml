@@ -291,8 +291,35 @@ deductions:
     legacy_section: "10(13A)"
     formula_note: >
       Least of: actual HRA received; rent paid minus 10% of salary; 50% of
-      salary in a metro or 40% elsewhere.
-    metros: [Mumbai, Delhi, Kolkata, Chennai]
+      salary in a listed city or 40% elsewhere. The third limb is often NOT the
+      binding one — it only decides the answer where rent is high relative to
+      salary, so a move from 40% to 50% does not always increase the exemption.
+    # EXPANDED for FY 2026-27. The Income-tax Rules 2026 (successor to Rule 2A
+    # of the 1962 Rules) added Bengaluru, Hyderabad, Pune and Ahmedabad to the
+    # four original metros — the first change to this list in over four decades.
+    # FY 2025-26 and earlier keep the four. Treating the new four as 40% in
+    # FY 2026-27 under-states the exemption and over-deducts TDS for a very
+    # large population.
+    cities_at_50_percent:
+      - Mumbai
+      - Delhi
+      - Kolkata
+      - Chennai
+      - Bengaluru
+      - Hyderabad
+      - Pune
+      - Ahmedabad
+    rate_listed_city: "0.50"
+    rate_other: "0.40"
+    act_2025_location: Schedule III, Table, Serial No. 11
+    declaration_form: "124"
+    declaration_note: >
+      Form 12BB became Form 124 from 1 April 2026 (s.392(5)(b) with Rule 205).
+      It now requires the employee to disclose their RELATIONSHIP with the
+      landlord, which makes rent paid to a spouse or parent visible to both the
+      employer and the department. Such arrangements are not disallowed, but
+      they must be genuine, documented and paid through banking channels.
+      The landlord's PAN is required where annual rent exceeds ₹1,00,000.
 
   24b:
     name: Interest on housing loan
@@ -310,6 +337,48 @@ deductions:
 # ═══════════════════════════════════════════════════════════════════════════
 # CAPITAL GAINS  (regime introduced 23 July 2024)
 # ═══════════════════════════════════════════════════════════════════════════
+# ── Cost Inflation Index ────────────────────────────────────────────────────
+# Notified under s.48 Explanation (v). Notification 70/2025 dated 01-07-2025,
+# read from incometaxindia.gov.in on 2026-08-13.
+#
+# WHY THIS IS STILL HERE AFTER INDEXATION WAS ABOLISHED. Indexation was removed
+# for transfers on or after 23 July 2024, but a resident individual or HUF
+# selling immovable property ACQUIRED BEFORE that date may still elect 20% with
+# indexation instead of 12.5% without — see `immovable_property_pre_23jul2024`
+# below. That election needs the index, and will keep needing it for as long as
+# pre-reform property is being sold, which is decades.
+#
+# It lived as a hardcoded dict inside an agent, ending at 2024-25 and falling
+# back to 254 or 363 for anything newer — so a FY 2025-26 acquisition indexed
+# against the wrong year and nothing raised.
+cost_inflation_index:
+  "2001-02": 100
+  "2002-03": 105
+  "2003-04": 109
+  "2004-05": 113
+  "2005-06": 117
+  "2006-07": 122
+  "2007-08": 129
+  "2008-09": 137
+  "2009-10": 148
+  "2010-11": 167
+  "2011-12": 184
+  "2012-13": 200
+  "2013-14": 220
+  "2014-15": 240
+  "2015-16": 254
+  "2016-17": 264
+  "2017-18": 272
+  "2018-19": 280
+  "2019-20": 289
+  "2020-21": 301
+  "2021-22": 317
+  "2022-23": 331
+  "2023-24": 348
+  "2024-25": 363
+  "2025-26": 376
+  "2026-27": 384
+
 capital_gains:
   regime_change_date: "2024-07-23"
 
@@ -403,6 +472,33 @@ presumptive:
     gross_receipts_limit_digital: 7500000
     digital_receipts_threshold: "0.95"
     rate: "0.50"
+  44AE:
+    name: Plying, hiring or leasing goods carriages
+    max_vehicles: 10
+    heavy_goods_vehicle_kg: 12000
+    rate_per_tonne_per_month_hgv: 1000
+    rate_per_vehicle_per_month_other: 7500
+    part_month_counts_as_full: true
+    eligible_entities: [individual, huf, firm, company]
+    excluded_entities: [llp]
+    threshold_note: >
+      "Heavy goods vehicle" takes the Motor Vehicles Act definition — gross
+      vehicle weight exceeding 12,000 kg. SOURCES CONFLICT: one secondary
+      source states 7,500 kg. The 12,000 kg figure is the statutory
+      cross-reference and is used here; confirm against the bare Act for a
+      vehicle between the two.
+    note: >
+      Owning more than ten goods carriages AT ANY POINT in the year removes
+      eligibility for the whole year — it is not a pro-rata test.
+
+  # Opting out of 44AD locks you out for the FIVE FOLLOWING years, and once out
+  # you must maintain books and get them audited if income exceeds the basic
+  # exemption. There is no equivalent lock-in for 44ADA or 44AE.
+  opt_out_lock_in:
+    44AD: 5
+    44ADA: 0
+    44AE: 0
+
   advance_tax_note: >
     Presumptive taxpayers pay 100% of advance tax by 15 March in a single
     instalment, not in four.
@@ -413,16 +509,58 @@ presumptive:
 advance_tax:
   threshold: 10000
   senior_citizen_exempt_without_business_income: true
+  senior_citizen_min_age: 60
+
+  # `tolerance_percent` is the statutory let-off in the first two instalments,
+  # and it is NOT the same as `cumulative_percent`. Pay 12% by 15 June and no
+  # interest is charged even though the target is 15%. Omitting it overcharges
+  # every taxpayer who lands between the two figures — the single most common
+  # way an advance-tax calculator is wrong.
+  #
+  # `months` is the interest period for each instalment: three months for the
+  # first three, one for the last, because there is no later instalment for the
+  # 15 March shortfall to run against.
   instalments:
-    - { due: "06-15", cumulative_percent: "0.15" }
-    - { due: "09-15", cumulative_percent: "0.45" }
-    - { due: "12-15", cumulative_percent: "0.75" }
-    - { due: "03-15", cumulative_percent: "1.00" }
+    - { due: "06-15", cumulative_percent: "0.15", tolerance_percent: "0.12", months: 3 }
+    - { due: "09-15", cumulative_percent: "0.45", tolerance_percent: "0.36", months: 3 }
+    - { due: "12-15", cumulative_percent: "0.75", tolerance_percent: "0.75", months: 3 }
+    - { due: "03-15", cumulative_percent: "1.00", tolerance_percent: "1.00", months: 1 }
+
+  # Income nobody could have forecast at an earlier instalment date does not
+  # attract deferment interest, provided the tax on it is paid in the remaining
+  # instalments (or by 31 March where it arises after the last one). Without
+  # this the product would tell someone who sold shares in February that they
+  # owed interest back to June.
+  deferment_excused_income:
+    - capital_gains
+    - lottery_and_gambling
+    - dividend_income
+    - first_year_business_income
+
   interest:
     234A: { rate_monthly: "0.01", on: unpaid tax, from: due date of return }
     234B: { rate_monthly: "0.01", trigger_percent: "0.90" }
     234C: { rate_monthly: "0.01", note: Shortfall per instalment }
-    244A: { rate_monthly: "0.005", note: Interest payable ON refunds }
+    # The proviso to s.244A(1) denies interest where the refund is under 10% of
+    # the tax determined under s.143(1) or on regular assessment. It is written
+    # against clauses (a) and (aa), but appellate authority has held the embargo
+    # does not reach refunds of SELF-ASSESSMENT tax — so the threshold is
+    # applied to advance-tax and TDS refunds and the divergence is surfaced
+    # rather than silently resolved.
+    244A:
+      rate_monthly: "0.005"
+      min_refund_percent_of_tax: "0.10"
+      threshold_applies_to_self_assessment_tax: false
+      note: Interest payable ON refunds
+
+  # Interest under all four heads runs on whole months, and a part month counts
+  # as a full one. Pro-rating by days understates every charge.
+  part_month_counts_as_full: true
+
+  # s.288A/288B logic extends here: interest is computed on the shortfall
+  # rounded DOWN to a multiple of ₹100.
+  shortfall_rounded_down_to: 100
+
   refund_interest_note: >
     Legacy s.244A is 0.5% per month. v1 used "1% per annum simplified",
     understating refund interest by a factor of six.
@@ -431,8 +569,201 @@ advance_tax:
 # FILING
 # ═══════════════════════════════════════════════════════════════════════════
 deadlines:
-  itr_non_audit: "2027-07-31"
-  itr_audit: "2027-10-31"
-  itr_transfer_pricing: "2027-11-30"
-  belated_revised: "2027-12-31"
+  # THE TEST IS s.44AB AUDIT LIABILITY, NOT THE ITR FORM NUMBER. Two people on
+  # the same form can have different deadlines, and sorting a client book by
+  # form rather than by audit liability is how a filing gets missed.
+  #
+  # CORRECTED 2026-08-11 — a third due date was added and this pack had only
+  # two. The Finance Act 2026 substituted Explanation 2 to s.139(1) and created
+  # a PERMANENT 31 August date, effective AY 2026-27, for an assessee with
+  # income from business or profession whose accounts are NOT required to be
+  # audited and to whom s.92E does not apply. It is a statutory amendment, not
+  # a CBDT extension circular, so there is no fresh notification each year.
+  # Without it a non-audit freelancer is told 31 July — a month early, and the
+  # kind of error that makes a product look wrong even when it is being
+  # cautious. Verified against the Department's Tax Calendar for AY 2026-27.
+  itr_non_audit: "2027-07-31"           # no business or professional income
+  itr_business_non_audit: "2027-08-31"  # business income, not s.44AB liable
+  itr_audit: "2027-10-31"               # s.44AB liable, and companies
+  itr_transfer_pricing: "2027-11-30"    # s.92E cases
+  belated: "2027-12-31"
+
+  # CORRECTED 2026-08-11. This used to be a single `belated_revised` field at
+  # 31 December, which conflated two deadlines that stopped coinciding. From
+  # AY 2026-27 the revised-return window runs to the END of the assessment
+  # year, three months later than the belated window — with a s.234I fee if
+  # used after 31 December. Source: ITR-1 FAQ Q19–Q21 on incometax.gov.in.
+  revised: "2028-03-31"
+  revised_late_fee_after: "2027-12-31"
+  revised_late_fee:
+    upto_5L_total_income: 1000
+    above_5L_total_income: 5000
+    legacy_section: "234I"
+
   updated_return_itr_u_months: 48
+
+  # What audit liability turns on. Confirm against the bare text for a
+  # borderline case — these thresholds have moved more than once.
+  audit_thresholds:
+    business_turnover: 10000000
+    business_turnover_if_cash_under_5pc: 100000000
+    profession_gross_receipts: 5000000
+    note: >
+      Declaring profit BELOW the presumptive rate under s.44AD or s.44ADA while
+      total income exceeds the basic exemption limit pushes an otherwise
+      non-audit taxpayer into audit — and therefore from 31 August to
+      31 October. It is the trap in this area.
+
+  # Missing the s.139(1) date. The fee is the visible cost and the smallest.
+  late_filing:
+    fee_234f_upto_5L: 1000
+    fee_234f_above_5L: 5000
+    interest_234a_monthly: "0.01"
+    forfeits_loss_carry_forward: true
+    loss_carry_forward_exceptions: [house_property_loss, unabsorbed_depreciation]
+    refund_interest_runs_from_filing_date: true
+    note: >
+      Losing the carry-forward is worth more than every other consequence
+      combined for anyone sitting on a real business or capital loss, and a
+      revised return cannot resurrect it — the condition attaches to the
+      ORIGINAL filing. s.244A refund interest also runs from the filing date
+      rather than 1 April of the AY once the return is late.
+
+  # Quarterly TDS/TCS statements. Dates unchanged; FORM NUMBERS ALL CHANGED
+  # from 1 April 2026 under the Income-tax Rules 2026. Filing on an old form
+  # number gets the return rejected.
+  tds_returns:
+    legacy_section: "200(3)"
+    section_2025_act: "397"
+    quarters:
+      - { quarter: Q1, period: Apr-Jun, due: "2026-07-31" }
+      - { quarter: Q2, period: Jul-Sep, due: "2026-10-31" }
+      - { quarter: Q3, period: Oct-Dec, due: "2027-01-31" }
+      - { quarter: Q4, period: Jan-Mar, due: "2027-05-31" }
+    monthly_deposit_day: 7
+    deposit_interest_monthly: "0.015"
+    late_fee_per_day: 200
+    late_fee_capped_at_tax_in_return: true
+    forms:
+      salary: { old: 24Q, new: "138" }
+      resident_non_salary: { old: 26Q, new: "140" }
+      non_resident: { old: 27Q, new: "144" }
+      tcs: { old: 27EQ, new: "143" }
+      certificate_salary: { old: Form 16, new: "130" }
+      certificate_non_salary: { old: Form 16A, new: "131" }
+      certificate_tcs: { old: 27D, new: "133" }
+      employee_declaration: { old: 12BB, new: "124" }
+      nil_tds_self_declaration: { old: 15G/15H, new: "121" }
+    tcs_note: >
+      The TCS statement moved from the 15th of the month to the same date as
+      the TDS returns. A collector who has diarised 15 July out of habit now
+      has more room, not less.
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ITR FORMS — PLN-004
+# ═══════════════════════════════════════════════════════════════════════════
+# WARNING ON VINTAGE. The forms for AY 2027-28 are not notified until roughly
+# March 2027. The scoping below is the AY 2026-27 notification (CBDT, 30 March
+# 2026), which is the most recent in force, and the selector says so on every
+# answer rather than implying it knows next year's forms.
+#
+# What v1 had here was not merely stale, it was invented: ITR-5 described as
+# "high income individuals > 50 lakh" (it is for firms, LLPs, AOPs and BOIs),
+# ITR-3 absent from the table entirely, and ITR-4 conditioned on "turnover
+# < 5 crore" — a figure from the audit provisions, not the form.
+itr_forms:
+  notified_for_ay: "2026-27"
+  applies_to_ay: "2027-28"
+  vintage_note: >
+    Scoping taken from the AY 2026-27 notification. The AY 2027-28 forms had
+    not been notified when this rule pack was verified; re-check before the
+    July 2027 filing season.
+
+  ITR-1:
+    name: Sahaj
+    for: Resident individual (ordinarily resident) with simple income
+    # Individuals ONLY. A HUF with nothing but rental income looks eligible on
+    # every other test and is not — it files ITR-2.
+    entity_types: [individual]
+    total_income_limit: 5000000
+    max_house_properties: 2
+    allows_ltcg_112a_upto: 125000
+    disqualifiers:
+      - not_an_individual
+      - business_or_professional_income
+      - short_term_capital_gains
+      - ltcg_112a_over_limit
+      - other_capital_gains
+      - more_than_two_house_properties
+      - lottery_or_racehorse_income
+      - special_rate_income_115bbda_or_115bbe
+      - retirement_benefit_account_relief
+      - section_5a_apportionment
+      - agricultural_income_over_5000
+      - is_company_director
+      - holds_unlisted_equity_shares
+      - foreign_assets_or_signing_authority
+      - foreign_income
+      - tds_under_194n
+      - deferred_esop_tax
+      - brought_forward_or_carry_forward_loss
+      - not_ordinarily_resident_or_non_resident
+
+  ITR-2:
+    name: ITR-2
+    for: >
+      Individual or HUF with no business or professional income — capital
+      gains, more than two house properties, foreign assets or income, or
+      total income over ₹50 lakh.
+    disqualifiers:
+      - business_or_professional_income
+
+  ITR-3:
+    name: ITR-3
+    for: >
+      Individual or HUF with income from business or profession, where the
+      presumptive scheme is not being used or is unavailable.
+    disqualifiers: []
+
+  ITR-4:
+    name: Sugam
+    for: >
+      Resident individual, HUF or firm (NOT an LLP) declaring income on a
+      presumptive basis under s.44AD, s.44ADA or s.44AE.
+    total_income_limit: 5000000
+    requires_presumptive: true
+    # Individual, HUF or firm — but never an LLP.
+    entity_types: [individual, huf, firm]
+    disqualifiers:
+      - is_llp
+      - short_term_capital_gains
+      - ltcg_112a_over_limit
+      - other_capital_gains
+      - is_company_director
+      - holds_unlisted_equity_shares
+      - foreign_assets_or_signing_authority
+      - foreign_income
+      - agricultural_income_over_5000
+      - brought_forward_or_carry_forward_loss
+      - not_ordinarily_resident_or_non_resident
+
+  ITR-5:
+    name: ITR-5
+    for: Firms, LLPs, AOPs, BOIs and artificial juridical persons
+    entity_types: [firm, llp, aop, boi, ajp]
+
+  ITR-6:
+    name: ITR-6
+    for: Companies, other than those claiming exemption under s.11
+    entity_types: [company]
+
+  ITR-7:
+    name: ITR-7
+    for: >
+      Persons, including companies, required to file under s.139(4A), (4B),
+      (4C) or (4D) — trusts, political parties, research institutions.
+    entity_types: [trust, political_party, research_institution]
+
+  # Only ITR-3, ITR-4 and ITR-5 filers with business income need Form 10-IEA
+  # to leave the new regime. ITR-1 and ITR-2 filers just tick a box.
+  form_10iea_required_for: ["ITR-3", "ITR-4", "ITR-5"]

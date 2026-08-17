@@ -1,0 +1,150 @@
+# FY 2026-27 · advance tax and ss.234B/234C interest · PLN-002
+#
+# Instalments: 15% by 15 Jun, 45% by 15 Sep, 75% by 15 Dec, 100% by 15 Mar.
+# Tolerance:   12% and 36% for the first two only.
+# Interest:    1% per month — three months for the first three instalments,
+#              one for the last. Base floored to ₹100 (Rule 119A(c)).
+# s.234B:      1% per month from 1 April of the AY on the whole unpaid balance,
+#              where advance tax paid was under 90% of the assessed tax.
+
+- id: AT26-NOTHING-PAID
+  total_tax: 100000
+  expect:
+    interest_234c: 5050
+    interest_234b: 1000
+    total_interest: 6050
+  verified_against: >
+    15,000 × 3% = 450; 45,000 × 3% = 1,350; 75,000 × 3% = 2,250;
+    1,00,000 × 1% = 1,000. Total 5,050.
+    234B: nothing paid, so under 90%. 1,00,000 × 1% × 1 month = 1,000.
+
+- id: AT26-PAID-IN-FULL-ON-TIME
+  total_tax: 100000
+  payments: { "2026-06-15": 15000, "2026-09-15": 30000,
+              "2026-12-15": 30000, "2027-03-15": 25000 }
+  expect:
+    interest_234c: 0
+    interest_234b: 0
+  verified_against: >
+    Cumulative 15,000 / 45,000 / 75,000 / 1,00,000 — exactly the schedule at
+    every date, and 100% ≥ 90%. Nothing is due under either head.
+
+- id: AT26-TOLERANCE-TWELVE-PERCENT-EXACTLY
+  total_tax: 100000
+  payments: { "2026-06-15": 12000, "2026-09-15": 33000,
+              "2026-12-15": 30000, "2027-03-15": 25000 }
+  expect:
+    interest_234c: 0
+  verified_against: >
+    12,000 is 12% — below the 15% instalment but at the statutory tolerance, so
+    nothing is charged for June. 45,000 by September is 45%, above the 36%
+    tolerance. This case exists because a calculator that treats 15% as the
+    trigger charges ₹90 here, and would be wrong.
+
+- id: AT26-JUST-UNDER-TOLERANCE-CHARGED-ON-THE-FULL-GAP
+  total_tax: 100000
+  payments: { "2026-06-15": 11900, "2026-09-15": 33100,
+              "2026-12-15": 30000, "2027-03-15": 25000 }
+  expect:
+    interest_234c: 93
+  verified_against: >
+    11,900 is below the 12% tolerance, so June is charged — but on the shortfall
+    from 15%, not from 12%: 15,000 − 11,900 = 3,100, at 1% × 3 = ₹93.
+    Charging on the gap to 12% would give ₹3; charging the full instalment
+    would give ₹450. Both are wrong.
+
+- id: AT26-BELOW-THE-SECTION-208-THRESHOLD
+  total_tax: 9999
+  expect:
+    is_liable: false
+    interest_234c: 0
+    interest_234b: 0
+  verified_against: >
+    s.208 requires advance tax only where the liability is ₹10,000 or more.
+
+- id: AT26-TDS-TAKES-A-SALARIED-TAXPAYER-UNDER-THE-THRESHOLD
+  total_tax: 500000
+  taxes_deducted: 495000
+  expect:
+    is_liable: false
+    liability: 5000
+  verified_against: >
+    The threshold applies to the liability net of TDS, not the gross bill.
+    5,00,000 − 4,95,000 = 5,000, under ₹10,000. Most salaried taxpayers are
+    here, and telling them they owe four instalments on ₹5,00,000 would be the
+    single most damaging output this feature could produce.
+
+- id: AT26-SENIOR-CITIZEN-NO-BUSINESS-INCOME
+  total_tax: 100000
+  age: 68
+  has_business_income: false
+  expect:
+    is_liable: false
+    interest_234c: 0
+  verified_against: >
+    s.207(2): a resident aged 60 or over with no income under the head profits
+    and gains of business or profession is not liable to advance tax at all.
+
+- id: AT26-SENIOR-CITIZEN-WITH-BUSINESS-INCOME-IS-LIABLE
+  total_tax: 100000
+  age: 68
+  has_business_income: true
+  expect:
+    is_liable: true
+    interest_234c: 5050
+  verified_against: >
+    The s.207(2) exemption is lost the moment there is business or professional
+    income. Age alone is not the test, and treating it as one would under-charge
+    every retired consultant.
+
+- id: AT26-PRESUMPTIVE-SINGLE-INSTALMENT
+  total_tax: 100000
+  is_presumptive: true
+  expect:
+    instalments: 1
+    interest_234c: 1000
+  verified_against: >
+    Proviso to s.211(1): a 44AD/44ADA taxpayer pays 100% by 15 March in one
+    instalment. Nothing paid, so the single instalment is short by ₹1,00,000 at
+    1% for one month = ₹1,000. Put through the four-instalment schedule the
+    same taxpayer would be charged ₹5,050 for three defaults that do not exist.
+
+- id: AT26-PRESUMPTIVE-PAID-BY-FIFTEEN-MARCH
+  total_tax: 100000
+  is_presumptive: true
+  payments: { "2027-03-15": 100000 }
+  expect:
+    interest_234c: 0
+    interest_234b: 0
+  verified_against: >
+    Paying nothing until 15 March is fully compliant for a presumptive
+    taxpayer, and attracts no interest under either head.
+
+- id: AT26-FEBRUARY-CAPITAL-GAIN-IS-NOT-BACKDATED
+  total_tax: 100000
+  excused_tax_by_date: { "2027-02-10": 60000 }
+  payments: { "2026-06-15": 6000, "2026-09-15": 18000, "2026-12-15": 30000 }
+  expect:
+    interest_234c: 460
+    interest_234b: 460
+  verified_against: >
+    ₹60,000 of the liability is tax on a gain that arose on 10 Feb 2027, so the
+    June, September and December instalments are computed on ₹40,000:
+    15% = 6,000, 45% = 18,000, 75% = 30,000. Cumulative payments of
+    6,000 / 24,000 / 54,000 meet all three, so nothing is charged for them.
+    By 15 March the gain has arisen, so the instalment is the full ₹1,00,000
+    against ₹54,000 paid: 46,000 × 1% × 1 month = ₹460.
+    234B: ₹54,000 paid is under 90% of ₹1,00,000, so 46,000 × 1% × 1 = ₹460.
+    Computed without the proviso the same taxpayer pays ₹1,990 of 234C
+    (270 + 630 + 630 + 460) — an overcharge of ₹1,530.
+
+- id: AT26-234B-ON-THE-WHOLE-UNPAID-BALANCE
+  total_tax: 100000
+  payments: { "2027-03-15": 50000 }
+  assessed_on: "2027-07-20"
+  expect:
+    interest_234b: 2000
+  verified_against: >
+    Paid 50% — under the 90% threshold. 234B runs on the whole unpaid
+    ₹50,000, not on the amount below 90%. April to July inclusive is four
+    months (April is month one), so 50,000 × 1% × 4 = ₹2,000.

@@ -21,13 +21,22 @@ class RAGRetriever:
     - Source tracking
     """
     
-    def __init__(self, top_k: int = 5, similarity_threshold: float = 0.7):
+    def __init__(self, top_k: int = 5, similarity_threshold: float = 0.55):
         """
         Initialize retriever.
-        
+
         Args:
             top_k: Number of documents to retrieve
             similarity_threshold: Minimum similarity score (0-1)
+
+        DEM-004: retuned from an unmeasured 0.7 default against a real
+        20-query spot check on live BAAI/bge-small-en-v1.5 + Qdrant scores
+        (18/20 correct top-1 matches, cosine scores 0.596-0.853, mean 0.756).
+        0.7 would have discarded three of the eighteen CORRECT matches
+        (0.596, 0.679, 0.680) as "not similar enough" — bge cosine scores for
+        genuinely relevant short passages run lower than an unmeasured guess
+        assumes. 0.55 keeps every correct match observed while still well
+        above the noise floor a mismatched query/passage pair scores at.
         """
         self.top_k = top_k
         self.similarity_threshold = similarity_threshold
@@ -63,8 +72,14 @@ class RAGRetriever:
             from backend.rag.embeddings import embeddings_service
             from backend.rag.vector_store import qdrant_store
             
-            # Embed the query
-            query_embedding = await embeddings_service.embed_text(query)
+            # DEM-004 bugfix: `embed_text` (no BGE query prefix), not
+            # `embed_query`. bge-small-en-v1.5 is trained asymmetrically —
+            # the docstring on `EmbeddingsService` says omitting the prefix
+            # "measurably degrades retrieval on short queries, which is most
+            # of what users type" — and this was the one call site actually
+            # embedding a user's typed query, using the wrong method the
+            # whole time.
+            query_embedding = await embeddings_service.embed_query(query)
             
             # Search vector store
             top_k = top_k or self.top_k

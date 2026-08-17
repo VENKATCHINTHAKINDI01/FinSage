@@ -1,0 +1,505 @@
+{
+  "_comment": "Recorded from a live pipeline.run() call against Groq — AGT-005. tool_results are the real, unmodified output of backend.core.tax_engine.compute_tax.",
+  "agent": "analyst_reviewer_pipeline",
+  "query": "I have 1.5 lakh in 80C and health insurance. Should I switch to the old regime?",
+  "profile": {
+    "fy": "2026-27",
+    "regime": "new",
+    "salary": 1500000,
+    "age": 35,
+    "deductions": {
+      "80C": 150000,
+      "80D": 25000,
+      "80CCD_1B": 50000
+    }
+  },
+  "tool_calls": [
+    {
+      "tool": "compute_tax",
+      "args": {
+        "fy": "2026-27",
+        "regime": "new",
+        "salary": "₹15,00,000",
+        "age": "35"
+      }
+    },
+    {
+      "tool": "compute_tax",
+      "args": {
+        "fy": "2026-27",
+        "regime": "old"
+      }
+    }
+  ],
+  "tool_results": [
+    {
+      "tool": "compute_tax",
+      "success": true,
+      "result": {
+        "fy": "2026-27",
+        "regime": "new",
+        "gross_total_income": "1500000.00",
+        "total_deductions": "75000.00",
+        "taxable_income": "1425000.00",
+        "tax_on_slabs": "93750.00",
+        "special_rate_tax": "0.00",
+        "rebate_87a": "0.00",
+        "surcharge": "0.00",
+        "pre_cess_liability": "93750.00",
+        "cess": "3750.00",
+        "total_tax_exact": "97500.00",
+        "total_tax": "97500.00",
+        "balance_payable": "0.00",
+        "refund_due": "0.00",
+        "effective_rate": "6.50%",
+        "marginal_rate": "15%",
+        "trace": {
+          "title": "Income tax — FY 2026-27 (AY 2027-28) · New regime (default)",
+          "result": "97500.00",
+          "steps": [
+            {
+              "label": "Salary",
+              "op": "literal",
+              "result": "1500000.00",
+              "operands": [],
+              "factor": null,
+              "citation": null,
+              "note": "source: user stated",
+              "children": []
+            },
+            {
+              "label": "Gross total income",
+              "op": "sum",
+              "result": "1500000.00",
+              "operands": [
+                "1500000.00"
+              ],
+              "factor": null,
+              "citation": null,
+              "note": null,
+              "children": []
+            },
+            {
+              "label": "Standard deduction (salary)",
+              "op": "literal",
+              "result": "75000.00",
+              "operands": [],
+              "factor": null,
+              "citation": {
+                "act": "Income-tax Act, 2025",
+                "section": null,
+                "legacy_section": "16(ia)",
+                "fy": "2026-27",
+                "source_url": null,
+                "retrieved_at": null,
+                "note": "Income-tax Act 2025 equivalent is provisionally s.19; mapping not yet verified against the published concordance.",
+                "display": "Income-tax Act, 2025 · s.16(ia) · FY 2026-27"
+              },
+              "note": "FY 2026-27, New regime (default)",
+              "children": []
+            },
+            {
+              "label": "Taxable income",
+              "op": "subtract",
+              "result": "1425000.00",
+              "operands": [
+                "1500000.00",
+                "75000.00"
+              ],
+              "factor": null,
+              "citation": null,
+              "note": null,
+              "children": []
+            },
+            {
+              "label": "Tax on slabs — New regime (default)",
+              "op": "slab",
+              "result": "93750.00",
+              "operands": [],
+              "factor": null,
+              "citation": {
+                "act": "Income-tax Act, 2025",
+                "section": null,
+                "legacy_section": "115BAC",
+                "fy": "2026-27",
+                "source_url": null,
+                "retrieved_at": null,
+                "note": "Income-tax Act 2025 equivalent is provisionally s.202; mapping not yet verified against the published concordance.",
+                "display": "Income-tax Act, 2025 · s.115BAC · FY 2026-27"
+              },
+              "note": null,
+              "children": [
+                {
+                  "label": "₹0 – ₹4,00,000 @ 0%",
+                  "op": "multiply",
+                  "result": "0.00",
+                  "operands": [
+                    "400000.00"
+                  ],
+                  "factor": "0.00",
+                  "citation": null,
+                  "note": "on ₹4,00,000",
+                  "children": []
+                },
+                {
+                  "label": "₹4,00,000 – ₹8,00,000 @ 5%",
+                  "op": "multiply",
+                  "result": "20000.00",
+                  "operands": [
+                    "400000.00"
+                  ],
+                  "factor": "0.05",
+                  "citation": null,
+                  "note": "on ₹4,00,000",
+                  "children": []
+                },
+                {
+                  "label": "₹8,00,000 – ₹12,00,000 @ 10%",
+                  "op": "multiply",
+                  "result": "40000.00",
+                  "operands": [
+                    "400000.00"
+                  ],
+                  "factor": "0.10",
+                  "citation": null,
+                  "note": "on ₹4,00,000",
+                  "children": []
+                },
+                {
+                  "label": "₹12,00,000 – ₹16,00,000 @ 15%",
+                  "op": "multiply",
+                  "result": "33750.00",
+                  "operands": [
+                    "225000.00"
+                  ],
+                  "factor": "0.15",
+                  "citation": null,
+                  "note": "on ₹2,25,000",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "label": "Health & Education Cess @ 4%",
+              "op": "multiply",
+              "result": "3750.00",
+              "operands": [
+                "93750.00"
+              ],
+              "factor": "0.04",
+              "citation": null,
+              "note": "on income tax plus surcharge",
+              "children": []
+            },
+            {
+              "label": "Total tax liability",
+              "op": "sum",
+              "result": "97500.00",
+              "operands": [
+                "93750.00",
+                "3750.00"
+              ],
+              "factor": null,
+              "citation": null,
+              "note": null,
+              "children": []
+            }
+          ],
+          "citations": [
+            {
+              "act": "Income-tax Act, 2025",
+              "section": null,
+              "legacy_section": "16(ia)",
+              "fy": "2026-27",
+              "source_url": null,
+              "retrieved_at": null,
+              "note": "Income-tax Act 2025 equivalent is provisionally s.19; mapping not yet verified against the published concordance.",
+              "display": "Income-tax Act, 2025 · s.16(ia) · FY 2026-27"
+            },
+            {
+              "act": "Income-tax Act, 2025",
+              "section": null,
+              "legacy_section": "115BAC",
+              "fy": "2026-27",
+              "source_url": null,
+              "retrieved_at": null,
+              "note": "Income-tax Act 2025 equivalent is provisionally s.202; mapping not yet verified against the published concordance.",
+              "display": "Income-tax Act, 2025 · s.115BAC · FY 2026-27"
+            }
+          ]
+        },
+        "confidence": {
+          "level": "high",
+          "display": "High confidence",
+          "score": "0.95",
+          "is_certain": false,
+          "deterministic": true,
+          "summary": "High confidence — mainly because salary: user stated.",
+          "signals": [
+            {
+              "kind": "input_provenance",
+              "detail": "salary: user stated",
+              "penalty": "0.05",
+              "remedy": "upload the source document for salary"
+            }
+          ],
+          "blocking": [],
+          "improvements": [
+            "upload the source document for salary"
+          ],
+          "improvements_with_gain": [
+            {
+              "remedy": "upload the source document for salary",
+              "gain": "0.05",
+              "because": "salary: user stated",
+              "kind": "input_provenance"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "tool": "compute_tax",
+      "success": true,
+      "result": {
+        "fy": "2026-27",
+        "regime": "old",
+        "gross_total_income": "1500000.00",
+        "total_deductions": "275000.00",
+        "taxable_income": "1225000.00",
+        "tax_on_slabs": "180000.00",
+        "special_rate_tax": "0.00",
+        "rebate_87a": "0.00",
+        "surcharge": "0.00",
+        "pre_cess_liability": "180000.00",
+        "cess": "7200.00",
+        "total_tax_exact": "187200.00",
+        "total_tax": "187200.00",
+        "balance_payable": "0.00",
+        "refund_due": "0.00",
+        "effective_rate": "12.48%",
+        "marginal_rate": "30%",
+        "trace": {
+          "title": "Income tax — FY 2026-27 (AY 2027-28) · Old regime (opt-in)",
+          "result": "187200.00",
+          "steps": [
+            {
+              "label": "Salary",
+              "op": "literal",
+              "result": "1500000.00",
+              "operands": [],
+              "factor": null,
+              "citation": null,
+              "note": "source: user stated",
+              "children": []
+            },
+            {
+              "label": "Gross total income",
+              "op": "sum",
+              "result": "1500000.00",
+              "operands": [
+                "1500000.00"
+              ],
+              "factor": null,
+              "citation": null,
+              "note": null,
+              "children": []
+            },
+            {
+              "label": "Deduction 80C",
+              "op": "literal",
+              "result": "150000.00",
+              "operands": [],
+              "factor": null,
+              "citation": null,
+              "note": null,
+              "children": []
+            },
+            {
+              "label": "Deduction 80CCD_1B",
+              "op": "literal",
+              "result": "50000.00",
+              "operands": [],
+              "factor": null,
+              "citation": null,
+              "note": null,
+              "children": []
+            },
+            {
+              "label": "Deduction 80D",
+              "op": "literal",
+              "result": "25000.00",
+              "operands": [],
+              "factor": null,
+              "citation": null,
+              "note": null,
+              "children": []
+            },
+            {
+              "label": "Standard deduction (salary)",
+              "op": "literal",
+              "result": "50000.00",
+              "operands": [],
+              "factor": null,
+              "citation": {
+                "act": "Income-tax Act, 2025",
+                "section": null,
+                "legacy_section": "16(ia)",
+                "fy": "2026-27",
+                "source_url": null,
+                "retrieved_at": null,
+                "note": "Income-tax Act 2025 equivalent is provisionally s.19; mapping not yet verified against the published concordance.",
+                "display": "Income-tax Act, 2025 · s.16(ia) · FY 2026-27"
+              },
+              "note": "FY 2026-27, Old regime (opt-in)",
+              "children": []
+            },
+            {
+              "label": "Taxable income",
+              "op": "subtract",
+              "result": "1225000.00",
+              "operands": [
+                "1500000.00",
+                "150000.00",
+                "50000.00",
+                "25000.00",
+                "50000.00"
+              ],
+              "factor": null,
+              "citation": null,
+              "note": null,
+              "children": []
+            },
+            {
+              "label": "Tax on slabs — Old regime (opt-in)",
+              "op": "slab",
+              "result": "180000.00",
+              "operands": [],
+              "factor": null,
+              "citation": null,
+              "note": "Finance Act rate schedule, FY 2026-27",
+              "children": [
+                {
+                  "label": "₹0 – ₹2,50,000 @ 0%",
+                  "op": "multiply",
+                  "result": "0.00",
+                  "operands": [
+                    "250000.00"
+                  ],
+                  "factor": "0.00",
+                  "citation": null,
+                  "note": "on ₹2,50,000",
+                  "children": []
+                },
+                {
+                  "label": "₹2,50,000 – ₹5,00,000 @ 5%",
+                  "op": "multiply",
+                  "result": "12500.00",
+                  "operands": [
+                    "250000.00"
+                  ],
+                  "factor": "0.05",
+                  "citation": null,
+                  "note": "on ₹2,50,000",
+                  "children": []
+                },
+                {
+                  "label": "₹5,00,000 – ₹10,00,000 @ 20%",
+                  "op": "multiply",
+                  "result": "100000.00",
+                  "operands": [
+                    "500000.00"
+                  ],
+                  "factor": "0.20",
+                  "citation": null,
+                  "note": "on ₹5,00,000",
+                  "children": []
+                },
+                {
+                  "label": "above ₹10,00,000 @ 30%",
+                  "op": "multiply",
+                  "result": "67500.00",
+                  "operands": [
+                    "225000.00"
+                  ],
+                  "factor": "0.30",
+                  "citation": null,
+                  "note": "on ₹2,25,000",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "label": "Health & Education Cess @ 4%",
+              "op": "multiply",
+              "result": "7200.00",
+              "operands": [
+                "180000.00"
+              ],
+              "factor": "0.04",
+              "citation": null,
+              "note": "on income tax plus surcharge",
+              "children": []
+            },
+            {
+              "label": "Total tax liability",
+              "op": "sum",
+              "result": "187200.00",
+              "operands": [
+                "180000.00",
+                "7200.00"
+              ],
+              "factor": null,
+              "citation": null,
+              "note": null,
+              "children": []
+            }
+          ],
+          "citations": [
+            {
+              "act": "Income-tax Act, 2025",
+              "section": null,
+              "legacy_section": "16(ia)",
+              "fy": "2026-27",
+              "source_url": null,
+              "retrieved_at": null,
+              "note": "Income-tax Act 2025 equivalent is provisionally s.19; mapping not yet verified against the published concordance.",
+              "display": "Income-tax Act, 2025 · s.16(ia) · FY 2026-27"
+            }
+          ]
+        },
+        "confidence": {
+          "level": "high",
+          "display": "High confidence",
+          "score": "0.95",
+          "is_certain": false,
+          "deterministic": true,
+          "summary": "High confidence — mainly because salary: user stated.",
+          "signals": [
+            {
+              "kind": "input_provenance",
+              "detail": "salary: user stated",
+              "penalty": "0.05",
+              "remedy": "upload the source document for salary"
+            }
+          ],
+          "blocking": [],
+          "improvements": [
+            "upload the source document for salary"
+          ],
+          "improvements_with_gain": [
+            {
+              "remedy": "upload the source document for salary",
+              "gain": "0.05",
+              "because": "salary: user stated",
+              "kind": "input_provenance"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "output_text": "**Answer – stay with the **new** tax regime.**  \nWith the numbers you have supplied, the total tax payable under the new regime is **₹97,500**, whereas under the old (opt‑in) regime it would be **₹187,200**. The new regime therefore gives you a lower tax outgo.\n\n---\n\n### Why the numbers differ\n\n| Item | New regime (FY 2026‑27) | Old regime (FY 2026‑27) |\n|------|------------------------|------------------------|\n| Salary (gross) | ₹1,500,000 (as you stated) | ₹1,500,000 (as you stated) |\n| Standard deduction (salary) | ₹75,000 (s.16(ia) – legacy §16(ia)) | ₹50,000 (s.16(ia)) |\n| 80C deduction | – (not available in new regime) | ₹150,000 (s.80C) |\n| 80CCD (1B) deduction | – | ₹50,000 (s.80CCD(1B)) |\n| 80D (health‑insurance) | – (new regime has no 80D) | ₹25,000 (s.80D) |\n| **Total deductions** | **₹75,000** | **₹275,000** |\n| Taxable income | ₹1,425,000 (salary – standard deduction) | ₹1,225,000 (salary – all deductions) |\n| Tax on slabs | ₹93,750 (s.115BAC – new‑regime slab rates) | ₹180,000 (old‑regime slab rates) |\n| Health & Education Cess @ 4 % | ₹3,750 | ₹7,200 |\n| **Total tax liability** | **₹97,500** | **₹187,200** |\n\n*All figures are taken verbatim from the two `compute_tax` results you provided; no arithmetic has been performed beyond what the tool already calculated.*\n\n---\n\n### Legal basis\n\n| Provision | New regime | Old regime |\n|-----------|------------|------------|\n| Standard deduction (salary) | Income‑tax Act 2025 – s.16(ia) (legacy §16(ia)) – ₹75,000 shown in the trace | Same section – ₹50,000 shown in the trace |\n| 80C deduction | Not permitted in the new‑regime slab calculation (no entry in the trace) | s.80C – ₹150,000 (literal entry) |\n| 80CCD (1B) | Not permitted in new regime | s.80CCD(1B) – ₹50,000 (literal entry) |\n| 80D (health‑insurance) | Not permitted in new regime | s.80D – ₹25,000 (literal entry) |\n| Slab rates – new regime | s.115BAC (legacy §115BAC) – tax on slabs ₹93,750 (trace) | Old‑regime schedule (Finance Act) – tax on slabs ₹180,000 (trace) |\n| Cess | Health & Education Cess @ 4 % (trace) | Same rate @ 4 % (trace) |\n\n---\n\n### Assumptions made\n\n1. **Only the deductions you listed** (standard deduction, 80C, 80CCD (1B), 80D) exist; no other exemptions (e.g., HRA, home‑loan interest) are being claimed.  \n2. **No surcharge** applies because the taxable income is below the surcharge threshold for FY 2026‑27 (as reflected in both traces).  \n3. **No rebate under section 87A** is available – the trace shows a rebate of ₹0 for both regimes, and the income level exceeds the rebate ceiling.  \n4. The figures supplied by the tool are accurate and correspond to the FY 2026‑27 assessment year (AY 2027‑28).\n\n---\n\n### What could change",
+  "output_data": {},
+  "latency_ms": 44155.0
+}

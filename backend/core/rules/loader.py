@@ -86,6 +86,25 @@ class TaxRuleset:
         return _as_date(self.meta["effective_to"])
 
     @property
+    def content_hash(self) -> str:
+        """A hash of the pack file's bytes.
+
+        `verified_on` is a CLAIM inside the file; this is a FACT about the file.
+        An Evidence Pack pins this, so editing a rate without bumping the
+        verification date still shows up as a different rule pack when the pack
+        is replayed. Without it, integrity rests on whoever edited the YAML
+        remembering to change a date — which is not integrity.
+        """
+        import hashlib
+
+        return hashlib.sha256(self.path.read_bytes()).hexdigest()
+
+    @property
+    def version(self) -> str:
+        """Short, human-quotable identity: the year plus the file's fingerprint."""
+        return f"fy_{self.fy.replace('-', '_')}@{self.content_hash[:12]}"
+
+    @property
     def sources(self) -> tuple[str, ...]:
         return tuple(self.meta.get("sources", ()))
 
@@ -170,6 +189,25 @@ class TaxRuleset:
     @property
     def advance_tax(self) -> Mapping[str, Any]:
         return self.data["advance_tax"]
+
+    @property
+    def itr_forms(self) -> Mapping[str, Any]:
+        """Form scoping for the year.
+
+        Raises rather than returning an empty mapping where a rule pack has no
+        `itr_forms` block. A selector that silently found no disqualifiers
+        would recommend ITR-1 to everybody, which is the worst possible failure
+        mode for this feature — confidently wrong and entirely plausible.
+        """
+        forms = self.data.get("itr_forms")
+        if not forms:
+            raise RuleError(
+                f"the FY {self.fy} rule pack has no `itr_forms` block, so no "
+                f"form can be selected for that year. This is deliberate: an "
+                f"empty scoping would make every taxpayer look eligible for "
+                f"ITR-1."
+            )
+        return forms
 
     @property
     def deadlines(self) -> Mapping[str, Any]:

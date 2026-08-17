@@ -6,7 +6,7 @@ Manages user authentication sessions and tokens.
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.sql import and_
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 
 from backend.db.orm_models import Session
@@ -50,7 +50,7 @@ async def create_session(
         await session.refresh(db_session)
         
         # Cache in Redis (7 days TTL)
-        ttl = int((expires_at - datetime.utcnow()).total_seconds())
+        ttl = int((expires_at - datetime.now(timezone.utc)).total_seconds())
         await set_session(db_session.id, user_id, ttl)
         
         logger.info(f"Session created for user: {user_id}")
@@ -80,7 +80,7 @@ async def get_session_by_token(
             select(Session).where(
                 and_(
                     Session.token == token,
-                    Session.expires_at > datetime.utcnow(),
+                    Session.expires_at > datetime.now(timezone.utc),
                 )
             )
         )
@@ -134,7 +134,7 @@ async def get_user_sessions(
         query = select(Session).where(Session.user_id == user_id)
         
         if active_only:
-            query = query.where(Session.expires_at > datetime.utcnow())
+            query = query.where(Session.expires_at > datetime.now(timezone.utc))
         
         result = await session.execute(query)
         return result.scalars().all()
@@ -222,7 +222,7 @@ async def cleanup_expired_sessions(
     """
     try:
         result = await session.execute(
-            select(Session).where(Session.expires_at <= datetime.utcnow())
+            select(Session).where(Session.expires_at <= datetime.now(timezone.utc))
         )
         expired_sessions = result.scalars().all()
         count = len(expired_sessions)

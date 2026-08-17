@@ -4,7 +4,7 @@ Service to manage user compliance audit histories and document checklists.
 
 import logging
 from typing import Dict, Any, List, Optional
-from datetime import datetime, timezone, date
+from datetime import date, datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,7 +34,7 @@ class DocumentService:
             audit = AuditHistory(
                 user_id=user_id,
                 audit_type=audit_type,
-                audit_date=datetime.utcnow(),
+                audit_date=datetime.now(timezone.utc),
                 findings=findings,
                 action_taken=action_taken,
                 status=status,
@@ -66,7 +66,7 @@ class DocumentService:
                 audit.status = "resolved"
                 audit.action_taken = action_taken
                 audit.resolution_date = resolution_date or date.today()
-                audit.updated_at = datetime.utcnow()
+                audit.updated_at = datetime.now(timezone.utc)
                 await self.db.commit()
                 self.logger.info(f"Audit {audit_id} resolved successfully.")
                 return audit

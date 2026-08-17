@@ -1,0 +1,184 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# ADMISSION — what a searched fact must survive before it can cost anything
+#
+# The architecture this serves: SEARCH PROPOSES, RULES ADMIT.
+#
+# An agent may search the open web for a rate we do not hold. What comes back
+# is a CANDIDATE — a string, a URL and a date. It is not a fact and it cannot
+# enter a cost breakdown. It becomes a fact only by passing every check below,
+# at which point it is promoted to a SourcedFact and the existing tier
+# machinery takes over.
+#
+# The point is that none of these checks asks a language model anything. They
+# ask the domain, the extractor, the arithmetic and the other sources.
+#
+# WHAT PASSING MEANS, AND WHAT IT DOES NOT
+# Passing a plausibility band does not mean a figure is correct. It means an
+# extractor did not obviously grab the wrong number off the page — a phone
+# number, a page count, the year. These are screens against garbage, not
+# evidence of truth. The evidence is the Tier-1 URL and the fetch date.
+# ═══════════════════════════════════════════════════════════════════════════
+
+meta:
+  verified_on: "2026-08-13"
+  note: >
+    Domain lists and bands are a gate, not a rate table. No figure in this file
+    is ever shown to a user or used in a computation; the file only decides
+    whether a figure gathered elsewhere is allowed to be used at all.
+
+# ── Tier is a property of the domain ────────────────────────────────────────
+# Decided by the host in the URL, never by the model's opinion of the source.
+# "This looks like an official government page" is exactly the judgement a
+# language model makes confidently and wrongly, so it is not asked for.
+#
+# Matching is on the registrable host with any leading "www." removed, and a
+# suffix match so `karnataka.gov.in` covers `transport.karnataka.gov.in`.
+domains:
+  tier_1:
+    - incometaxindia.gov.in
+    - incometax.gov.in
+    - cbic.gov.in
+    - gst.gov.in
+    - parivahan.gov.in
+    - egazette.gov.in
+    - egazette.nic.in
+    - india.gov.in
+    - pib.gov.in
+    - rbi.org.in
+    - sebi.gov.in
+    - mnre.gov.in            # PM Surya Ghar, solar
+    - pmsuryaghar.gov.in
+    - heavyindustries.gov.in # PM E-DRIVE
+    - agricoop.gov.in        # PM-KUSUM, agri machinery
+    - pmkusum.mnre.gov.in
+    - msme.gov.in
+    - pmaymis.gov.in
+    - nic.in
+    - gov.in                 # residual: any .gov.in not listed above
+  tier_2:
+    - ibja.co                # bullion association rate card
+    - ibjarates.com
+    - sbi.co.in
+    - hdfcbank.com
+    - icicibank.com
+    - axisbank.com
+    - bankofbaroda.in
+    - tatamotors.com
+    - mahindra.com
+    - marutisuzuki.com
+    - hyundai.com
+    - tvsmotor.com
+    - bajajauto.com
+    - atherenergy.com
+    - olaelectric.com
+  # Everything else is tier 3 by omission. There is no "probably official"
+  # bucket, because that is where a plausible-looking wrong source lands.
+
+# ── Who pulled the number off the page ──────────────────────────────────────
+# The governing rule of this whole product is that no rupee figure shown to a
+# user originates from a language model. A model may FIND a page and may say
+# which part of it to look at. The number itself must be lifted by a
+# deterministic extractor whose output can be re-derived from the same page
+# bytes tomorrow.
+extractors:
+  deterministic:
+    - regex_rate          # "5%" / "5 per cent" → Decimal
+    - regex_rupee         # "₹1,50,000" / "Rs. 1.5 lakh" → Money
+    - html_table_cell     # cell located by row and column header
+    - pdf_table_cell
+    - json_field          # a published API or data file
+    - csv_column
+  model_authored:
+    # Named explicitly so the rejection message can say what went wrong rather
+    # than "unknown extractor".
+    - llm_stated
+    - llm_summary
+    - llm_table_read
+    - agent_recall        # the model remembering a rate from training
+
+# ── Plausibility screens, by key prefix ─────────────────────────────────────
+# Longest matching prefix wins. A key with no rule listed here cannot be
+# admitted for costing at all — an unscreened number is not admitted by
+# default, it is quarantined by default.
+plausibility:
+  gst:
+    kind: rate
+    allowed: ["0", "0.05", "0.18", "0.40"]
+    note: >
+      GST 2.0, in force 22 September 2025, is a four-slab structure. The 12%
+      and 28% slabs were abolished. A page still quoting 12% or 28% is either
+      out of date or describing a pre-September-2025 transaction, and either
+      way must not silently become a cost line.
+
+  road_tax:
+    kind: rate
+    min: "0"
+    max: "0.25"
+    note: >
+      Zero is real — several states exempt battery electric vehicles entirely.
+      The top of the band allows the highest verified state slab with headroom.
+
+  stamp_duty:
+    kind: rate
+    min: "0.01"
+    max: "0.10"
+    note: >
+      Indian state stamp duty sits between roughly 2% and 8% with concessions
+      below and outliers above. The band exists to reject an extractor that
+      picked up a loan interest rate or a page number, not to assert a rate.
+
+  registration_charge:
+    kind: money
+    min: "300"
+    max: "10000"
+
+  circle_rate:
+    kind: money
+    min: "100"
+    max: "5000000"
+    note: Per square unit, so the band is very wide by necessity.
+
+  price:
+    kind: money
+    min: "100"
+    max: "1000000000"
+    note: >
+      Deliberately a very weak screen, and worth saying so rather than
+      pretending otherwise. A price spans a ₹500 hand tool and a ₹50 crore
+      property, so no single band tells you anything about whether the figure
+      is right. Its only job is to reject a zero, a negative, or a number that
+      is plainly not rupees. What actually protects a price line is the tier:
+      an OEM or bank price list may cost, a marketplace listing may not, and
+      that is checked separately and by type.
+
+  subsidy_per_kwh:
+    kind: money
+    min: "500"
+    max: "10000"
+
+  depreciation:
+    kind: rate
+    min: "0"
+    max: "0.60"
+
+  cess:
+    kind: rate
+    min: "0"
+    max: "0.25"
+
+# ── Corroboration ───────────────────────────────────────────────────────────
+# Two pages on the same site are one source. Independence is by host.
+quorum:
+  # Key prefixes where one Tier-1 page is enough. A statutory rate published
+  # on the department's own site is not made truer by a second copy of it.
+  single_source_sufficient:
+    - gst
+    - road_tax
+    - depreciation
+    - cess
+  # Everything else needs two independent hosts in agreement. These are the
+  # figures that vary by locality, get quoted loosely, and are wrong on any
+  # given page often enough that one page is not enough.
+  default_required_hosts: 2
+  rate_tolerance: "0"
+  money_tolerance_pct: "0.02"

@@ -20,7 +20,6 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import UUID, JSON
 from sqlalchemy.orm import relationship
-from datetime import datetime
 import uuid
 
 from backend.db.postgres import Base
@@ -60,10 +59,17 @@ class Session(Base):
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
     token = Column(String(512), unique=True, nullable=False, index=True)
-    expires_at = Column(DateTime, nullable=False, index=True)
+    # PRD-002 bugfix: was a naive DateTime, but every caller builds expires_at
+    # from `datetime.now(timezone.utc)` — an aware value. asyncpg refuses to
+    # encode an aware datetime into a naive column outright (a real request
+    # traced this to a 500 on the very first registration attempt against a
+    # live database; the golden/unit suites use SQLite-less pure logic and
+    # never caught it). Timezone-aware, matching every other timestamp column
+    # added since.
+    expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
     ip_address = Column(String(45), nullable=True)  # IPv4 or IPv6
     user_agent = Column(String(512), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=func.now(), nullable=False)
     
     # Relationships
     user = relationship("User", back_populates="sessions")
@@ -71,6 +77,55 @@ class Session(Base):
     __table_args__ = (
         Index("idx_session_token", "token"),
         Index("idx_session_expires_at", "expires_at"),
+    )
+
+
+class RefreshSession(Base):
+    """One issued refresh token — PRD-002.
+
+    Backs `backend.security.sessions.SessionStore`. Distinct from `Session`
+    above, which is an access-token audit row nothing reads back. This table
+    is read on every refresh and checked on every request via `family`, so
+    `jti` is the primary key and `(family, state)` is indexed for the
+    revocation check.
+    """
+    __tablename__ = "refresh_sessions"
+
+    jti = Column(String(64), primary_key=True)
+    family = Column(String(64), nullable=False)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    issued_at = Column(DateTime(timezone=True), nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    state = Column(String(16), nullable=False, default="active")
+    replaced_by = Column(String(64), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index("idx_refresh_session_family_state", "family", "state"),
+    )
+
+
+class ConsentRecord(Base):
+    """One consent event — PRD-001.
+
+    Append-only, matching `backend.compliance.dpdp.consent.ConsentLedger`:
+    withdrawal writes a new row rather than mutating the grant, so the
+    evidence that consent was ever held survives its own withdrawal. A row's
+    identity is `(principal_id, purpose, given_on)` in practice, not a
+    surrogate key nothing reads.
+    """
+    __tablename__ = "consent_records"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    principal_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    purpose = Column(String(64), nullable=False)
+    notice_version = Column(String(32), nullable=False)
+    given_on = Column(Date, nullable=False)
+    withdrawn_on = Column(Date, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index("idx_consent_principal_purpose", "principal_id", "purpose"),
     )
 
 
@@ -97,8 +152,8 @@ class FinancialProfile(Base):
     profile_data = Column(JSON, nullable=True)
     
     # Metadata
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
     
     # Relationships
     user = relationship("User", back_populates="financial_profile")
@@ -120,7 +175,7 @@ class AuditLog(Base):
     entity_id = Column(String(36), nullable=True, index=True)
     changes = Column(Text, nullable=True)  # JSON of what changed
     ip_address = Column(String(45), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), default=func.now(), nullable=False, index=True)
     
     __table_args__ = (
         Index("idx_audit_log_user_id", "user_id"),
@@ -136,7 +191,7 @@ class ComplianceReport(Base):
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(String(255), ForeignKey('users.id'), nullable=False)
-    report_date = Column(DateTime, nullable=False, default=datetime.utcnow)
+    report_date = Column(DateTime(timezone=True), nullable=False, default=func.now())
     compliance_score = Column(Integer, nullable=False)  # 0-100
     audit_readiness = Column(Boolean, nullable=False)
     red_flags = Column(JSON, nullable=True)
@@ -144,8 +199,8 @@ class ComplianceReport(Base):
     recommendations = Column(JSON, nullable=True)
     risk_level = Column(String(50), nullable=True)  # Low/Medium/High
     saved_status = Column(String(50), nullable=False, default='saved')
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now(), onupdate=func.now())
     
     __table_args__ = (
         Index('ix_compliance_reports_user_id', 'user_id'),
@@ -160,14 +215,14 @@ class AuditHistory(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(String(255), ForeignKey('users.id'), nullable=False)
     audit_type = Column(String(50), nullable=False)  # self-audit/external
-    audit_date = Column(DateTime, nullable=False, default=datetime.utcnow)
+    audit_date = Column(DateTime(timezone=True), nullable=False, default=func.now())
     findings = Column(JSON, nullable=True)
     action_taken = Column(Text, nullable=True)
     resolution_date = Column(Date, nullable=True)
     saved_documents = Column(JSON, nullable=True)
     status = Column(String(50), nullable=False, default='pending')
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now(), onupdate=func.now())
     
     __table_args__ = (
         Index('ix_audit_history_user_id', 'user_id'),
@@ -190,8 +245,8 @@ class ITRFiling(Base):
     checklist = Column(JSON, nullable=True)
     common_mistakes = Column(JSON, nullable=True)
     important_dates = Column(JSON, nullable=True)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now(), onupdate=func.now())
     
     __table_args__ = (
         Index('ix_itr_filings_user_id', 'user_id'),
@@ -219,7 +274,7 @@ class TaxCalculation(Base):
     total_tax_liability = Column(Numeric(15, 2), nullable=False)
     effective_rate = Column(Numeric(5, 2), nullable=False)
     optimization_suggestions = Column(JSON, nullable=True)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
     
     __table_args__ = (
         Index('ix_tax_calculations_user_id', 'user_id'),
@@ -233,7 +288,7 @@ class FinancialHealthScore(Base):
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(String(255), ForeignKey('users.id'), nullable=False)
-    score_date = Column(DateTime, nullable=False, default=datetime.utcnow)
+    score_date = Column(DateTime(timezone=True), nullable=False, default=func.now())
     overall_score = Column(Integer, nullable=False)  # 0-100
     tax_efficiency_score = Column(Integer, nullable=False)  # 20%
     deduction_optimization_score = Column(Integer, nullable=False)  # 20%
@@ -243,7 +298,7 @@ class FinancialHealthScore(Base):
     breakdown = Column(JSON, nullable=True)
     recommendations = Column(JSON, nullable=True)
     trend_vs_last_month = Column(Integer, nullable=True)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
     
     __table_args__ = (
         Index('ix_financial_health_scores_user_id', 'user_id'),
@@ -263,12 +318,12 @@ class Notification(Base):
     subject = Column(String(255), nullable=True)
     message = Column(Text, nullable=False)
     data = Column(JSON, nullable=True)
-    sent_at = Column(DateTime, nullable=True)
+    sent_at = Column(DateTime(timezone=True), nullable=True)
     status = Column(String(50), nullable=False, default='pending')
     retry_count = Column(Integer, nullable=False, default=0)
     error_message = Column(Text, nullable=True)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now(), onupdate=func.now())
     
     __table_args__ = (
         Index('ix_notifications_user_id', 'user_id'),
@@ -289,8 +344,8 @@ class NotificationPreference(Base):
     frequency = Column(String(50), nullable=False)  # daily, weekly, monthly, as_needed
     preferred_time = Column(Time, nullable=True)
     notification_types = Column(JSON, nullable=True)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now(), onupdate=func.now())
     
     __table_args__ = (
         Index('ix_notification_preferences_user_id', 'user_id'),
@@ -307,11 +362,11 @@ class ScheduledTask(Base):
     task_type = Column(String(100), nullable=False)
     schedule = Column(String(255), nullable=False)  # Cron expression
     is_active = Column(Boolean, nullable=False, default=True)
-    last_run = Column(DateTime, nullable=True)
-    next_run = Column(DateTime, nullable=True)
+    last_run = Column(DateTime(timezone=True), nullable=True)
+    next_run = Column(DateTime(timezone=True), nullable=True)
     execution_log = Column(JSON, nullable=True)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now(), onupdate=func.now())
     
     __table_args__ = (
         Index('ix_scheduled_tasks_is_active', 'is_active'),
@@ -328,16 +383,16 @@ class Report(Base):
     report_type = Column(String(100), nullable=False)
     format = Column(String(50), nullable=False, default='pdf')
     title = Column(String(255), nullable=False)
-    generated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    generated_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
     file_path = Column(String(500), nullable=False)
     file_size = Column(Integer, nullable=True)
     file_url = Column(String(500), nullable=True)
     delivery_status = Column(String(50), nullable=False, default='generated')
-    email_sent_at = Column(DateTime, nullable=True)
+    email_sent_at = Column(DateTime(timezone=True), nullable=True)
     download_count = Column(Integer, nullable=False, default=0)
-    last_downloaded_at = Column(DateTime, nullable=True)
+    last_downloaded_at = Column(DateTime(timezone=True), nullable=True)
     report_metadata = Column('metadata', JSON, nullable=True)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
     
     __table_args__ = (
         Index('ix_reports_user_id', 'user_id'),
@@ -357,8 +412,8 @@ class RedFlagLog(Base):
     description = Column(Text, nullable=False)
     action_required = Column(Text, nullable=True)
     resolved = Column(Boolean, nullable=False, default=False)
-    resolved_date = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    resolved_date = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
     
     __table_args__ = (
         Index('ix_red_flag_logs_user_id', 'user_id'),

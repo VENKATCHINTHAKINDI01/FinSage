@@ -3,12 +3,11 @@ Tax Optimizer Agent - suggests tax optimization strategies and planning.
 Recommends timing, filing approaches, and strategic decisions.
 """
 
-import time
 import logging
-from typing import Dict, Any
+import time
+from typing import Any
 
-from backend.agents.base_agent import TaxAgent, AgentOutput, confidence_score, derive_confidence
-from backend.config import settings
+from backend.agents.base_agent import AgentOutput, TaxAgent, confidence_score, derive_confidence
 from backend.llm import get_llm
 
 logger = logging.getLogger(__name__)
@@ -34,28 +33,28 @@ class TaxOptimizerAgent(TaxAgent):
             {"annual_income": 500000, "employment_type": "freelance"}
         )
     """
-    
+
     def __init__(self):
         super().__init__("tax_optimizer_agent")
-    
+
     async def execute(
         self,
         user_query: str,
-        user_context: Dict[str, Any],
+        user_context: dict[str, Any],
         tools: Any = None,
         **kwargs
     ) -> AgentOutput:
         """Generate tax optimization strategies."""
         start_time = time.time()
         logger.info(f"TaxOptimizerAgent: Starting execution for user_id: {user_context.get('user_id')}")
-        
+
         if tools is not None:
             self.set_tools(tools)
-            
+
         try:
             # Preprocess query
             processed_query = await self.preprocess(user_query)
-            
+
             # Get user financial data
             user_financial_data = {}
             if self.tools:
@@ -67,17 +66,17 @@ class TaxOptimizerAgent(TaxAgent):
                     res_payload = user_data.get("result", {})
                     if res_payload:
                         user_financial_data = res_payload.get("financial_profile", {})
-            
+
             # Use real data merged with context for LLM analysis
             merged_context = {**user_context, **user_financial_data}
-            
+
             # Generate strategies using LLM
             logger.info("TaxOptimizerAgent: Requesting strategy recommendations from LLM")
             strategies = await self._generate_strategies(
                 processed_query,
                 merged_context
             )
-            
+
             # Execute alert engine to identify additional optimization opportunities
             if self.tools:
                 alerts_res = await self.call_tool(
@@ -107,7 +106,7 @@ class TaxOptimizerAgent(TaxAgent):
                 deadlines_res = await self.call_tool("check_upcoming_deadlines")
                 if deadlines_res.get("success"):
                     upcoming_deadlines = deadlines_res.get("result", {}).get("deadlines", [])
-            
+
             # For each strategy, verify eligibility and calculate impact
             validated_strategies = []
             for strategy in strategies:
@@ -123,7 +122,7 @@ class TaxOptimizerAgent(TaxAgent):
                         has_education_loan=bool(user_financial_data.get("education_loan", False))
                     )
                     is_eligible = eligibility.get("success") and eligibility.get("result", {}).get("eligible", True)
-                
+
                 if is_eligible:
                     # Get scheme details
                     if self.tools and strategy.get("scheme_code"):
@@ -133,7 +132,7 @@ class TaxOptimizerAgent(TaxAgent):
                         )
                         if details.get("success"):
                             strategy["details"] = details.get("result", {}).get("details", {})
-                    
+
                     # Calculate potential savings
                     if self.tools:
                         savings = await self.call_tool(
@@ -147,13 +146,13 @@ class TaxOptimizerAgent(TaxAgent):
                             strategy["savings"] = 0
                     else:
                         strategy["savings"] = 0
-                        
+
                     strategy["eligible"] = True
                     validated_strategies.append(strategy)
-            
+
             # Calculate potential impact from validated strategies
             potential_savings = sum(s.get("savings", 0) for s in validated_strategies)
-            
+
             # Create reminders
             if self.tools:
                 for strategy in validated_strategies:
@@ -165,7 +164,7 @@ class TaxOptimizerAgent(TaxAgent):
                             reminder_text=f"Implement: {strategy.get('name', strategy.get('strategy_name', 'Strategy'))}",
                             reminder_date="2024-12-15"
                         )
-            
+
             # Postprocess
             result = {
                 "strategies": validated_strategies,
@@ -177,7 +176,7 @@ class TaxOptimizerAgent(TaxAgent):
                 "risks_and_considerations": await self._get_considerations(validated_strategies),
                 "quarterly_action_items": await self._get_action_items(validated_strategies)
             }
-            
+
             # Save analysis
             if self.tools:
                 await self.call_tool(
@@ -187,13 +186,13 @@ class TaxOptimizerAgent(TaxAgent):
                     analysis_data={"strategies": validated_strategies},
                     agent_name=self.name
                 )
-            
+
             result = await self.postprocess(result)
-            
+
             execution_time = (time.time() - start_time) * 1000
-            
+
             logger.info(f"Generated {len(validated_strategies)} validated optimization strategies")
-            
+
             return self._create_output(
                 result=result,
                 status="success",
@@ -201,30 +200,30 @@ class TaxOptimizerAgent(TaxAgent):
                 reasoning="Strategies generated with tool-calculated savings",
                 execution_time_ms=execution_time
             )
-        
+
         except Exception as e:
             logger.error(f"Error in tax optimizer: {e}")
             execution_time = (time.time() - start_time) * 1000
-            
+
             return self._create_output(
                 result={"error": str(e)},
                 status="error",
                 confidence=0.0,  # execution failed — not a score
-                reasoning=f"Error: {str(e)}",
+                reasoning=f"Error: {e!s}",
                 execution_time_ms=execution_time
             )
-    
-    
+
+
     async def _generate_strategies(
         self,
         user_query: str,
-        user_context: Dict[str, Any]
-    ) -> list[Dict[str, Any]]:
+        user_context: dict[str, Any]
+    ) -> list[dict[str, Any]]:
         """Use LLM to generate tax optimization strategies."""
-        
+
         employment_type = user_context.get("employment_type", "individual")
         annual_income = user_context.get("annual_income", 0)
-        
+
         prompt = f"""Generate personalized tax optimization strategies for this user.
 
 Employment type: {employment_type}
@@ -270,7 +269,7 @@ Important: Only suggest legal, compliant strategies. Respond ONLY with valid JSO
 
         try:
             message = await get_llm().complete(prompt, max_tokens=2000)
-            
+
             response_text = message.text.strip()
             if "```json" in response_text:
                 response_text = response_text.split("```json")[1].split("```")[0].strip()
@@ -278,43 +277,43 @@ Important: Only suggest legal, compliant strategies. Respond ONLY with valid JSO
                 response_text = response_text.split("```")[1].split("```")[0].strip()
             import json
             response_data = json.loads(response_text)
-            
+
             return response_data.get("strategies", [])
-        
+
         except Exception as e:
             logger.error(f"Error generating strategies: {e}")
             return []
-    
+
     async def _calculate_impact(
         self,
-        strategies: list[Dict[str, Any]],
-        user_context: Dict[str, Any]
+        strategies: list[dict[str, Any]],
+        user_context: dict[str, Any]
     ) -> float:
         """Calculate total potential tax savings from all strategies."""
-        
+
         total_savings = sum(s.get("estimated_savings", 0) for s in strategies)
-        
+
         # Adjust for risk level
         for strategy in strategies:
             if strategy.get("risk") == "High":
                 # Reduce savings estimate by 30% for high-risk strategies
                 total_savings -= (strategy.get("estimated_savings", 0) * 0.3)
-        
+
         return max(0, total_savings)
-    
+
     async def _get_timeline(
         self,
-        strategies: list[Dict[str, Any]]
-    ) -> Dict[str, list[str]]:
+        strategies: list[dict[str, Any]]
+    ) -> dict[str, list[str]]:
         """Organize strategies by implementation timeline."""
-        
+
         timeline = {
             "immediate": [],
             "this_quarter": [],
             "this_year": [],
             "next_year": []
         }
-        
+
         timeline_mapping = {
             "Now": "immediate",
             "Immediately": "immediate",
@@ -325,68 +324,68 @@ Important: Only suggest legal, compliant strategies. Respond ONLY with valid JSO
             "Next year": "next_year",
             "From next tax year": "next_year"
         }
-        
+
         for strategy in strategies:
             strategy_timeline = strategy.get("timeline", "")
-            
+
             bucket = "this_year"  # default
             for key, value in timeline_mapping.items():
                 if key.lower() in strategy_timeline.lower():
                     bucket = value
                     break
-            
+
             timeline[bucket].append(
                 f"{strategy.get('name')}: {strategy.get('action', '')}"
             )
-        
+
         return timeline
-    
+
     async def _get_considerations(
         self,
-        strategies: list[Dict[str, Any]]
+        strategies: list[dict[str, Any]]
     ) -> list[str]:
         """Get risks and considerations for the recommended strategies."""
-        
+
         considerations = []
-        
+
         high_risk = [s for s in strategies if s.get("risk") == "High"]
         if high_risk:
             considerations.append(
                 f"⚠ {len(high_risk)} high-risk strategies suggested - consult CA before implementation"
             )
-        
+
         hard_strategies = [s for s in strategies if s.get("difficulty") == "Hard"]
         if hard_strategies:
             considerations.append(
                 "Complex strategies require professional implementation guidance"
             )
-        
+
         considerations.extend([
             "All recommendations comply with Indian tax laws as of current year",
             "Maintain detailed documentation for all deductions claimed",
             "Consult a qualified Chartered Accountant for personalized advice",
             "Tax laws change annually - review strategies with latest rules"
         ])
-        
+
         return considerations
-    
+
     async def _get_action_items(
         self,
-        strategies: list[Dict[str, Any]]
-    ) -> Dict[str, list[str]]:
+        strategies: list[dict[str, Any]]
+    ) -> dict[str, list[str]]:
         """Extract quarterly action items from strategies."""
-        
+
         quarters = {
             "Q1": [],
             "Q2": [],
             "Q3": [],
             "Q4": []
         }
-        
+
         for strategy in strategies:
             action = strategy.get("action", "")
             timeline = strategy.get("timeline", "")
-            
+
             if "immediately" in timeline.lower() or "now" in timeline.lower():
                 quarters["Q1"].append(action)
             elif "quarter" in timeline.lower():
@@ -395,5 +394,5 @@ Important: Only suggest legal, compliant strategies. Respond ONLY with valid JSO
                 quarters["Q4"].append(action)
             else:
                 quarters["Q2"].append(action)  # default to Q2
-        
+
         return quarters

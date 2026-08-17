@@ -130,13 +130,27 @@ aliases:
     description: Presumptive taxation for professionals
     confidence: unverified
 
+  # CORRECTED 2026-08-11. These previously read 234B → 425 and 234C → 426,
+  # one out. The 2025 Act runs the interest heads consecutively:
+  #   423  default in furnishing return of income        (was 234A)
+  #   424  default in payment of advance tax             (was 234B)
+  #   425  deferment of advance tax                      (was 234C)
+  #   426  interest on excess refund                     (was 234D)
+  # The off-by-one would have had the product cite "deferment of advance tax"
+  # for a 90%-shortfall charge. Still `unverified`: two secondary sources agree
+  # but this has not been checked against the published concordance.
+  - legacy: "234A"
+    current: "423"
+    description: Interest for default in furnishing return of income
+    confidence: unverified
+
   - legacy: "234B"
-    current: "425"
+    current: "424"
     description: Interest for default in payment of advance tax
     confidence: unverified
 
   - legacy: "234C"
-    current: "426"
+    current: "425"
     description: Interest for deferment of advance tax
     confidence: unverified
 

@@ -103,33 +103,26 @@ async def chat_query(
     session: AsyncSession = Depends(get_session)
 ):
     """
-    Process chat query with tools-enabled agents.
-    
-    Flow:
+    Process chat query.
+
+    Flow (AGT-001):
       1. Detect intent
-      2. Get agents for intent
-      3. Run orchestrator (agents use tools)
-      4. Return results
+      2. If the intent is handled by the pipeline → core engine → Analyst → Reviewer
+      3. Otherwise → legacy orchestrator (deprecated, to be migrated)
     """
     from backend.orchestrator.graph import db_session_var, get_orchestrator
     token = db_session_var.set(session)
-    
+
     try:
         logger.info(f"Chat query from user {current_user.id}")
-        
-        # Get orchestrator
-        orch = get_orchestrator()
-        if not orch:
-            raise HTTPException(status_code=503, detail="System not initialized")
-        
+
         # Get user context
         context_data = await get_user_context(current_user.id, session)
-        
+
         # Detect intent
         intent_result = await intent_detector.detect_intent(request.query)
         intent = intent_result.intent.value if hasattr(intent_result, 'intent') else "general"
-        agents_to_invoke = intent_result.agents_to_invoke if hasattr(intent_result, 'agents_to_invoke') else None
-        
+
         user_context = {
             "user_id": current_user.id,
             "email": current_user.email,
@@ -138,8 +131,66 @@ async def chat_query(
             "age": getattr(current_user, 'age', 35),
             **context_data
         }
-        
-        # Run orchestration (agents use tools!)
+
+        # ── New pipeline path (AGT-001) ──────────────────────────────────
+        # Tax intents are routed through the deterministic core engine and
+        # the Analyst→Reviewer pipeline. Every rupee figure originates from
+        # backend.core; the LLM only drafts the explanation text.
+        from backend.agents.intent_bridge import handles_intent, run_for_intent
+
+        if handles_intent(intent):
+            logger.info(f"Routing intent '{intent}' through pipeline")
+            result = await run_for_intent(
+                query=request.query,
+                intent=intent,
+                user_context=user_context,
+            )
+
+            # Process pipeline result for the response
+            agent_responses = {}
+            for agent_name, agent_result in result.get("agent_results", {}).items():
+                if isinstance(agent_result, dict):
+                    agent_responses[agent_name] = agent_result.get("result", {})
+
+            # Update conversation memory
+            memory = get_or_create_memory(current_user.id)
+            await memory["conversation"].add_turn(
+                query=request.query,
+                agent_responses=agent_responses,
+                total_savings=0,
+            )
+
+            validation_summary = result.get("validation_summary", {})
+            return {
+                "success": True,
+                "query": request.query,
+                "intent": intent,
+                "pipeline": True,
+                "agent_responses": agent_responses,
+                "total_estimated_savings": 0,
+                "quality_score": int(validation_summary.get("avg_confidence", 0.9) * 100),
+                "data_quality_score": round(validation_summary.get("avg_confidence", 0.9) * 100),
+                "validation_summary": validation_summary,
+                "review_summary": result.get("review_summary", {}),
+                "sources_verified": validation_summary.get("sources_verified", 0),
+                "execution_log": result.get("execution_log", []),
+                "agents_executed": len(result.get("agent_results", {})),
+                "tools_available": 0,
+                "conversation_history_length": len(memory["conversation"].turns),
+                "known_deductions": memory["semantic"].get_known_deductions(),
+            }
+
+        # ── Legacy fallback (deprecated) ─────────────────────────────────
+        # Intents not yet migrated to the pipeline still route through the
+        # old orchestrator. These agents will be migrated in subsequent
+        # sprints.
+        logger.info(f"Routing intent '{intent}' through legacy orchestrator")
+        agents_to_invoke = intent_result.agents_to_invoke if hasattr(intent_result, 'agents_to_invoke') else None
+
+        orch = get_orchestrator()
+        if not orch:
+            raise HTTPException(status_code=503, detail="System not initialized")
+
         result = await orch.orchestrate(
             user_query=request.query,
             user_id=current_user.id,
@@ -148,16 +199,16 @@ async def chat_query(
             agents_to_invoke=agents_to_invoke,
             conversation_id=request.conversation_id
         )
-        
+
         # Process agent results
         agent_responses = {}
         total_savings = 0
         quality_scores = []
-        
+
         for agent_name, agent_result in result.get("agent_results", {}).items():
             res_dict = {}
             confidence = 0.0
-            
+
             if hasattr(agent_result, "result"):
                 res_dict = agent_result.result
                 confidence = agent_result.confidence
@@ -166,9 +217,9 @@ async def chat_query(
                 confidence = agent_result.get("confidence", 0.0)
             else:
                 continue
-                
+
             agent_responses[agent_name] = res_dict
-            
+
             # Track savings
             if "total_estimated_savings" in res_dict:
                 total_savings += res_dict["total_estimated_savings"]
@@ -176,23 +227,20 @@ async def chat_query(
                 total_savings += res_dict["total_tax_savings"]
             elif "total_potential_savings" in res_dict:
                 total_savings += res_dict["total_potential_savings"]
-            
-            # Track quality
+
             quality_scores.append(confidence)
-        
-        # Calculate average quality
+
         avg_quality = sum(quality_scores) / len(quality_scores) if quality_scores else 0
-        
+
         # Get or create memory
         memory = get_or_create_memory(current_user.id)
-        
-        # Add to conversation memory
+
         await memory["conversation"].add_turn(
             query=request.query,
             agent_responses=agent_responses,
             total_savings=total_savings
         )
-        
+
         # Learn from response
         if "income_classifier_agent" in agent_responses:
             income = agent_responses["income_classifier_agent"].get("income_sources", [])
@@ -201,7 +249,7 @@ async def chat_query(
                     source.get("type", "unknown"),
                     source.get("amount", 0)
                 )
-        
+
         if "deduction_hunter_agent" in agent_responses:
             deductions = agent_responses["deduction_hunter_agent"].get("deductions_found", [])
             for ded in deductions:
@@ -209,19 +257,18 @@ async def chat_query(
                     ded.get("category", "unknown"),
                     ded.get("amount", 0)
                 )
-        
-        # Get conversation context
+
         conv_context = memory["conversation"].get_context()
         known_deductions = memory["semantic"].get_known_deductions()
-        
-        # Get validation summary from orchestration
+
         validation_summary = result.get("validation_summary", {})
         data_quality_score = validation_summary.get("avg_confidence", 0.8)
-        
+
         return {
             "success": True,
             "query": request.query,
             "intent": intent,
+            "pipeline": False,
             "agent_responses": agent_responses,
             "total_estimated_savings": total_savings,
             "quality_score": int(avg_quality * 100),

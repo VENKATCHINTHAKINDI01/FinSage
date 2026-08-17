@@ -1,0 +1,58 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# GST — rate schedule, effective-dated
+#
+# NOT financial-year scoped. GST rates change by Council decision on a stated
+# date, not on 1 April, so this is a separate pack keyed by effective_from.
+# A purchase is costed against the schedule in force ON THE PURCHASE DATE.
+# ═══════════════════════════════════════════════════════════════════════════
+
+meta:
+  verified_on: "2026-08-12"
+  sources:
+    - https://www.cbic.gov.in/
+    - https://www.gst.gov.in/
+  note: >
+    GST 2.0 took effect on 22 September 2025 and collapsed the four-slab
+    structure into 0/5/18/40. The 12% and 28% slabs were ABOLISHED. Any
+    engine still carrying them will mis-cost a large share of goods, and
+    guidance written before that date is still widely circulated.
+
+schedules:
+  - effective_from: "2025-09-22"
+    name: GST 2.0
+    slabs: ["0.00", "0.05", "0.18", "0.40"]
+    abolished_slabs: ["0.12", "0.28"]
+    default_slab: "0.18"
+    compensation_cess_note: >
+      Compensation cess was subsumed for most goods under GST 2.0. Where a
+      cess still applies it is item-specific and must come from a Tier-1
+      source, never assumed.
+    rates_by_category:
+      electric_vehicle: "0.05"
+      petrol_vehicle_small: "0.18"
+      petrol_vehicle_large: "0.40"
+      diesel_vehicle_large: "0.40"
+      gold_jewellery: "0.03"
+      electronics_consumer: "0.18"
+      appliance_white_goods: "0.18"
+      cement: "0.18"
+      under_construction_property: "0.05"
+      affordable_housing: "0.01"
+      completed_property: "0.00"
+    category_note: >
+      Gold sits at 3%, outside the four headline slabs — a long-standing
+      special rate, not an error. Completed property attracts no GST at all
+      because it is not a supply of goods or services; only under-construction
+      does.
+
+  - effective_from: "2017-07-01"
+    name: GST 1.0
+    slabs: ["0.00", "0.05", "0.12", "0.18", "0.28"]
+    abolished_slabs: []
+    default_slab: "0.18"
+    rates_by_category:
+      electric_vehicle: "0.05"
+      gold_jewellery: "0.03"
+    note: >
+      Retained so a purchase made before 22 September 2025 can still be costed
+      correctly — a revised return or a dealer quote teardown may need it.

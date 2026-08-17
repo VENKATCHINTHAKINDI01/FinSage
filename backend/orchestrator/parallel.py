@@ -120,7 +120,7 @@ async def _run_one(
     # `timed_out` flag and telling the user an agent "could not run" when it
     # actually hung. A ruff autofix introduced exactly that, and only the
     # timeout tests caught it.
-    except (TimeoutError, asyncio.TimeoutError):  # noqa: UP041
+    except (TimeoutError, asyncio.TimeoutError):
         elapsed = (time.perf_counter() - started) * 1000
         logger.warning("agent %s timed out after %.1fs", name, timeout_s)
         return AgentRun(name, ok=False, error=f"timed out after {timeout_s}s",

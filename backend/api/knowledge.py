@@ -11,11 +11,38 @@ import uuid
 
 from backend.db.postgres import get_session
 from backend.security.dependencies import get_current_user
+from backend.middleware.ratelimit import MAX_UPLOAD_BYTES, UploadRejected, check_upload
 from backend.models import UserResponse
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/knowledge", tags=["Knowledge Base"])
+
+# PDF magic bytes are read from the leading chunk, well inside one read.
+_SNIFF_WINDOW = 64
+
+
+async def _read_capped(file: UploadFile, *, limit: int = MAX_UPLOAD_BYTES) -> bytes:
+    """PRD-003: refuse an oversized upload DURING the read, not after.
+
+    Reading the whole body first and measuring it afterward is the attack —
+    by then the bytes are already resident. `UploadFile.read(n)` supports
+    bounded reads, so the cap is enforced chunk by chunk.
+    """
+    chunk_size = 1024 * 1024
+    out = bytearray()
+    while True:
+        chunk = await file.read(chunk_size)
+        if not chunk:
+            break
+        out.extend(chunk)
+        if len(out) > limit:
+            raise UploadRejected(
+                f"the upload exceeds {limit // (1024 * 1024)} MB. It was "
+                f"refused part-way through rather than after being read into "
+                f"memory."
+            )
+    return bytes(out)
 
 
 class DocumentUploadRequest(BaseModel):
@@ -69,24 +96,49 @@ async def upload_document(
     try:
         from backend.rag.document_loader import document_loader
         from backend.rag.retriever import rag_retriever
-        
-        # Validate file type
+
+        # PRD-003: the extension is a claim by the uploader; size is capped
+        # while streaming, and for PDF the magic bytes are checked too — a
+        # `.pdf` that starts with "PK" is a zip, and a zip handed to a PDF
+        # parser is at best an error and at worst an unpacking bomb.
+        try:
+            content = await _read_capped(file)
+        except UploadRejected as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc),
+            ) from None
+
         if file.filename.endswith('.txt'):
-            content = await file.read()
-            text = content.decode('utf-8')
+            try:
+                text = content.decode('utf-8')
+            except UnicodeDecodeError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="the file is named .txt but its contents are not valid UTF-8 text.",
+                ) from None
             file_type = 'text'
         elif file.filename.endswith('.pdf'):
+            try:
+                check_upload(content[:_SNIFF_WINDOW], declared_type="application/pdf")
+            except UploadRejected as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc),
+                ) from None
             # For PDF, save temporarily and load
             import tempfile
             with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp:
-                content = await file.read()
                 tmp.write(content)
                 tmp_path = tmp.name
             file_type = 'pdf'
             text = None
         elif file.filename.endswith('.md'):
-            content = await file.read()
-            text = content.decode('utf-8')
+            try:
+                text = content.decode('utf-8')
+            except UnicodeDecodeError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="the file is named .md but its contents are not valid UTF-8 text.",
+                ) from None
             file_type = 'markdown'
         else:
             raise HTTPException(

@@ -7,8 +7,7 @@ This is the interface that agents use to access tools.
 """
 
 import logging
-from typing import Dict, Any, Optional, List
-from datetime import datetime
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 class ToolExecutor:
     """Execute tools on behalf of agents."""
-    
+
     def __init__(
         self,
         calculation_engine,
@@ -31,7 +30,7 @@ class ToolExecutor:
         export_tools
     ):
         """Initialize with all tool implementations."""
-        
+
         self.calc_engine = calculation_engine
         self.db_tools = database_tools
         self.scheme_tools = scheme_tools
@@ -39,18 +38,18 @@ class ToolExecutor:
         self.report_tools = report_tools
         self.notification_tools = notification_tools
         self.export_tools = export_tools
-        
+
         self.logger = logging.getLogger("tool.executor")
-        
+
         # Initialize new tool engines
-        from backend.tools.calculator import TaxDeductionCalculator
         from backend.tools.alert_engine import TaxAlertEngine
+        from backend.tools.calculator import TaxDeductionCalculator
         from backend.tools.financial_api import FinancialAPIClient
         from backend.tools.govt_portal import GovtPortalClient
         from backend.tools.pdf_parser import PDFStatementParser
         from backend.tools.rag_retriever import ToolRAGRetriever
         from backend.tools.web_search import OnlineWebSearchTool
-        
+
         self.calculator = TaxDeductionCalculator()
         self.alert_engine = TaxAlertEngine()
         self.financial_api = FinancialAPIClient()
@@ -58,11 +57,11 @@ class ToolExecutor:
         self.pdf_parser = PDFStatementParser()
         self.rag_retriever = ToolRAGRetriever()
         self.online_search = OnlineWebSearchTool()
-        
+
         # Data validator for cross-checking results
         from backend.tools.data_validator import DataValidator
         self.validator = DataValidator()
-        
+
         # Tool registry
         self.tools = {
             # Calculation tools
@@ -70,11 +69,12 @@ class ToolExecutor:
             "calculate_deduction_impact": self.calculate_deduction_impact,
             "estimate_tax_refund": self.estimate_tax_refund,
             "calculate_capital_gains_tax": self.calculate_capital_gains_tax,
-            
+            "calculate_capital_gains": self.calculate_capital_gains,
+
             # New Calculation tools
             "calculate_hra_exemption": self.calculate_hra_exemption,
             "calculate_professional_tax": self.calculate_professional_tax,
-            
+
             # Database tools
             "get_user_profile": self.get_user_profile,
             "get_user_income_history": self.get_user_income_history,
@@ -84,58 +84,58 @@ class ToolExecutor:
             "save_recommendation": self.save_recommendation,
             "get_analysis_history": self.get_analysis_history,
             "update_user_data": self.update_user_data,
-            
+
             # Scheme tools
             "get_scheme_details": self.get_scheme_details,
             "search_schemes": self.search_schemes,
             "get_applicable_schemes": self.get_applicable_schemes,
             "check_scheme_eligibility": self.check_scheme_eligibility,
-            
+
             # Search tools
             "search_latest_tax_rules": self.search_latest_tax_rules,
             "search_government_schemes": self.search_government_schemes,
             "get_tax_deadlines": self.get_tax_deadlines,
-            
+
             # Report tools
             "generate_tax_report": self.generate_tax_report,
             "generate_deduction_report": self.generate_deduction_report,
             "generate_optimization_report": self.generate_optimization_report,
-            
+
             # Notification tools
             "send_email": self.send_email,
             "send_sms": self.send_sms,
             "create_reminder": self.create_reminder,
-            
+
             # Export tools
             "export_to_excel": self.export_to_excel,
             "export_to_pdf": self.export_to_pdf,
-            
+
             # New Alert tools
             "generate_tax_saving_alerts": self.generate_tax_saving_alerts,
             "check_upcoming_deadlines": self.check_upcoming_deadlines,
-            
+
             # New Financial API tools
             "fetch_live_market_data": self.fetch_live_market_data,
             "fetch_bank_statements": self.fetch_bank_statements,
-            
+
             # New Govt Portal tools
             "verify_pan_details": self.verify_pan_details,
             "fetch_form_26as_statement": self.fetch_form_26as_statement,
-            
+
             # New PDF Parser tools
             "parse_investment_receipt": self.parse_investment_receipt,
             "parse_form16": self.parse_form16,
-            
+
             # New RAG search tools
             "semantic_search_tax_kb": self.semantic_search_tax_kb,
-            
+
             # New Web search tools
             "web_search_tavily": self.web_search_tavily,
         }
-        
+
         self.logger.info(f"Tool registry initialized with {len(self.tools)} tools (with validation)")
-    
-    async def execute_tool(self, tool_name: str, **kwargs) -> Dict[str, Any]:
+
+    async def execute_tool(self, tool_name: str, **kwargs) -> dict[str, Any]:
         """Execute a tool by name with validation wrapper."""
         if tool_name not in self.tools:
             return {
@@ -144,14 +144,14 @@ class ToolExecutor:
                 "validated": False,
                 "validation_warnings": [f"Unknown tool: {tool_name}"]
             }
-        
+
         try:
             result = await self.tools[tool_name](**kwargs)
-            
+
             # Run validation on the result
             validated_result, report = self.validator.validate_tool_result(tool_name, result)
             return validated_result
-            
+
         except Exception as e:
             self.logger.error(f"Tool execution error ({tool_name}): {e}")
             return {
@@ -159,13 +159,13 @@ class ToolExecutor:
                 "error": str(e),
                 "tool": tool_name,
                 "validated": False,
-                "validation_warnings": [f"Execution error: {str(e)}"]
+                "validation_warnings": [f"Execution error: {e!s}"]
             }
-    
+
     # ======================================================================
     # CALCULATION TOOLS
     # ======================================================================
-    
+
     async def calculate_tax_liability(
         self,
         total_income: float,
@@ -173,7 +173,7 @@ class ToolExecutor:
         age: int = 0,
         employment_type: str = "individual",
         **kwargs
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Calculate total tax liability."""
         try:
             result = self.calc_engine.calculate_tax_with_deductions(
@@ -190,13 +190,13 @@ class ToolExecutor:
         except Exception as e:
             self.logger.error(f"Error calculating tax liability: {e}")
             return {"success": False, "error": str(e)}
-    
+
     async def calculate_deduction_impact(
         self,
         deduction_amount: float,
         current_taxable_income: float = None,
         **kwargs
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Calculate tax savings from a deduction."""
         try:
             income = current_taxable_income if current_taxable_income is not None else kwargs.get("current_income", 0.0)
@@ -212,14 +212,14 @@ class ToolExecutor:
         except Exception as e:
             self.logger.error(f"Error calculating deduction impact: {e}")
             return {"success": False, "error": str(e)}
-    
+
     async def estimate_tax_refund(
         self,
         tds_paid: float,
         estimated_tax_liability: float,
         other_taxes: float = 0,
         **kwargs
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Estimate tax refund."""
         try:
             result = self.calc_engine.calculate_refund(
@@ -235,28 +235,53 @@ class ToolExecutor:
         except Exception as e:
             self.logger.error(f"Error estimating refund: {e}")
             return {"success": False, "error": str(e)}
-    
+
+    async def calculate_capital_gains(
+        self,
+        disposals: list[dict[str, Any]] | None = None,
+        fy: str | None = None,
+        resident_individual: bool = True,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """Capital gains from actual DISPOSALS, through the core engine.
+
+        The older `calculate_capital_gains_tax` takes bare STCG and LTCG
+        totals, which cannot answer the questions that matter: whether the
+        holding period was met, whether the transfer fell before or after
+        23 July 2024, and whether the 20%-with-indexation election is open. A
+        disposal carries its dates, so the engine can decide rather than the
+        caller having decided already and passed the conclusion in.
+        """
+        try:
+            return self.calc_engine.CapitalGainsTaxCalculator.calculate(
+                disposals or [], fy=fy,
+                resident_individual=resident_individual,
+            )
+        except Exception as exc:
+            self.logger.error("Error computing capital gains: %s", exc)
+            return {"success": False, "error": str(exc)}
+
     async def calculate_capital_gains_tax(
         self,
         short_term_gains: float = 0,
         long_term_gains: float = 0,
         **kwargs
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Calculate capital gains tax."""
         try:
             results = {}
-            
+
             if short_term_gains > 0:
                 results["stcg"] = self.calc_engine.CapitalGainsTaxCalculator.calculate_stcg_tax(
                     short_term_gains=short_term_gains,
                     total_income=kwargs.get("total_income", 0)
                 )
-            
+
             if long_term_gains > 0:
                 results["ltcg"] = self.calc_engine.CapitalGainsTaxCalculator.calculate_ltcg_tax(
                     long_term_gains=long_term_gains
                 )
-            
+
             return {
                 "success": True,
                 "tool": "calculate_capital_gains_tax",
@@ -265,51 +290,51 @@ class ToolExecutor:
         except Exception as e:
             self.logger.error(f"Error calculating capital gains tax: {e}")
             return {"success": False, "error": str(e)}
-    
+
     # ======================================================================
     # DATABASE TOOLS
     # ======================================================================
-    
-    async def get_user_profile(self, user_id: str, **kwargs) -> Dict[str, Any]:
+
+    async def get_user_profile(self, user_id: str, **kwargs) -> dict[str, Any]:
         """Get user's complete financial profile."""
         try:
             result = await self.db_tools["user_data"].get_user_profile(user_id)
             return {"success": True, "tool": "get_user_profile", "result": result}
         except Exception as e:
             return {"success": False, "error": str(e)}
-    
-    async def get_user_income_history(self, user_id: str, years: int = 3, **kwargs) -> Dict[str, Any]:
+
+    async def get_user_income_history(self, user_id: str, years: int = 3, **kwargs) -> dict[str, Any]:
         """Get user's income history."""
         try:
             result = await self.db_tools["user_data"].get_user_income_history(user_id, years)
             return {"success": True, "tool": "get_user_income_history", "result": result}
         except Exception as e:
             return {"success": False, "error": str(e)}
-    
-    async def get_user_deductions(self, user_id: str, **kwargs) -> Dict[str, Any]:
+
+    async def get_user_deductions(self, user_id: str, **kwargs) -> dict[str, Any]:
         """Get user's claimed deductions."""
         try:
             result = await self.db_tools["user_data"].get_user_deductions(user_id)
             return {"success": True, "tool": "get_user_deductions", "result": result}
         except Exception as e:
             return {"success": False, "error": str(e)}
-    
-    async def get_user_investments(self, user_id: str, **kwargs) -> Dict[str, Any]:
+
+    async def get_user_investments(self, user_id: str, **kwargs) -> dict[str, Any]:
         """Get user's investment portfolio."""
         try:
             result = await self.db_tools["user_data"].get_user_investments(user_id)
             return {"success": True, "tool": "get_user_investments", "result": result}
         except Exception as e:
             return {"success": False, "error": str(e)}
-    
+
     async def save_analysis(
         self,
         user_id: str,
         analysis_type: str,
-        analysis_data: Dict[str, Any] = None,
+        analysis_data: dict[str, Any] = None,
         agent_name: str = "unknown",
         **kwargs
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Save analysis results."""
         try:
             data = analysis_data if analysis_data is not None else kwargs.get("result_data", {})
@@ -322,15 +347,15 @@ class ToolExecutor:
             return {"success": True, "tool": "save_analysis", "result": result}
         except Exception as e:
             return {"success": False, "error": str(e)}
-    
+
     async def save_recommendation(
         self,
         user_id: str,
         recommendation_type: str,
-        recommendation: Dict[str, Any],
+        recommendation: dict[str, Any],
         agent_name: str = "unknown",
         **kwargs
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Save recommendation."""
         try:
             result = await self.db_tools["storage"].save_recommendation(
@@ -342,14 +367,14 @@ class ToolExecutor:
             return {"success": True, "tool": "save_recommendation", "result": result}
         except Exception as e:
             return {"success": False, "error": str(e)}
-    
+
     async def get_analysis_history(
         self,
         user_id: str,
-        analysis_type: Optional[str] = None,
+        analysis_type: str | None = None,
         limit: int = 10,
         **kwargs
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Get analysis history."""
         try:
             result = await self.db_tools["storage"].get_analysis_history(
@@ -360,14 +385,14 @@ class ToolExecutor:
             return {"success": True, "tool": "get_analysis_history", "result": result}
         except Exception as e:
             return {"success": False, "error": str(e)}
-    
+
     async def update_user_data(
         self,
         user_id: str,
         data_type: str,
-        data: Dict[str, Any],
+        data: dict[str, Any],
         **kwargs
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Update user data."""
         try:
             if data_type == "income":
@@ -378,31 +403,31 @@ class ToolExecutor:
                 result = await self.db_tools["update"].update_investments(user_id, data)
             else:
                 return {"success": False, "error": f"Unknown data type: {data_type}"}
-            
+
             return {"success": True, "tool": "update_user_data", "result": result}
         except Exception as e:
             return {"success": False, "error": str(e)}
-    
+
     # ======================================================================
     # SCHEME TOOLS
     # ======================================================================
-    
-    async def get_scheme_details(self, scheme_code: str, **kwargs) -> Dict[str, Any]:
+
+    async def get_scheme_details(self, scheme_code: str, **kwargs) -> dict[str, Any]:
         """Get scheme details."""
         try:
             result = await self.scheme_tools.get_scheme_details(scheme_code)
             return {"success": True, "tool": "get_scheme_details", "result": result}
         except Exception as e:
             return {"success": False, "error": str(e)}
-    
-    async def search_schemes(self, keyword: str, **kwargs) -> Dict[str, Any]:
+
+    async def search_schemes(self, keyword: str, **kwargs) -> dict[str, Any]:
         """Search schemes."""
         try:
             result = await self.scheme_tools.search_schemes_by_keyword(keyword)
             return {"success": True, "tool": "search_schemes", "result": result}
         except Exception as e:
             return {"success": False, "error": str(e)}
-    
+
     async def get_applicable_schemes(
         self,
         age: int,
@@ -410,7 +435,7 @@ class ToolExecutor:
         has_health_insurance: bool = False,
         has_education_loan: bool = False,
         **kwargs
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Get applicable schemes for user."""
         try:
             result = await self.scheme_tools.get_applicable_schemes(
@@ -431,7 +456,7 @@ class ToolExecutor:
         has_health_insurance: bool = False,
         has_education_loan: bool = False,
         **kwargs
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Check user eligibility for a specific scheme."""
         try:
             result = await self.scheme_tools.check_scheme_eligibility(
@@ -444,46 +469,46 @@ class ToolExecutor:
             return {"success": True, "tool": "check_scheme_eligibility", "result": result}
         except Exception as e:
             return {"success": False, "error": str(e)}
-    
+
     # ======================================================================
     # SEARCH TOOLS
     # ======================================================================
-    
-    async def search_latest_tax_rules(self, keyword: str = "", **kwargs) -> Dict[str, Any]:
+
+    async def search_latest_tax_rules(self, keyword: str = "", **kwargs) -> dict[str, Any]:
         """Search latest tax rules."""
         try:
             result = await self.search_tools.search_latest_tax_rules(keyword)
             return {"success": True, "tool": "search_latest_tax_rules", "result": result}
         except Exception as e:
             return {"success": False, "error": str(e)}
-    
-    async def search_government_schemes(self, keyword: str = "", **kwargs) -> Dict[str, Any]:
+
+    async def search_government_schemes(self, keyword: str = "", **kwargs) -> dict[str, Any]:
         """Search government schemes."""
         try:
             result = await self.search_tools.search_government_schemes(keyword)
             return {"success": True, "tool": "search_government_schemes", "result": result}
         except Exception as e:
             return {"success": False, "error": str(e)}
-    
-    async def get_tax_deadlines(self, **kwargs) -> Dict[str, Any]:
+
+    async def get_tax_deadlines(self, **kwargs) -> dict[str, Any]:
         """Get tax deadlines."""
         try:
             result = await self.search_tools.get_tax_deadlines()
             return {"success": True, "tool": "get_tax_deadlines", "result": result}
         except Exception as e:
             return {"success": False, "error": str(e)}
-    
+
     # ======================================================================
     # REPORT TOOLS
     # ======================================================================
-    
+
     async def generate_tax_report(
         self,
         user_id: str,
-        analysis_data: Dict[str, Any],
+        analysis_data: dict[str, Any],
         format: str = "json",
         **kwargs
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Generate tax analysis report."""
         try:
             result = await self.report_tools.generate_tax_analysis_report(
@@ -494,15 +519,15 @@ class ToolExecutor:
             return {"success": True, "tool": "generate_tax_report", "result": result}
         except Exception as e:
             return {"success": False, "error": str(e)}
-    
+
     async def generate_deduction_report(
         self,
         user_id: str,
-        deductions: List[Dict[str, Any]],
+        deductions: list[dict[str, Any]],
         total_savings: float,
         format: str = "json",
         **kwargs
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Generate deduction report."""
         try:
             result = await self.report_tools.generate_deduction_report(
@@ -514,15 +539,15 @@ class ToolExecutor:
             return {"success": True, "tool": "generate_deduction_report", "result": result}
         except Exception as e:
             return {"success": False, "error": str(e)}
-    
+
     async def generate_optimization_report(
         self,
         user_id: str,
-        strategies: List[Dict[str, Any]],
+        strategies: list[dict[str, Any]],
         total_savings: float,
         format: str = "json",
         **kwargs
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Generate optimization report."""
         try:
             result = await self.report_tools.generate_optimization_report(
@@ -534,19 +559,19 @@ class ToolExecutor:
             return {"success": True, "tool": "generate_optimization_report", "result": result}
         except Exception as e:
             return {"success": False, "error": str(e)}
-    
+
     # ======================================================================
     # NOTIFICATION TOOLS
     # ======================================================================
-    
+
     async def send_email(
         self,
         user_email: str,
         subject: str,
         body: str,
-        html_body: Optional[str] = None,
+        html_body: str | None = None,
         **kwargs
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Send email notification."""
         try:
             result = await self.notification_tools.send_email(
@@ -558,8 +583,8 @@ class ToolExecutor:
             return {"success": True, "tool": "send_email", "result": result}
         except Exception as e:
             return {"success": False, "error": str(e)}
-    
-    async def send_sms(self, phone_number: str, message: str, **kwargs) -> Dict[str, Any]:
+
+    async def send_sms(self, phone_number: str, message: str, **kwargs) -> dict[str, Any]:
         """Send SMS notification."""
         try:
             result = await self.notification_tools.send_sms(
@@ -569,7 +594,7 @@ class ToolExecutor:
             return {"success": True, "tool": "send_sms", "result": result}
         except Exception as e:
             return {"success": False, "error": str(e)}
-    
+
     async def create_reminder(
         self,
         user_id: str,
@@ -577,7 +602,7 @@ class ToolExecutor:
         reminder_date: str,
         reminder_type: str = "notification",
         **kwargs
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Create reminder."""
         try:
             result = await self.notification_tools.create_reminder(
@@ -589,18 +614,18 @@ class ToolExecutor:
             return {"success": True, "tool": "create_reminder", "result": result}
         except Exception as e:
             return {"success": False, "error": str(e)}
-    
+
     # ======================================================================
     # EXPORT TOOLS
     # ======================================================================
-    
+
     async def export_to_excel(
         self,
         user_id: str,
-        data: Dict[str, Any],
+        data: dict[str, Any],
         filename: str = "tax_analysis.xlsx",
         **kwargs
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Export to Excel."""
         try:
             result = await self.export_tools.export_to_excel(
@@ -611,14 +636,14 @@ class ToolExecutor:
             return {"success": True, "tool": "export_to_excel", "result": result}
         except Exception as e:
             return {"success": False, "error": str(e)}
-    
+
     async def export_to_pdf(
         self,
         user_id: str,
-        report_data: Dict[str, Any],
+        report_data: dict[str, Any],
         filename: str = "tax_analysis.pdf",
         **kwargs
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Export to PDF."""
         try:
             result = await self.export_tools.export_to_pdf(
@@ -633,7 +658,7 @@ class ToolExecutor:
     # ======================================================================
     # NEW CALCULATOR TOOLS
     # ======================================================================
-    
+
     async def calculate_hra_exemption(
         self,
         basic_salary: float,
@@ -641,7 +666,7 @@ class ToolExecutor:
         rent_paid: float,
         is_metro: bool = False,
         **kwargs
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Calculate HRA exemption."""
         try:
             res = self.calculator.calculate_hra_exemption(
@@ -659,7 +684,7 @@ class ToolExecutor:
         state: str,
         monthly_income: float,
         **kwargs
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Calculate Professional Tax."""
         try:
             res = self.calculator.calculate_professional_tax(
@@ -673,13 +698,13 @@ class ToolExecutor:
     # ======================================================================
     # NEW ALERT TOOLS
     # ======================================================================
-    
+
     async def generate_tax_saving_alerts(
         self,
-        investments: Dict[str, float] = None,
-        deductions: Dict[str, float] = None,
+        investments: dict[str, float] = None,
+        deductions: dict[str, float] = None,
         **kwargs
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Generate tax saving alerts."""
         try:
             res = self.alert_engine.generate_tax_saving_alerts(
@@ -690,7 +715,7 @@ class ToolExecutor:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    async def check_upcoming_deadlines(self, **kwargs) -> Dict[str, Any]:
+    async def check_upcoming_deadlines(self, **kwargs) -> dict[str, Any]:
         """Check tax filing deadlines."""
         try:
             res = self.alert_engine.check_upcoming_deadlines()
@@ -701,8 +726,8 @@ class ToolExecutor:
     # ======================================================================
     # NEW FINANCIAL API TOOLS
     # ======================================================================
-    
-    async def fetch_live_market_data(self, ticker: str, **kwargs) -> Dict[str, Any]:
+
+    async def fetch_live_market_data(self, ticker: str, **kwargs) -> dict[str, Any]:
         """Fetch market valuations."""
         try:
             res = await self.financial_api.fetch_live_market_data(ticker=ticker)
@@ -715,7 +740,7 @@ class ToolExecutor:
         bank_name: str,
         account_id: str,
         **kwargs
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Fetch linked transactions."""
         try:
             res = await self.financial_api.fetch_bank_statements(
@@ -729,8 +754,8 @@ class ToolExecutor:
     # ======================================================================
     # NEW GOVT PORTAL TOOLS
     # ======================================================================
-    
-    async def verify_pan_details(self, pan_number: str, **kwargs) -> Dict[str, Any]:
+
+    async def verify_pan_details(self, pan_number: str, **kwargs) -> dict[str, Any]:
         """Verify PAN card registry status."""
         try:
             res = self.govt_portal.verify_pan_details(pan_number=pan_number)
@@ -738,7 +763,7 @@ class ToolExecutor:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    async def fetch_form_26as_statement(self, pan_number: str, **kwargs) -> Dict[str, Any]:
+    async def fetch_form_26as_statement(self, pan_number: str, **kwargs) -> dict[str, Any]:
         """Fetch official tax credits."""
         try:
             res = self.govt_portal.fetch_form_26as_statement(pan_number=pan_number)
@@ -749,8 +774,8 @@ class ToolExecutor:
     # ======================================================================
     # NEW PDF PARSER TOOLS
     # ======================================================================
-    
-    async def parse_investment_receipt(self, file_path: str, **kwargs) -> Dict[str, Any]:
+
+    async def parse_investment_receipt(self, file_path: str, **kwargs) -> dict[str, Any]:
         """Parse ELSS/NPS receipts."""
         try:
             res = self.pdf_parser.parse_investment_receipt(file_path=file_path)
@@ -758,7 +783,7 @@ class ToolExecutor:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    async def parse_form16(self, file_path: str, **kwargs) -> Dict[str, Any]:
+    async def parse_form16(self, file_path: str, **kwargs) -> dict[str, Any]:
         """Parse Form 16 PDF."""
         try:
             res = self.pdf_parser.parse_form16(file_path=file_path)
@@ -769,8 +794,8 @@ class ToolExecutor:
     # ======================================================================
     # NEW RAG RETRIEVER TOOLS
     # ======================================================================
-    
-    async def semantic_search_tax_kb(self, query: str, top_k: int = 5, **kwargs) -> Dict[str, Any]:
+
+    async def semantic_search_tax_kb(self, query: str, top_k: int = 5, **kwargs) -> dict[str, Any]:
         """Semantic search Qdrant database."""
         try:
             res = await self.rag_retriever.semantic_search_tax_kb(query=query, top_k=top_k)
@@ -781,20 +806,20 @@ class ToolExecutor:
     # ======================================================================
     # NEW WEB SEARCH TOOLS
     # ======================================================================
-    
-    async def web_search_tavily(self, query: str, **kwargs) -> Dict[str, Any]:
+
+    async def web_search_tavily(self, query: str, **kwargs) -> dict[str, Any]:
         """Search Web via Tavily."""
         try:
             res = await self.online_search.web_search_tavily(query=query)
             return {"success": True, "tool": "web_search_tavily", "result": res}
         except Exception as e:
             return {"success": False, "error": str(e)}
-    
+
     # ======================================================================
     # REGISTRY METHODS
     # ======================================================================
-    
-    async def execute_tool(self, tool_name: str, **kwargs) -> Dict[str, Any]:
+
+    async def execute_tool(self, tool_name: str, **kwargs) -> dict[str, Any]:
         """Execute a tool by name."""
         if tool_name not in self.tools:
             return {
@@ -802,7 +827,7 @@ class ToolExecutor:
                 "error": f"Tool '{tool_name}' not found",
                 "available_tools": list(self.tools.keys())
             }
-        
+
         try:
             tool_func = self.tools[tool_name]
             res = await tool_func(**kwargs)
@@ -812,12 +837,12 @@ class ToolExecutor:
         except Exception as e:
             self.logger.error(f"Error executing tool {tool_name}: {e}")
             return {"success": False, "error": str(e), "tool": tool_name}
-    
-    def list_tools(self) -> List[str]:
+
+    def list_tools(self) -> list[str]:
         """List all available tools."""
         return sorted(list(self.tools.keys()))
-    
-    def get_tool_categories(self) -> Dict[str, List[str]]:
+
+    def get_tool_categories(self) -> dict[str, list[str]]:
         """Get tools grouped by category."""
         return {
             "calculation": [
@@ -825,6 +850,7 @@ class ToolExecutor:
                 "calculate_deduction_impact",
                 "estimate_tax_refund",
                 "calculate_capital_gains_tax",
+                "calculate_capital_gains",
                 "calculate_hra_exemption",
                 "calculate_professional_tax"
             ],

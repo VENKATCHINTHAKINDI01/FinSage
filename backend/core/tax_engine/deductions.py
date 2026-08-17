@@ -327,19 +327,54 @@ def compute_interest_deduction(
 
 # ── HRA — the three-way minimum ─────────────────────────────────────────────
 
+def hra_city_rate(city: str | None, rs: TaxRuleset) -> tuple[Decimal, bool]:
+    """Resolve the third-limb percentage from the rule pack, by city name.
+
+    Returns (rate, is_listed). The city LIST is the thing that changed for
+    FY 2026-27 — Bengaluru, Hyderabad, Pune and Ahmedabad joined the four
+    original metros, the first change in over four decades. Resolving it from
+    the pack rather than from a caller-supplied boolean is what makes that a
+    one-line YAML edit instead of a hunt through call sites.
+    """
+    cfg = rs.deduction("10_13A")
+    listed = {str(c).strip().lower() for c in cfg.get("cities_at_50_percent", ())}
+    is_listed = city is not None and city.strip().lower() in listed
+    rate = Decimal(str(
+        cfg["rate_listed_city"] if is_listed else cfg["rate_other"]
+    ))
+    return rate, is_listed
+
+
 def compute_hra_exemption(
     basic_salary: Money,
     hra_received: Money,
     rent_paid: Money,
-    is_metro: bool,
-    rs: TaxRuleset,
+    is_metro: bool | None = None,
+    rs: TaxRuleset | None = None,
+    *,
+    city: str | None = None,
 ) -> DeductionOutcome:
     """Least of: HRA received; rent less 10% of salary; 50%/40% of salary.
 
-    An exemption under s.10(13A), not a Chapter VI-A deduction — so it reduces
-    salary income directly and is unavailable under the new regime.
+    An exemption under s.10(13A) — Schedule III, Table Sl. No. 11 of the 2025
+    Act — not a Chapter VI-A deduction, so it reduces salary income directly
+    and is unavailable under the new regime.
+
+    Pass `city` and the rate comes from the rule pack. `is_metro` is retained
+    for callers that genuinely only hold a boolean, but it is the weaker input:
+    a caller that decided "metro" in 2025 has Bengaluru wrong for FY 2026-27.
     """
-    pct = Decimal("0.50") if is_metro else Decimal("0.40")
+    if rs is None:
+        raise ValueError("compute_hra_exemption needs a ruleset")
+
+    if city is not None:
+        pct, is_listed = hra_city_rate(city, rs)
+        where = f"{city} — {'listed city' if is_listed else 'not a listed city'}"
+    else:
+        pct, is_listed = hra_city_rate(None, rs)
+        if is_metro:
+            pct = Decimal(str(rs.deduction("10_13A")["rate_listed_city"]))
+        where = "metro" if is_metro else "non-metro"
     rent_less_10 = (rent_paid - basic_salary * Decimal("0.10")).clamp_non_negative()
     salary_pct = basic_salary * pct
 
@@ -357,7 +392,7 @@ def compute_hra_exemption(
                 note=(
                     f"HRA received {hra_received}; rent less 10% of salary "
                     f"{rent_less_10}; {int(pct * 100)}% of salary {salary_pct} "
-                    f"({'metro' if is_metro else 'non-metro'})"
+                    f"({where})"
                 ),
             )
         ],

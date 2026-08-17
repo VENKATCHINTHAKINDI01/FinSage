@@ -65,7 +65,11 @@ ignore_imports =
     ; TODO(DEM-006, AGT-003): v1 wires globals from main.py at lifespan and
     ; several modules import upward to reach them. Removed in Phase 2/3.
     backend.tools.* -> backend.db.*
-    backend.agents.* -> backend.rag.*
+    ; backend.agents.* -> backend.rag.* — REMOVED 2026-08-13. The last agent
+    ; importing upward into the RAG layer was price_intelligence, and the
+    ; PRC-008 rewrite deleted the import along with the code that used it.
+    ; import-linter errors on an ignore rule that matches nothing, which is
+    ; how this was noticed — the exemption list polices itself.
     ; TODO(AGT-003): these three reach up into the orchestrator for the
     ; request-scoped DB session held in a module-level ContextVar. Listed
     ; individually rather than wildcarded so a NEW upward import still fails

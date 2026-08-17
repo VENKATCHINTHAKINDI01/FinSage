@@ -10,6 +10,8 @@ from typing import Any
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from backend.security.startup import dev_secret
+
 ENV_FILE_PATH = str(Path(__file__).resolve().parent.parent / ".env")
 
 
@@ -62,7 +64,16 @@ class QdrantSettings(BaseSettings):
 class LLMSettings(BaseSettings):
     """Groq LLM configuration"""
     api_key: str = Field(default="")
-    model: str = Field(default="llama-3.3-70b-versatile")
+    # `llama-3.3-70b-versatile` was retired from Groq's catalog — every LLM
+    # call in the live app was 404ing on "model does not exist", found by
+    # actually running the AGT-005 fixture generator against a live key
+    # rather than the (necessarily offline) replay-mode test suite. This is
+    # exactly the class of drift `python -m backend.evals.runner --live`'s
+    # nightly run exists to catch, but nothing had actually run it live yet.
+    # `openai/gpt-oss-120b` is confirmed on Groq's free plan (30 RPM / 1,000
+    # RPD / 8,000 TPM — the observed rate-limit headers on this key matched
+    # those exactly), not the metered paid tier.
+    model: str = Field(default="openai/gpt-oss-120b")
     temperature: float = Field(default=0.7)
     max_tokens: int = Field(default=2048)
     timeout: int = Field(default=30)
@@ -89,7 +100,18 @@ class SearchSettings(BaseSettings):
 
 class AuthSettings(BaseSettings):
     """JWT and authentication configuration"""
-    secret_key: str = Field(default="your-super-secret-key-change-in-production")
+    # No shared default, deliberately — PRD-005.
+    #
+    # This shipped as "your-super-secret-key-change-in-production", which is a
+    # published secret: any deployment that never set the variable signed its
+    # JWTs with a constant anyone could read in the repository. The app started
+    # and every test passed, so nothing ever surfaced it.
+    #
+    # In development the key is now random PER PROCESS, so there is no constant
+    # to leak and none to accidentally deploy. A dev login does not survive a
+    # restart, which is a small price and arguably right. Production sets the
+    # variable or `backend.security.startup.enforce` refuses to boot.
+    secret_key: str = Field(default_factory=dev_secret)
     algorithm: str = Field(default="HS256")
     access_token_expire_minutes: int = Field(default=15)
     refresh_token_expire_days: int = Field(default=7)

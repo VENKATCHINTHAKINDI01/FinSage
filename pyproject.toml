@@ -25,7 +25,13 @@ packages = ["backend"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+# py310, not py311, and the reason is worth recording. The project declares
+# requires-python >= 3.11, but the test environment runs 3.10 — and a lint rule
+# that rewrites `timezone.utc` into `datetime.UTC` breaks collection there, so
+# the whole suite stops running to satisfy a style preference. A suite that
+# cannot run is not checking anything. Raise this when the floor is genuinely
+# 3.11 everywhere the tests execute.
+target-version = "py310"
 extend-exclude = ["senv", "frontend", "backend/db/migrations/versions"]
 
 [tool.ruff.lint]
@@ -47,11 +53,35 @@ ignore = [
     # Prose and comments use typographic dashes deliberately, and the FY regex
     # must match the en dash because source documents and agents both emit it.
     "RUF001", "RUF002", "RUF003",
+    # UP017 rewrites `timezone.utc` to `datetime.UTC`, which is 3.11+ only.
+    # Its autofix has silently broken this build three times — the fan-out
+    # timeout path, the WebSocket handler and the document vault — each time
+    # only caught by a test that happened to exercise the exact line.
+    # The gate is deliberately runnable on 3.10, so the rule is off.
+    "UP017",
 ]
 
 [tool.ruff.lint.per-file-ignores]
 "**/tests/**" = ["S101"]            # assert is the point
 "backend/evals/**" = ["S101"]
+# `token_type="access"` is a discriminator, not a credential. S105/S106/S107
+# key off the variable NAME containing "token", so every JWT claim name in the
+# module trips them. Suppressed per-file with the reason rather than scattering
+# noqa comments that would hide a real finding among fourteen false ones.
+"backend/security/jwt_handler.py" = ["S105", "S106", "S107"]
+"backend/security/dependencies.py" = ["S106"]
+"backend/middleware/asgi_ratelimit.py" = ["S106"]
+# "_TOKEN_BUCKET_LUA" trips S105 on the variable name alone — it is a Lua
+# script constant, not a credential.
+"backend/middleware/redis_ratelimit.py" = ["S105"]
+# The PRD-005 suite is entirely about bad secrets, so it is full of them on
+# purpose. A rule that flags a test for containing the string it exists to
+# reject is measuring the wrong thing.
+"backend/security/tests/**" = ["S101", "S105", "S106", "S107"]
+# Same reason: the PRD-004 suite feeds fake secrets and fake PAN/Aadhaar values
+# through the redactor on purpose. Flagging a test for containing the thing it
+# exists to strip is measuring the wrong thing.
+"backend/observability/tests/**" = ["S101", "S105", "S106", "S107"]
 
 [tool.ruff.lint.flake8-bugbear]
 extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Path"]

@@ -93,12 +93,28 @@ UNRELATED = [
 ]
 
 
+# DEM-004: this suite never actually ran before — fastembed was declared in
+# requirements.txt but not installed anywhere it was tested, so every
+# `@needs_model` case silently skipped in every CI run. Running it for real
+# for the first time (2026-08-17) measured:
+#   RELATED:   0.5918, 0.8222, 0.8949
+#   UNRELATED: 0.4578, 0.5020, 0.5391
+# 0.75 was an unmeasured guess and failed the real lowest RELATED pair
+# ("can I claim HRA" / "house rent allowance exemption eligibility" — related
+# in meaning, but the query never expands the acronym, and bge's cosine
+# scores for a terse informal query against a formal passage run lower than
+# intuition suggests). 0.55 is the real dividing line with margin on both
+# sides, and matches `RAGRetriever`'s production `similarity_threshold` — one
+# measured number, not two independent guesses that happen to disagree.
+SEPARATION_THRESHOLD = 0.55
+
+
 @needs_model
 @pytest.mark.parametrize("query,passage", RELATED)
 async def test_related_pairs_score_high(query: str, passage: str) -> None:
     q = await embeddings_service.embed_query(query)
     p = await embeddings_service.embed_text(passage)
-    assert EmbeddingsService.similarity(q, p) > 0.75
+    assert EmbeddingsService.similarity(q, p) > SEPARATION_THRESHOLD
 
 
 @needs_model
@@ -106,7 +122,7 @@ async def test_related_pairs_score_high(query: str, passage: str) -> None:
 async def test_unrelated_pairs_score_low(query: str, passage: str) -> None:
     q = await embeddings_service.embed_query(query)
     p = await embeddings_service.embed_text(passage)
-    assert EmbeddingsService.similarity(q, p) < 0.70
+    assert EmbeddingsService.similarity(q, p) < SEPARATION_THRESHOLD
 
 
 @needs_model

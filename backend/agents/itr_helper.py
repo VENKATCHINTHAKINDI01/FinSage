@@ -6,14 +6,15 @@ Complete ITR filing guidance for India (ITR-1, 2, 4, 5).
 Database persistence + India-specific rules.
 """
 
-import time
 import logging
-from typing import Dict, Any, List
-from datetime import datetime, date
+import time
+from datetime import date
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
-from backend.agents.base_agent import TaxAgent, AgentOutput, confidence_score, derive_confidence
+
+from backend.agents.base_agent import AgentOutput, TaxAgent, confidence_score, derive_confidence
 from backend.db.orm_models import ITRFiling
 from backend.services.india_tax_data_fetcher import india_tax_data
 
@@ -31,25 +32,25 @@ class ITRHelperAgent(TaxAgent):
     • TDS/Advance tax validation
     • Save to database
     """
-    
+
     def __init__(self, db: Session = None):
         super().__init__("itr_helper_agent", "tax_filing")
         self.db = db
-    
+
     def set_tools(self, tools):
         """Inject tools."""
         self.tools = tools
         return self
-    
+
     def set_db(self, db: Session):
         """Set database session."""
         self.db = db
         return self
-    
+
     async def execute(
         self,
         user_query: str,
-        user_context: Dict[str, Any],
+        user_context: dict[str, Any],
         tools=None,
         **kwargs
     ) -> AgentOutput:
@@ -65,14 +66,14 @@ class ITRHelperAgent(TaxAgent):
           6. Save to database
         """
         start_time = time.time()
-        
+
         if tools is not None:
             self.set_tools(tools)
-            
+
         try:
             user_id = user_context.get("user_id")
             self.logger.info(f"Providing ITR guidance for user {user_id}")
-            
+
             # STEP 1: Get user data from database tools if available
             user_data = {}
             if self.tools:
@@ -82,46 +83,46 @@ class ITRHelperAgent(TaxAgent):
                 )
                 if user_profile.get("success"):
                     user_data = user_profile.get("result", {})
-                    
+
             # Resolve profile details
             basic_info = user_data.get("basic_info", {})
             financial_profile = user_data.get("financial_profile", {})
-            
+
             # Merge context
             merged_context = {
                 "annual_income": financial_profile.get("annual_income") or user_context.get("annual_income") or 0,
                 "employment_type": basic_info.get("employment_type") or user_context.get("employment_type") or "salaried",
                 "has_capital_gains": user_context.get("has_capital_gains") or financial_profile.get("has_capital_gains") or False
             }
-            
+
             # Get India tax data
             tax_data = await india_tax_data.get_current_tax_data()
             itr_forms = tax_data["itr_forms"]
-            
+
             # Determine applicable ITR form
             applicable_form = await india_tax_data.validate_itr_form(merged_context)
             form_details = itr_forms.get(applicable_form, {})
-            
+
             # STEP 2: Get India-specific filing requirements
             requirements = self._get_india_filing_requirements(
                 applicable_form,
                 merged_context,
                 tax_data
             )
-            
+
             # STEP 3: Get step-by-step filing guide
             filing_steps = self._get_itr_filing_steps(applicable_form)
-            
+
             # STEP 4: Get common mistakes (India-specific)
             common_mistakes = tax_data.get("common_itr_mistakes", [])
-            
+
             # STEP 5: Validate TDS & Advance Tax
             tds_validation = self._validate_tds_compliance(merged_context)
             advance_tax_validation = self._validate_advance_tax(merged_context, tax_data)
-            
+
             # STEP 6: Get important dates
             important_dates = tax_data["important_dates"]
-            
+
             result = {
                 "recommended_form": applicable_form,
                 "form_details": {
@@ -132,19 +133,19 @@ class ITRHelperAgent(TaxAgent):
                 },
                 "financial_year": tax_data["financial_year"],
                 "assessment_year": tax_data["assessment_year"],
-                
+
                 "filing_requirements": requirements,
                 "step_by_step_guide": filing_steps,
                 "estimated_time": f"{len(filing_steps) * 15} minutes",
-                
+
                 "common_mistakes": common_mistakes,
                 "what_to_avoid": [
                     f"❌ {mistake}" for mistake in common_mistakes[:5]
                 ],
-                
+
                 "tds_validation": tds_validation,
                 "advance_tax_validation": advance_tax_validation,
-                
+
                 "important_dates": {
                     "normal_deadline": important_dates["itr_normal_deadline"],
                     "extended_deadline": important_dates["itr_extended_deadline"],
@@ -154,10 +155,10 @@ class ITRHelperAgent(TaxAgent):
                     "q3_advance_tax": important_dates["q3_advance_tax"],
                     "q4_advance_tax": important_dates["q4_advance_tax"]
                 },
-                
+
                 "filing_checklist": self._get_filing_checklist(applicable_form),
                 "days_to_deadline": self._days_to_deadline(),
-                
+
                 "next_actions": [
                     "1. Gather all required documents (see above)",
                     "2. Download ITR form from incometax.gov.in",
@@ -165,11 +166,11 @@ class ITRHelperAgent(TaxAgent):
                     "4. Follow step-by-step guide above",
                     "5. Verify ITR within 30 days (critical!)"
                 ],
-                
+
                 "documents_checklist": self._get_documents_by_form(applicable_form),
                 "portal_url": "https://www.incometax.gov.in/home"
             }
-            
+
             # STEP 7: Save to database
             db_session = self.db
             if not db_session:
@@ -178,12 +179,12 @@ class ITRHelperAgent(TaxAgent):
                     db_session = db_session_var.get()
                 except Exception:
                     db_session = None
-            
+
             if db_session and user_id:
                 await self._save_to_database(user_id, result, applicable_form, db_session)
-            
+
             execution_time = (time.time() - start_time) * 1000
-            
+
             return self._create_output(
                 result=result,
                 status="success",
@@ -191,27 +192,27 @@ class ITRHelperAgent(TaxAgent):
                 reasoning=f"Identified {applicable_form} as the applicable tax filing form.",
                 execution_time_ms=execution_time
             )
-        
+
         except Exception as e:
             self.logger.error(f"Error in ITR helper: {e}", exc_info=True)
             execution_time = (time.time() - start_time) * 1000
-            
+
             return self._create_output(
                 result={"error": str(e)},
                 status="error",
                 confidence=0.0,  # execution failed — not a score
-                reasoning=f"Error providing ITR guidance: {str(e)}",
+                reasoning=f"Error providing ITR guidance: {e!s}",
                 execution_time_ms=execution_time
             )
-    
+
     def _get_india_filing_requirements(
         self,
         itr_form: str,
-        user_context: Dict[str, Any],
-        tax_data: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        user_context: dict[str, Any],
+        tax_data: dict[str, Any]
+    ) -> dict[str, Any]:
         """Get India-specific ITR filing requirements."""
-        
+
         base_requirements = {
             "documents": [
                 "PAN Card",
@@ -226,7 +227,7 @@ class ITRHelperAgent(TaxAgent):
                 "Digital signature (if applicable)"
             ]
         }
-        
+
         form_specific = {
             "ITR-1": {
                 "documents": base_requirements["documents"] + [
@@ -267,9 +268,9 @@ class ITRHelperAgent(TaxAgent):
                 "gst_required": True
             }
         }
-        
+
         requirements = form_specific.get(itr_form, {})
-        
+
         return {
             "documents_needed": requirements.get("documents", []),
             "schedules_required": requirements.get("schedules", []),
@@ -281,10 +282,10 @@ class ITRHelperAgent(TaxAgent):
             "extended_deadline": tax_data["important_dates"]["itr_extended_deadline"],
             "verification_needed": "YES - Critical!"
         }
-    
-    def _get_itr_filing_steps(self, itr_form: str) -> List[Dict[str, Any]]:
+
+    def _get_itr_filing_steps(self, itr_form: str) -> list[dict[str, Any]]:
         """Get step-by-step ITR filing guide for India."""
-        
+
         base_steps = [
             {
                 "step": 1,
@@ -359,21 +360,21 @@ class ITRHelperAgent(TaxAgent):
                 "time_min": 5
             }
         ]
-        
+
         return base_steps
-    
-    def _validate_tds_compliance(self, user_context: Dict[str, Any]) -> Dict[str, Any]:
+
+    def _validate_tds_compliance(self, user_context: dict[str, Any]) -> dict[str, Any]:
         """Validate TDS compliance (India-specific)."""
-        
+
         tds_paid = user_context.get("tds_paid", 0)
         calculated_tax = user_context.get("calculated_tax", 0)
         form_16_tds = user_context.get("form_16_tds", 0)
-        
+
         variance = abs(tds_paid - form_16_tds) if form_16_tds > 0 else 0
         variance_percent = (variance / form_16_tds * 100) if form_16_tds > 0 else 0
-        
+
         status = "✅ COMPLIANT" if variance_percent < 5 else "⚠️ MISMATCH - CHECK 26AS"
-        
+
         return {
             "tds_paid": tds_paid,
             "form_16_shows": form_16_tds,
@@ -383,23 +384,23 @@ class ITRHelperAgent(TaxAgent):
             "action": "Verify 26AS statement on incometax.gov.in",
             "26as_url": "https://www.incometax.gov.in/26AS"
         }
-    
+
     def _validate_advance_tax(
         self,
-        user_context: Dict[str, Any],
-        tax_data: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        user_context: dict[str, Any],
+        tax_data: dict[str, Any]
+    ) -> dict[str, Any]:
         """Validate advance tax payments (India-specific)."""
-        
+
         annual_income = user_context.get("annual_income", 0)
         advance_tax_paid = user_context.get("advance_tax_paid", 0)
-        
+
         # Advance tax required if estimated tax > ₹10,000
         estimated_tax = annual_income * 0.20
         advance_tax_required = estimated_tax > 10000
-        
+
         status = "✅ DONE" if advance_tax_paid > 0 or not advance_tax_required else "⚠️ NOT PAID"
-        
+
         return {
             "estimated_tax": estimated_tax,
             "advance_tax_required": advance_tax_required,
@@ -413,7 +414,7 @@ class ITRHelperAgent(TaxAgent):
             ],
             "action": "Pay remaining advance tax if due dates passed"
         }
-    
+
     def _get_complexity(self, itr_form: str) -> str:
         """Get complexity level of ITR form."""
         complexity_map = {
@@ -423,8 +424,8 @@ class ITRHelperAgent(TaxAgent):
             "ITR-5": "Complex"
         }
         return complexity_map.get(itr_form, "Unknown")
-    
-    def _get_filing_checklist(self, itr_form: str) -> List[str]:
+
+    def _get_filing_checklist(self, itr_form: str) -> list[str]:
         """Get filing checklist (India-specific)."""
         return [
             "☐ Verified PAN is linked with Aadhaar",
@@ -446,10 +447,10 @@ class ITRHelperAgent(TaxAgent):
             "☐ Marked calendar to verify within 30 days",
             "☐ Verify ITR via OTP/DSC"
         ]
-    
-    def _get_documents_by_form(self, itr_form: str) -> List[str]:
+
+    def _get_documents_by_form(self, itr_form: str) -> list[str]:
         """Get complete documents list by form type."""
-        
+
         docs = {
             "ITR-1": [
                 "PAN Card & Aadhaar",
@@ -482,20 +483,20 @@ class ITRHelperAgent(TaxAgent):
                 "Business/Professional income docs"
             ]
         }
-        
+
         return docs.get(itr_form, [])
-    
+
     def _days_to_deadline(self) -> int:
         """Days remaining until ITR filing deadline."""
         deadline = date(2025, 7, 31)
         today = date.today()
         days = (deadline - today).days
         return max(0, days)
-    
+
     async def _save_to_database(
         self,
         user_id: str,
-        result: Dict[str, Any],
+        result: dict[str, Any],
         itr_form: str,
         db_session
     ):
@@ -511,17 +512,17 @@ class ITRHelperAgent(TaxAgent):
                 common_mistakes=result.get("common_mistakes"),
                 important_dates=result.get("important_dates")
             )
-            
+
             db_session.add(itr_filing)
-            
+
             # Handle AsyncSession commit vs standard Session commit
             if isinstance(db_session, AsyncSession):
                 await db_session.commit()
             else:
                 db_session.commit()
-                
+
             self.logger.info(f"ITR filing record saved for user {user_id}")
-        
+
         except Exception as e:
             self.logger.error(f"Error saving to database: {e}")
             if isinstance(db_session, AsyncSession):

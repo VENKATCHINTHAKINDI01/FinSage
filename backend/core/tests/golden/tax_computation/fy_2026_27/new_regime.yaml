@@ -60,7 +60,7 @@
   fy: "2026-27"
   regime: new
   input: { other_sources: 1200010, age: 34 }
-  expect: { tax_after_rebate: 10, cess: 0.40, total_tax: 10.40 }
+  expect: { tax_after_rebate: 10, cess: 0.40, total_tax_exact: 10.40, total_tax: 10 }
   verified_against: >
     ₹10 above the ceiling — relief caps tax at exactly the excess, then 4% cess
     applies on top of the relieved figure (cess is computed AFTER relief).

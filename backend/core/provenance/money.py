@@ -38,7 +38,7 @@ class Money:
             )
         elif isinstance(value, Decimal):
             v = value
-        elif isinstance(value, (int, str)):
+        elif isinstance(value, int | str):
             v = Decimal(value)
         else:
             raise TypeError(f"cannot build Money from {type(value).__name__}")
@@ -71,7 +71,7 @@ class Money:
             return other._v
         if isinstance(other, float):
             raise TypeError("cannot combine Money with float")
-        if isinstance(other, (int, str, Decimal)):
+        if isinstance(other, int | str | Decimal):
             return Decimal(other)
         return NotImplemented  # type: ignore[return-value]
 
@@ -112,7 +112,7 @@ class Money:
     def __eq__(self, other: object) -> bool:
         if isinstance(other, Money):
             return self._v == other._v
-        if isinstance(other, (int, Decimal)):
+        if isinstance(other, int | Decimal):
             return self._v == Decimal(other)
         return NotImplemented
 

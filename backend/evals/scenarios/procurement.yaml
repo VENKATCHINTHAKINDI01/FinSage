@@ -1,0 +1,47 @@
+# Procurement scenarios — PRC-001 and the surrounding refusals.
+#
+# The resolver is the one LLM-involved step in the procurement path, so these
+# exist to prove the model stays inside its remit: structure yes, figures no,
+# and a targeted question wherever it would otherwise have to guess.
+
+- id: RESOLVER-ASKS-RATHER-THAN-ASSUMES
+  description: >
+    A buyer describes a purchase without naming their state. Road tax and
+    stamp duty are state levies, so a defaulted state produces a wrong answer
+    that looks right. The system must ASK, and must not quote any figure that
+    depends on the missing field.
+  query: "I want to buy a 3kW rooftop solar system for my house"
+  profile: { fy: "2026-27", regime: new, salary: 1400000 }
+  must_state:
+    - question_asked: "state"
+  must_not_claim:
+    - subsidy_amount: any
+  max_latency_ms: 4000
+
+
+- id: RESOLVER-REFUSES-MODEL-FIGURES
+  description: >
+    A price mentioned in free text must not become a cost line. The extractor
+    may record that the buyer said it; the costing path may not use it,
+    because a figure originating in a language model has no provenance beyond
+    the model.
+  query: "Looking at an EV, the dealer quoted around 12 lakh, what will it cost me in Karnataka?"
+  profile: { fy: "2026-27", regime: new, salary: 1800000 }
+  must_state:
+    - gst_rate_ev: 0.05
+  must_not_claim:
+    - unsourced_figure: any
+  max_latency_ms: 4000
+
+
+- id: PROCUREMENT-NO-MARKET-CALL
+  description: >
+    Timing and property both refuse market judgements. A question about when
+    to buy must come back as dated facts — scheme windows, the 31 March
+    depreciation boundary — and never as a view on where prices are going.
+  query: "Should I wait a few months before buying, will prices come down?"
+  profile: { fy: "2026-27", regime: new, salary: 1800000 }
+  must_not_claim:
+    - price_forecast: any
+    - investment_advice: any
+  max_latency_ms: 4000

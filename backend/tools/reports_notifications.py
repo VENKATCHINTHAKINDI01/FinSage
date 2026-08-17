@@ -8,11 +8,11 @@ Tools for:
 - Creating summaries and exports
 """
 
-import logging
-from typing import Dict, Any, Optional, List
-from datetime import datetime
-from enum import Enum
 import json
+import logging
+from datetime import datetime, timezone
+from enum import Enum
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -31,16 +31,16 @@ class ReportFormatEnum(str, Enum):
 
 class ReportGenerationTool:
     """Generate comprehensive analysis reports."""
-    
+
     def __init__(self):
         self.logger = logging.getLogger("tool.report_generation")
-    
+
     async def generate_tax_analysis_report(
         self,
         user_id: str,
-        analysis_data: Dict[str, Any],
+        analysis_data: dict[str, Any],
         format: str = "json"
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Generate comprehensive tax analysis report.
         
@@ -55,9 +55,9 @@ class ReportGenerationTool:
         try:
             # Create report structure
             report = {
-                "report_id": f"report_{user_id}_{int(datetime.utcnow().timestamp() * 1000)}",
+                "report_id": f"report_{user_id}_{int(datetime.now(timezone.utc).timestamp() * 1000)}",
                 "user_id": user_id,
-                "generated_at": datetime.utcnow().isoformat(),
+                "generated_at": datetime.now(timezone.utc).isoformat(),
                 "report_type": "tax_analysis",
                 "sections": {
                     "executive_summary": self._generate_executive_summary(analysis_data),
@@ -73,7 +73,7 @@ class ReportGenerationTool:
                 },
                 "disclaimers": self._get_disclaimers()
             }
-            
+
             # Format report
             if format == "json":
                 formatted_report = json.dumps(report, indent=2, default=str)
@@ -85,7 +85,7 @@ class ReportGenerationTool:
                 formatted_report = f"[PDF Report - {report['report_id']}.pdf]"
             else:
                 formatted_report = json.dumps(report, indent=2, default=str)
-            
+
             return {
                 "success": True,
                 "report_id": report["report_id"],
@@ -93,51 +93,51 @@ class ReportGenerationTool:
                 "content": formatted_report,
                 "size_kb": len(str(formatted_report)) / 1024,
                 "url": f"/reports/{user_id}/{report['report_id']}.{format}",
-                "generated_at": datetime.utcnow().isoformat()
+                "generated_at": datetime.now(timezone.utc).isoformat()
             }
-        
+
         except Exception as e:
             self.logger.error(f"Error generating report: {e}")
             return {"success": False, "error": str(e)}
-    
+
     async def generate_deduction_report(
         self,
         user_id: str,
-        deductions: List[Dict[str, Any]],
+        deductions: list[dict[str, Any]],
         total_savings: float,
         format: str = "json"
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Generate deduction summary report."""
         try:
             report = {
-                "report_id": f"deduction_report_{user_id}_{int(datetime.utcnow().timestamp() * 1000)}",
+                "report_id": f"deduction_report_{user_id}_{int(datetime.now(timezone.utc).timestamp() * 1000)}",
                 "user_id": user_id,
                 "report_type": "deduction_analysis",
-                "generated_at": datetime.utcnow().isoformat(),
+                "generated_at": datetime.now(timezone.utc).isoformat(),
                 "deductions": deductions,
                 "total_deduction_amount": sum(d.get("amount", 0) for d in deductions),
                 "total_tax_savings": total_savings,
                 "documentation_requirements": self._aggregate_documentation(deductions),
                 "filing_recommendations": self._get_filing_recommendations(deductions)
             }
-            
+
             return {
                 "success": True,
                 "report": report,
                 "format": format
             }
-        
+
         except Exception as e:
             self.logger.error(f"Error generating deduction report: {e}")
             return {"success": False, "error": str(e)}
-    
+
     async def generate_optimization_report(
         self,
         user_id: str,
-        strategies: List[Dict[str, Any]],
+        strategies: list[dict[str, Any]],
         total_savings: float,
         format: str = "json"
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Generate tax optimization strategy report."""
         try:
             # Organize by timeline
@@ -147,7 +147,7 @@ class ReportGenerationTool:
                 "this_year": [],
                 "next_year": []
             }
-            
+
             for strategy in strategies:
                 timeline = strategy.get("timeline", "").lower()
                 if "immediately" in timeline or "now" in timeline:
@@ -158,12 +158,12 @@ class ReportGenerationTool:
                     strategies_by_timeline["this_year"].append(strategy)
                 else:
                     strategies_by_timeline["next_year"].append(strategy)
-            
+
             report = {
-                "report_id": f"optimization_report_{user_id}_{int(datetime.utcnow().timestamp() * 1000)}",
+                "report_id": f"optimization_report_{user_id}_{int(datetime.now(timezone.utc).timestamp() * 1000)}",
                 "user_id": user_id,
                 "report_type": "tax_optimization",
-                "generated_at": datetime.utcnow().isoformat(),
+                "generated_at": datetime.now(timezone.utc).isoformat(),
                 "total_strategies": len(strategies),
                 "estimated_annual_savings": total_savings,
                 "strategies_by_timeline": strategies_by_timeline,
@@ -174,20 +174,20 @@ class ReportGenerationTool:
                     for s in strategies
                 )
             }
-            
+
             return {
                 "success": True,
                 "report": report,
                 "format": format
             }
-        
+
         except Exception as e:
             self.logger.error(f"Error generating optimization report: {e}")
             return {"success": False, "error": str(e)}
-    
+
     # Helper methods
-    
-    def _generate_executive_summary(self, analysis_data: Dict[str, Any]) -> Dict[str, Any]:
+
+    def _generate_executive_summary(self, analysis_data: dict[str, Any]) -> dict[str, Any]:
         """Generate executive summary."""
         return {
             "overall_tax_situation": "Reviewed",
@@ -199,8 +199,8 @@ class ReportGenerationTool:
             "estimated_savings": analysis_data.get("total_savings", 0),
             "urgency_level": "Medium"
         }
-    
-    def _generate_action_items(self, analysis_data: Dict[str, Any]) -> List[str]:
+
+    def _generate_action_items(self, analysis_data: dict[str, Any]) -> list[str]:
         """Generate prioritized action items."""
         return [
             "Review deduction opportunities",
@@ -208,8 +208,8 @@ class ReportGenerationTool:
             "Track expenses for next year",
             "Schedule review with CA before filing"
         ]
-    
-    def _aggregate_documentation(self, deductions: List[Dict[str, Any]]) -> Dict[str, List[str]]:
+
+    def _aggregate_documentation(self, deductions: list[dict[str, Any]]) -> dict[str, list[str]]:
         """Aggregate documentation needs."""
         docs = {}
         for deduction in deductions:
@@ -219,8 +219,8 @@ class ReportGenerationTool:
                 docs[category] = []
             docs[category].extend([d.strip() for d in doc_list if d.strip()])
         return docs
-    
-    def _get_filing_recommendations(self, deductions: List[Dict[str, Any]]) -> List[str]:
+
+    def _get_filing_recommendations(self, deductions: list[dict[str, Any]]) -> list[str]:
         """Get filing recommendations."""
         return [
             "File Schedule Business for self-employed deductions",
@@ -228,8 +228,8 @@ class ReportGenerationTool:
             "Upload documents digitally for ITR-S filing",
             "Keep backup copies of all receipts"
         ]
-    
-    def _get_deduction_limits(self) -> Dict[str, int]:
+
+    def _get_deduction_limits(self) -> dict[str, int]:
         """Get current deduction limits."""
         return {
             "80C": 150000,
@@ -239,8 +239,8 @@ class ReportGenerationTool:
             "80TTB": 50000,
             "80CCD": 150000
         }
-    
-    def _get_tax_resources(self) -> List[Dict[str, str]]:
+
+    def _get_tax_resources(self) -> list[dict[str, str]]:
         """Get helpful tax resources."""
         return [
             {
@@ -256,8 +256,8 @@ class ReportGenerationTool:
                 "url": "https://www.incometax.gov.in/forms"
             }
         ]
-    
-    def _get_disclaimers(self) -> List[str]:
+
+    def _get_disclaimers(self) -> list[str]:
         """Get report disclaimers."""
         return [
             "This report is generated by an AI system and should not be considered professional tax advice.",
@@ -265,8 +265,8 @@ class ReportGenerationTool:
             "Tax laws change frequently; verify all information with current regulations.",
             "All calculations are estimates based on information provided."
         ]
-    
-    def _convert_to_html(self, report: Dict[str, Any]) -> str:
+
+    def _convert_to_html(self, report: dict[str, Any]) -> str:
         """Convert report to HTML format."""
         html = f"""
         <html>
@@ -303,8 +303,8 @@ class ReportGenerationTool:
         </html>
         """
         return html
-    
-    def _convert_to_markdown(self, report: Dict[str, Any]) -> str:
+
+    def _convert_to_markdown(self, report: dict[str, Any]) -> str:
         """Convert report to Markdown format."""
         md = f"""
 # Tax Analysis Report
@@ -325,16 +325,16 @@ class ReportGenerationTool:
 *Disclaimer: This is an AI-generated report. Consult a professional for official advice.*
         """
         return md
-    
-    def _create_implementation_roadmap(self, strategies_by_timeline: Dict[str, list]) -> List[str]:
+
+    def _create_implementation_roadmap(self, strategies_by_timeline: dict[str, list]) -> list[str]:
         """Create implementation roadmap."""
         roadmap = []
         for timeline, strategies in strategies_by_timeline.items():
             if strategies:
                 roadmap.append(f"{timeline.replace('_', ' ').title()}: {len(strategies)} actions")
         return roadmap
-    
-    def _assess_strategy_risks(self, strategies: List[Dict[str, Any]]) -> Dict[str, int]:
+
+    def _assess_strategy_risks(self, strategies: list[dict[str, Any]]) -> dict[str, int]:
         """Assess risks across strategies."""
         risks = {"low": 0, "medium": 0, "high": 0}
         for strategy in strategies:
@@ -350,18 +350,18 @@ class ReportGenerationTool:
 
 class NotificationTool:
     """Send notifications to users."""
-    
+
     def __init__(self):
         self.logger = logging.getLogger("tool.notification")
-    
+
     async def send_email(
         self,
         user_email: str,
         subject: str,
         body: str,
-        html_body: Optional[str] = None,
-        attachments: Optional[List[str]] = None
-    ) -> Dict[str, Any]:
+        html_body: str | None = None,
+        attachments: list[str] | None = None
+    ) -> dict[str, Any]:
         """
         Send email notification.
         
@@ -378,80 +378,80 @@ class NotificationTool:
         try:
             # TODO: Integrate with email service (SendGrid, AWS SES, etc.)
             notification = {
-                "notification_id": f"email_{int(datetime.utcnow().timestamp() * 1000)}",
+                "notification_id": f"email_{int(datetime.now(timezone.utc).timestamp() * 1000)}",
                 "type": "email",
                 "recipient": user_email,
                 "subject": subject,
                 "status": "sent",  # In production, actually send
-                "sent_at": datetime.utcnow().isoformat(),
+                "sent_at": datetime.now(timezone.utc).isoformat(),
                 "note": "Email sending not yet configured"
             }
-            
+
             self.logger.info(f"Email notification created: {notification['notification_id']}")
-            
+
             return {
                 "success": True,
                 "notification": notification
             }
-        
+
         except Exception as e:
             self.logger.error(f"Error sending email: {e}")
             return {"success": False, "error": str(e)}
-    
+
     async def send_sms(
         self,
         phone_number: str,
         message: str
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Send SMS notification."""
         try:
             # TODO: Integrate with SMS service (Twilio, AWS SNS, etc.)
             notification = {
-                "notification_id": f"sms_{int(datetime.utcnow().timestamp() * 1000)}",
+                "notification_id": f"sms_{int(datetime.now(timezone.utc).timestamp() * 1000)}",
                 "type": "sms",
                 "recipient": phone_number,
                 "message": message,
                 "status": "queued",
-                "sent_at": datetime.utcnow().isoformat()
+                "sent_at": datetime.now(timezone.utc).isoformat()
             }
-            
+
             self.logger.info(f"SMS notification created: {notification['notification_id']}")
-            
+
             return {
                 "success": True,
                 "notification": notification
             }
-        
+
         except Exception as e:
             self.logger.error(f"Error sending SMS: {e}")
             return {"success": False, "error": str(e)}
-    
+
     async def create_reminder(
         self,
         user_id: str,
         reminder_text: str,
         reminder_date: str,
         reminder_type: str = "notification"
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Create a reminder for user."""
         try:
             reminder = {
-                "reminder_id": f"reminder_{user_id}_{int(datetime.utcnow().timestamp() * 1000)}",
+                "reminder_id": f"reminder_{user_id}_{int(datetime.now(timezone.utc).timestamp() * 1000)}",
                 "user_id": user_id,
                 "text": reminder_text,
                 "date": reminder_date,
                 "type": reminder_type,
                 "status": "active",
-                "created_at": datetime.utcnow().isoformat()
+                "created_at": datetime.now(timezone.utc).isoformat()
             }
-            
+
             self.logger.info(f"Reminder created: {reminder['reminder_id']}")
-            
+
             return {
                 "success": True,
                 "reminder": reminder
             }
-        
+
         except Exception as e:
             self.logger.error(f"Error creating reminder: {e}")
             return {"success": False, "error": str(e)}
@@ -463,16 +463,16 @@ class NotificationTool:
 
 class ExportTool:
     """Export analysis data to various formats."""
-    
+
     def __init__(self):
         self.logger = logging.getLogger("tool.export")
-    
+
     async def export_to_excel(
         self,
         user_id: str,
-        data: Dict[str, Any],
+        data: dict[str, Any],
         filename: str = "tax_analysis.xlsx"
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Export analysis to Excel format."""
         try:
             # TODO: Use openpyxl to create Excel file
@@ -481,19 +481,19 @@ class ExportTool:
                 "format": "xlsx",
                 "filename": filename,
                 "url": f"/exports/{user_id}/{filename}",
-                "created_at": datetime.utcnow().isoformat(),
+                "created_at": datetime.now(timezone.utc).isoformat(),
                 "note": "Excel export requires openpyxl library"
             }
         except Exception as e:
             self.logger.error(f"Error exporting to Excel: {e}")
             return {"success": False, "error": str(e)}
-    
+
     async def export_to_pdf(
         self,
         user_id: str,
-        report_data: Dict[str, Any],
+        report_data: dict[str, Any],
         filename: str = "tax_analysis.pdf"
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Export analysis to PDF format."""
         try:
             # TODO: Use reportlab to create PDF
@@ -502,7 +502,7 @@ class ExportTool:
                 "format": "pdf",
                 "filename": filename,
                 "url": f"/exports/{user_id}/{filename}",
-                "created_at": datetime.utcnow().isoformat(),
+                "created_at": datetime.now(timezone.utc).isoformat(),
                 "note": "PDF export requires reportlab library"
             }
         except Exception as e:

@@ -1,0 +1,286 @@
+{
+  "_comment": "Recorded from a live pipeline.run() call against Groq — AGT-005. tool_results are the real, unmodified output of backend.core.tax_engine.compute_tax.",
+  "agent": "analyst_reviewer_pipeline",
+  "query": "I earn 12.75 lakh. How much tax do I pay and should I invest in ELSS?",
+  "profile": {
+    "fy": "2026-27",
+    "regime": "new",
+    "salary": 1275000,
+    "age": 31
+  },
+  "tool_calls": [
+    {
+      "tool": "compute_tax",
+      "args": {
+        "fy": "2026-27",
+        "regime": "new",
+        "salary": "₹12,75,000",
+        "age": "31"
+      }
+    }
+  ],
+  "tool_results": [
+    {
+      "tool": "compute_tax",
+      "success": true,
+      "result": {
+        "fy": "2026-27",
+        "regime": "new",
+        "gross_total_income": "1275000.00",
+        "total_deductions": "75000.00",
+        "taxable_income": "1200000.00",
+        "tax_on_slabs": "60000.00",
+        "special_rate_tax": "0.00",
+        "rebate_87a": "60000.00",
+        "surcharge": "0.00",
+        "pre_cess_liability": "0.00",
+        "cess": "0.00",
+        "total_tax_exact": "0.00",
+        "total_tax": "0.00",
+        "balance_payable": "0.00",
+        "refund_due": "0.00",
+        "effective_rate": "0.00%",
+        "marginal_rate": "15%",
+        "trace": {
+          "title": "Income tax — FY 2026-27 (AY 2027-28) · New regime (default)",
+          "result": "0.00",
+          "steps": [
+            {
+              "label": "Salary",
+              "op": "literal",
+              "result": "1275000.00",
+              "operands": [],
+              "factor": null,
+              "citation": null,
+              "note": "source: user stated",
+              "children": []
+            },
+            {
+              "label": "Gross total income",
+              "op": "sum",
+              "result": "1275000.00",
+              "operands": [
+                "1275000.00"
+              ],
+              "factor": null,
+              "citation": null,
+              "note": null,
+              "children": []
+            },
+            {
+              "label": "Standard deduction (salary)",
+              "op": "literal",
+              "result": "75000.00",
+              "operands": [],
+              "factor": null,
+              "citation": {
+                "act": "Income-tax Act, 2025",
+                "section": null,
+                "legacy_section": "16(ia)",
+                "fy": "2026-27",
+                "source_url": null,
+                "retrieved_at": null,
+                "note": "Income-tax Act 2025 equivalent is provisionally s.19; mapping not yet verified against the published concordance.",
+                "display": "Income-tax Act, 2025 · s.16(ia) · FY 2026-27"
+              },
+              "note": "FY 2026-27, New regime (default)",
+              "children": []
+            },
+            {
+              "label": "Taxable income",
+              "op": "subtract",
+              "result": "1200000.00",
+              "operands": [
+                "1275000.00",
+                "75000.00"
+              ],
+              "factor": null,
+              "citation": null,
+              "note": null,
+              "children": []
+            },
+            {
+              "label": "Tax on slabs — New regime (default)",
+              "op": "slab",
+              "result": "60000.00",
+              "operands": [],
+              "factor": null,
+              "citation": {
+                "act": "Income-tax Act, 2025",
+                "section": null,
+                "legacy_section": "115BAC",
+                "fy": "2026-27",
+                "source_url": null,
+                "retrieved_at": null,
+                "note": "Income-tax Act 2025 equivalent is provisionally s.202; mapping not yet verified against the published concordance.",
+                "display": "Income-tax Act, 2025 · s.115BAC · FY 2026-27"
+              },
+              "note": null,
+              "children": [
+                {
+                  "label": "₹0 – ₹4,00,000 @ 0%",
+                  "op": "multiply",
+                  "result": "0.00",
+                  "operands": [
+                    "400000.00"
+                  ],
+                  "factor": "0.00",
+                  "citation": null,
+                  "note": "on ₹4,00,000",
+                  "children": []
+                },
+                {
+                  "label": "₹4,00,000 – ₹8,00,000 @ 5%",
+                  "op": "multiply",
+                  "result": "20000.00",
+                  "operands": [
+                    "400000.00"
+                  ],
+                  "factor": "0.05",
+                  "citation": null,
+                  "note": "on ₹4,00,000",
+                  "children": []
+                },
+                {
+                  "label": "₹8,00,000 – ₹12,00,000 @ 10%",
+                  "op": "multiply",
+                  "result": "40000.00",
+                  "operands": [
+                    "400000.00"
+                  ],
+                  "factor": "0.10",
+                  "citation": null,
+                  "note": "on ₹4,00,000",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "label": "Rebate u/s 87A (income ≤ ₹12,00,000)",
+              "op": "min",
+              "result": "60000.00",
+              "operands": [
+                "60000.00",
+                "60000.00"
+              ],
+              "factor": null,
+              "citation": {
+                "act": "Income-tax Act, 2025",
+                "section": null,
+                "legacy_section": "87A",
+                "fy": "2026-27",
+                "source_url": null,
+                "retrieved_at": null,
+                "note": "Income-tax Act 2025 equivalent is provisionally s.156; mapping not yet verified against the published concordance.",
+                "display": "Income-tax Act, 2025 · s.87A · FY 2026-27"
+              },
+              "note": "capped at ₹60,000",
+              "children": []
+            },
+            {
+              "label": "Tax after rebate",
+              "op": "subtract",
+              "result": "0.00",
+              "operands": [
+                "60000.00",
+                "60000.00"
+              ],
+              "factor": null,
+              "citation": null,
+              "note": null,
+              "children": []
+            },
+            {
+              "label": "Health & Education Cess @ 4%",
+              "op": "multiply",
+              "result": "0.00",
+              "operands": [
+                "0.00"
+              ],
+              "factor": "0.04",
+              "citation": null,
+              "note": "on income tax plus surcharge",
+              "children": []
+            },
+            {
+              "label": "Total tax liability",
+              "op": "sum",
+              "result": "0.00",
+              "operands": [
+                "0.00",
+                "0.00"
+              ],
+              "factor": null,
+              "citation": null,
+              "note": null,
+              "children": []
+            }
+          ],
+          "citations": [
+            {
+              "act": "Income-tax Act, 2025",
+              "section": null,
+              "legacy_section": "16(ia)",
+              "fy": "2026-27",
+              "source_url": null,
+              "retrieved_at": null,
+              "note": "Income-tax Act 2025 equivalent is provisionally s.19; mapping not yet verified against the published concordance.",
+              "display": "Income-tax Act, 2025 · s.16(ia) · FY 2026-27"
+            },
+            {
+              "act": "Income-tax Act, 2025",
+              "section": null,
+              "legacy_section": "115BAC",
+              "fy": "2026-27",
+              "source_url": null,
+              "retrieved_at": null,
+              "note": "Income-tax Act 2025 equivalent is provisionally s.202; mapping not yet verified against the published concordance.",
+              "display": "Income-tax Act, 2025 · s.115BAC · FY 2026-27"
+            },
+            {
+              "act": "Income-tax Act, 2025",
+              "section": null,
+              "legacy_section": "87A",
+              "fy": "2026-27",
+              "source_url": null,
+              "retrieved_at": null,
+              "note": "Income-tax Act 2025 equivalent is provisionally s.156; mapping not yet verified against the published concordance.",
+              "display": "Income-tax Act, 2025 · s.87A · FY 2026-27"
+            }
+          ]
+        },
+        "confidence": {
+          "level": "high",
+          "display": "High confidence",
+          "score": "0.95",
+          "is_certain": false,
+          "deterministic": true,
+          "summary": "High confidence — mainly because salary: user stated.",
+          "signals": [
+            {
+              "kind": "input_provenance",
+              "detail": "salary: user stated",
+              "penalty": "0.05",
+              "remedy": "upload the source document for salary"
+            }
+          ],
+          "blocking": [],
+          "improvements": [
+            "upload the source document for salary"
+          ],
+          "improvements_with_gain": [
+            {
+              "remedy": "upload the source document for salary",
+              "gain": "0.05",
+              "because": "salary: user stated",
+              "kind": "input_provenance"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "output_text": "**Tax payable for FY 2026‑27 (new‑regime): ₹0.00**\n\n**Why the tax is zero**\n\n| Step (as shown by the calculator) | Figure | Explanation |\n|---|---|---|\n| Gross total income (salary) | ₹1,275,000.00 | Your stated earnings. |\n| Standard deduction (s. 16(ia) – FY 2026‑27) | ₹75,000.00 | The only deduction available in the new regime. |\n| **Taxable income** | **₹1,200,000.00** | Salary minus standard deduction. |\n| Tax on slabs (s. 115BAC) | ₹60,000.00 | Computed as 5 % on ₹4 L‑₹8 L (₹20,000) + 10 % on ₹8 L‑₹12 L (₹40,000). |\n| Rebate u/s 87A (income ≤ ₹12 L) | ₹60,000.00 | The rebate is the lesser of the tax payable (₹60,000) and the maximum rebate (₹60,000). |\n| Tax after rebate | ₹0.00 | ₹60,000 – ₹60,000 = ₹0.00. |\n| Health & Education Cess (4 % on tax) | ₹0.00 | No tax left to levy cess on. |\n| **Total tax liability** | **₹0.00** | No surcharge or other charges apply. |\n\nThus, under the **new tax regime** you owe **no income‑tax** for FY 2026‑27.\n\n---\n\n### Should you invest in ELSS?\n\n* **New‑regime deduction:** The new regime does **not** allow a deduction under Section 80C (which includes ELSS) — the only standard deduction is the ₹75,000 salary deduction already applied.\n* **Tax benefit:** Because the rebate under Section 87A already wipes out your tax liability, an ELSS investment would **not reduce your tax further** for this year.\n* **Other considerations:** ELSS can still be a good long‑term wealth‑creation tool (equity‑linked, 3‑year lock‑in), but the decision should be based on your investment goals, risk appetite, and portfolio diversification—not on immediate tax savings.\n\n---\n\n### Assumptions made\n\n1. **Only the standard deduction** (₹75,000) is claimed; no other deductions (e.g., 80D, 80G) are present.  \n2. The figures you provided are accurate and complete for FY 2026‑27.  \n3. You are electing the **new tax regime** (as stated).  \n\nIf you have other eligible deductions or are considering the **old regime**, the tax outcome could differ. Please share any additional exemption or deduction documents if you want a comparison.",
+  "output_data": {},
+  "latency_ms": 6350.9
+}

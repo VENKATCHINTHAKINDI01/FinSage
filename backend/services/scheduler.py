@@ -5,7 +5,7 @@ Service to schedule automated background tasks using APScheduler.
 import logging
 import asyncio
 from typing import Dict, Any, List, Optional
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -400,13 +400,13 @@ class SchedulerService:
                     await flush_res
                     
         # Update execution info
-        task.last_run = datetime.utcnow()
+        task.last_run = datetime.now(timezone.utc)
         task.next_run = self._get_next_run_time(task_name)
         
         # Add to execution log
         current_logs = list(task.execution_log) if task.execution_log else []
         execution_record = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "status": status,
             "error": error_message
         }

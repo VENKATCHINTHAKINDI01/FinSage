@@ -6,12 +6,11 @@ Verify user eligibility for specific schemes.
 Check requirements, docs, deadlines.
 """
 
-import time
 import logging
-from typing import Dict, Any, List
-from datetime import datetime
+import time
+from typing import Any
 
-from backend.agents.base_agent import TaxAgent, AgentOutput, confidence_score, derive_confidence
+from backend.agents.base_agent import AgentOutput, TaxAgent, confidence_score, derive_confidence
 
 logger = logging.getLogger(__name__)
 
@@ -25,14 +24,14 @@ class EligibilityVerifierAgent(TaxAgent):
     • Check deadlines
     • Provide guidance
     """
-    
+
     def __init__(self):
         super().__init__("eligibility_verifier_agent", "eligibility_check")
-    
+
     async def execute(
         self,
         user_query: str,
-        user_context: Dict[str, Any],
+        user_context: dict[str, Any],
         tools=None,
         **kwargs
     ) -> AgentOutput:
@@ -47,16 +46,16 @@ class EligibilityVerifierAgent(TaxAgent):
           5. Provide guidance
         """
         start_time = time.time()
-        
+
         if tools is not None:
             self.set_tools(tools)
-        
+
         try:
             self.logger.info(f"Starting eligibility verification for user {user_context.get('user_id')}")
-            
+
             # STEP 1: Extract scheme code from query
             scheme_code = self._extract_scheme_code(user_query)
-            
+
             if not scheme_code:
                 execution_time = (time.time() - start_time) * 1000
                 return self._create_output(
@@ -66,7 +65,7 @@ class EligibilityVerifierAgent(TaxAgent):
                     reasoning="No scheme code extracted from the query",
                     execution_time_ms=execution_time
                 )
-            
+
             # Fetch user financial profile if tools are available
             user_profile = {}
             if self.tools:
@@ -76,30 +75,30 @@ class EligibilityVerifierAgent(TaxAgent):
                 )
                 if profile_res.get("success"):
                     user_profile = profile_res.get("result", {})
-            
+
             # Extract basic info
             basic_info = user_profile.get("basic_info", {})
             financial_profile = user_profile.get("financial_profile", {})
-            
+
             # Resolve age, annual_income, health_insurance, and education_loan
             age = basic_info.get("age") or user_context.get("age") or 35
             annual_income = financial_profile.get("annual_income") or user_context.get("annual_income") or 0.0
-            
+
             insurance_info = financial_profile.get("insurance", {})
             has_health_insurance = (
-                insurance_info.get("health_insurance", False) 
-                or user_context.get("health_insurance") 
+                insurance_info.get("health_insurance", False)
+                or user_context.get("health_insurance")
                 or False
             )
-            
+
             loans_info = financial_profile.get("loans", {})
             education_loan_amount = loans_info.get("education_loan", 0)
             has_education_loan = (
-                education_loan_amount > 0 
-                or user_context.get("education_loan") 
+                education_loan_amount > 0
+                or user_context.get("education_loan")
                 or False
             )
-            
+
             # STEP 2: Check eligibility
             if self.tools:
                 eligibility = await self.call_tool(
@@ -110,13 +109,13 @@ class EligibilityVerifierAgent(TaxAgent):
                     has_health_insurance=has_health_insurance,
                     has_education_loan=has_education_loan
                 )
-                
+
                 eligible = eligibility.get("result", {}).get("eligible", False)
                 reasons = eligibility.get("result", {}).get("reasons", [])
             else:
                 eligible = False
                 reasons = ["Unable to verify - tools not initialized"]
-            
+
             # STEP 3: Get scheme details
             if self.tools:
                 details = await self.call_tool(
@@ -126,15 +125,15 @@ class EligibilityVerifierAgent(TaxAgent):
                 scheme_info = details.get("result", {}).get("details", {})
             else:
                 scheme_info = {}
-            
+
             # STEP 4: Prepare verification result
             if eligible:
                 result = self._create_eligible_response(scheme_code, scheme_info)
             else:
                 result = self._create_ineligible_response(scheme_code, reasons)
-            
+
             execution_time = (time.time() - start_time) * 1000
-            
+
             return self._create_output(
                 result=result,
                 status="success",
@@ -142,33 +141,33 @@ class EligibilityVerifierAgent(TaxAgent):
                 reasoning=f"Eligibility verification completed for scheme {scheme_code}.",
                 execution_time_ms=execution_time
             )
-        
+
         except Exception as e:
             self.logger.error(f"Error in eligibility verifier: {e}", exc_info=True)
             execution_time = (time.time() - start_time) * 1000
-            
+
             return self._create_output(
                 result={"error": str(e)},
                 status="error",
                 confidence=0.0,  # execution failed — not a score
-                reasoning=f"Error: {str(e)}",
+                reasoning=f"Error: {e!s}",
                 execution_time_ms=execution_time
             )
-    
+
     def _extract_scheme_code(self, query: str) -> str:
         """Extract scheme code from query."""
         # Common scheme codes
         codes = ["80C", "80D", "80E", "80TTA", "80TTB", "80CCD", "80DDB", "80G", "80U"]
-        
+
         query_upper = query.upper()
-        
+
         for code in codes:
             if code in query_upper:
                 return code
-        
+
         return None
-    
-    def _create_eligible_response(self, scheme_code: str, scheme_info: Dict) -> Dict[str, Any]:
+
+    def _create_eligible_response(self, scheme_code: str, scheme_info: dict) -> dict[str, Any]:
         """Create response for eligible user."""
         return {
             "eligible": True,
@@ -191,11 +190,11 @@ class EligibilityVerifierAgent(TaxAgent):
                 "Note your application reference number"
             ]
         }
-    
-    def _create_ineligible_response(self, scheme_code: str, reasons: List[str]) -> Dict[str, Any]:
+
+    def _create_ineligible_response(self, scheme_code: str, reasons: list[str]) -> dict[str, Any]:
         """Create response for ineligible user."""
         alternatives = self._get_alternatives(scheme_code)
-        
+
         return {
             "eligible": False,
             "scheme_code": scheme_code,
@@ -209,8 +208,8 @@ class EligibilityVerifierAgent(TaxAgent):
                 "Option 3: Consult a tax professional"
             ]
         }
-    
-    def _get_alternatives(self, current_scheme: str) -> List[str]:
+
+    def _get_alternatives(self, current_scheme: str) -> list[str]:
         """Get alternative schemes."""
         alternatives = {
             "80C": ["80D", "80CCD"],
@@ -220,9 +219,9 @@ class EligibilityVerifierAgent(TaxAgent):
             "80TTB": ["80C", "80D"],
             "80CCD": ["80C", "80D"]
         }
-        
+
         return alternatives.get(current_scheme, ["Consult a tax professional"])
-    
+
     def _get_eligibility_date(self, scheme_code: str) -> str:
         """Get when user might become eligible."""
         # Simplified - in real system, calculate based on requirements

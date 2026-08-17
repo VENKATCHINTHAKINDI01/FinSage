@@ -3,13 +3,11 @@ Deduction Hunter Agent - identifies all possible tax deductions.
 Uses user context and knowledge base to suggest deductible expenses.
 """
 
-import time
 import logging
-from typing import Dict, Any
+import time
+from typing import Any
 
-from backend.agents.base_agent import TaxAgent, AgentOutput, confidence_score, derive_confidence
-from backend.rag.retriever import rag_retriever
-from backend.config import settings
+from backend.agents.base_agent import AgentOutput, TaxAgent, confidence_score, derive_confidence
 from backend.llm import get_llm
 
 logger = logging.getLogger(__name__)
@@ -36,27 +34,27 @@ class DeductionHunterAgent(TaxAgent):
             {"employment_type": "freelance", "annual_income": 500000}
         )
     """
-    
+
     def __init__(self):
         super().__init__("deduction_hunter_agent")
-    
+
     async def execute(
         self,
         user_query: str,
-        user_context: Dict[str, Any],
+        user_context: dict[str, Any],
         tools: Any = None,
         **kwargs
     ) -> AgentOutput:
         """Find potential tax deductions for user."""
         start_time = time.time()
-        
+
         if tools is not None:
             self.set_tools(tools)
-            
+
         try:
             # Preprocess query
             processed_query = await self.preprocess(user_query)
-            
+
             # Get user's financial profile
             user_financial_data = {}
             if self.tools:
@@ -68,10 +66,10 @@ class DeductionHunterAgent(TaxAgent):
                     res_payload = user_data.get("result", {})
                     if res_payload:
                         user_financial_data = res_payload.get("financial_profile", {})
-            
+
             # Use real data merged with context for RAG and LLM analysis
             merged_context = {**user_context, **user_financial_data}
-            
+
             # Get relevant deduction guidelines from knowledge base using tool
             rag_context = ""
             if self.tools:
@@ -82,7 +80,7 @@ class DeductionHunterAgent(TaxAgent):
                 )
                 if rag_result.get("success"):
                     rag_context = rag_result.get("result", {}).get("context", "")
-            
+
             # Identify deductions
             deductions = await self._identify_deductions(
                 processed_query,
@@ -96,7 +94,7 @@ class DeductionHunterAgent(TaxAgent):
                 annual_income = float(user_financial_data.get("annual_income", 0) or 600000.0)
                 basic_salary = float(user_financial_data.get("basic_salary", 0) or (annual_income * 0.40))
                 hra_received = float(user_financial_data.get("hra_received", 0) or (basic_salary * 0.50))
-                
+
                 if self.tools:
                     hra_calc = await self.call_tool(
                         "calculate_hra_exemption",
@@ -116,7 +114,7 @@ class DeductionHunterAgent(TaxAgent):
                                 "description": f"Exempt HRA under Section 10(13A). Taxable HRA is ₹{hra_data['taxable_hra']:,.0f}.",
                                 "tax_savings": hra_data["exempt_hra"] * 0.20
                             })
-            
+
             # For each deduction, calculate impact using tool
             total_savings = 0
             for deduction in deductions:
@@ -130,7 +128,7 @@ class DeductionHunterAgent(TaxAgent):
                     total_savings += deduction["tax_savings"]
                 else:
                     deduction["tax_savings"] = 0
-            
+
             # Lookup detailed scheme information
             for deduction in deductions:
                 if self.tools and deduction.get("scheme_code"):
@@ -141,7 +139,7 @@ class DeductionHunterAgent(TaxAgent):
                     if scheme_info.get("success"):
                         deduction["details"] = scheme_info.get("result", {}).get("details", {})
                         deduction["scheme_details"] = scheme_info.get("result", {}).get("details", {})
-            
+
             # Calculate total tax impact
             total_tax_liability = 0
             if self.tools:
@@ -152,7 +150,7 @@ class DeductionHunterAgent(TaxAgent):
                 )
                 if total_tax_impact.get("success"):
                     total_tax_liability = total_tax_impact.get("result", {}).get("total_tax_liability", 0)
-            
+
             # Generate report
             report_data = None
             if self.tools:
@@ -163,7 +161,7 @@ class DeductionHunterAgent(TaxAgent):
                 )
                 if report.get("success"):
                     report_data = report.get("result")
-            
+
             # Postprocess
             result = {
                 "deductions": deductions,
@@ -175,13 +173,13 @@ class DeductionHunterAgent(TaxAgent):
                 "filing_recommendations": await self._get_filing_recommendations(deductions),
                 "documentation_needed": await self._get_documentation_requirements(deductions)
             }
-            
+
             result = await self.postprocess(result)
-            
+
             execution_time = (time.time() - start_time) * 1000
-            
+
             logger.info(f"Found {len(deductions)} potential deductions, total ₹{sum(float(d.get('amount', 0)) for d in deductions):,.0f}")
-            
+
             return self._create_output(
                 result=result,
                 status="success",
@@ -189,31 +187,31 @@ class DeductionHunterAgent(TaxAgent):
                 reasoning="Deductions identified using tool-based verification",
                 execution_time_ms=execution_time
             )
-        
+
         except Exception as e:
             logger.error(f"Error in deduction hunter: {e}")
             execution_time = (time.time() - start_time) * 1000
-            
+
             return self._create_output(
                 result={"error": str(e)},
                 status="error",
                 confidence=0.0,  # execution failed — not a score
-                reasoning=f"Error: {str(e)}",
+                reasoning=f"Error: {e!s}",
                 execution_time_ms=execution_time
             )
-    
-    
+
+
     async def _identify_deductions(
         self,
         user_query: str,
-        user_context: Dict[str, Any],
+        user_context: dict[str, Any],
         rag_context: str
-    ) -> list[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Use LLM to identify applicable deductions."""
-        
+
         employment_type = user_context.get("employment_type", "individual")
         annual_income = user_context.get("annual_income", 0)
-        
+
         prompt = f"""Identify all possible tax deductions based on the user's situation.
 
 Employment type: {employment_type}
@@ -251,42 +249,42 @@ Important: Only include deductions applicable to the user's situation. Respond O
         try:
             from backend.tools.data_validator import LLMResponseValidator
             validator = LLMResponseValidator()
-            
+
             message = await get_llm().complete(prompt, max_tokens=2000)
-            
+
             response_text = message.text.strip()
-            
+
             # Use robust JSON parser with multiple fallback strategies
             response_data, parse_report = validator.parse_json_response(response_text)
-            
+
             if response_data is None:
                 logger.warning(f"Failed to parse deductions JSON: {parse_report.warnings}")
                 return []
-            
+
             raw_deductions = response_data.get("deductions", [])
-            
+
             # Validate deductions — enforce section limits from ground truth
             validated_deductions, validation_report = validator.validate_deductions(raw_deductions)
-            
+
             if validation_report.warnings:
                 logger.info(f"Deduction validation warnings: {validation_report.warnings}")
             if validation_report.corrections_applied:
                 logger.info(f"Deduction corrections applied: {validation_report.corrections_applied}")
-            
+
             return validated_deductions
-        
+
         except Exception as e:
             logger.error(f"Error identifying deductions: {e}")
             return []
-    
+
     async def _get_filing_recommendations(
         self,
-        deductions: list[Dict[str, Any]]
+        deductions: list[dict[str, Any]]
     ) -> list[str]:
         """Generate filing recommendations based on deductions."""
-        
+
         recommendations = []
-        
+
         # Group by filing requirement
         filing_requirements = {}
         for deduction in deductions:
@@ -294,45 +292,45 @@ Important: Only include deductions applicable to the user's situation. Respond O
             if req not in filing_requirements:
                 filing_requirements[req] = []
             filing_requirements[req].append(deduction.get("category"))
-        
+
         for requirement, categories in filing_requirements.items():
             recommendations.append(f"Include these in {requirement}: {', '.join(categories)}")
-        
+
         # High confidence deductions should be prioritized
         high_confidence = [d for d in deductions if d.get("confidence") == "high"]
         if high_confidence:
             recommendations.append(
                 f"Prioritize filing {len(high_confidence)} high-confidence deductions"
             )
-        
+
         # Documentation warning
         total_deductions = sum(d.get("amount", 0) for d in deductions)
         if total_deductions > 500000:
             recommendations.append(
                 "With ₹5+ lakh in deductions, maintain detailed documentation"
             )
-        
+
         return recommendations
-    
+
     async def _get_documentation_requirements(
         self,
-        deductions: list[Dict[str, Any]]
-    ) -> Dict[str, list[str]]:
+        deductions: list[dict[str, Any]]
+    ) -> dict[str, list[str]]:
         """Get required documentation for each deduction."""
-        
+
         documentation = {}
-        
+
         for deduction in deductions:
             category = deduction.get("category", "Other")
             docs = deduction.get("documentation", "").split(",")
-            
+
             if category not in documentation:
                 documentation[category] = []
-            
+
             documentation[category].extend([d.strip() for d in docs if d.strip()])
-        
+
         return documentation
-    
+
     # ── DEM-006 ──────────────────────────────────────────────────────────────
     # `_estimate_tax_bracket` deleted. It held a FIFTH private copy of the slab
     # table, carrying FY 2020-21 values (2.5 / 5 / 7.5 / 10 / 12.5 lakh) into a

@@ -4,7 +4,7 @@ Service to manage compliance red flags and scheduled tasks execution logs.
 
 import logging
 from typing import Dict, Any, List, Optional
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -57,7 +57,7 @@ class AlertService:
             
             if flag:
                 flag.resolved = True
-                flag.resolved_date = datetime.utcnow()
+                flag.resolved_date = datetime.now(timezone.utc)
                 await self.db.commit()
                 self.logger.info(f"Red flag resolved: {flag.flag_name} for user {flag.user_id}")
                 return flag
@@ -82,7 +82,7 @@ class AlertService:
                 task_type=task_type,
                 schedule=schedule,
                 is_active=is_active,
-                next_run=datetime.utcnow() + timedelta(days=1), # default offset
+                next_run=datetime.now(timezone.utc) + timedelta(days=1), # default offset
                 execution_log=[]
             )
             self.db.add(task)
@@ -108,8 +108,8 @@ class AlertService:
             task = result.scalars().first()
             
             if task:
-                task.last_run = datetime.utcnow()
-                task.next_run = datetime.utcnow() + timedelta(days=1)  # simple daily reschedule
+                task.last_run = datetime.now(timezone.utc)
+                task.next_run = datetime.now(timezone.utc) + timedelta(days=1)  # simple daily reschedule
                 
                 # Append to logs
                 run_log = {

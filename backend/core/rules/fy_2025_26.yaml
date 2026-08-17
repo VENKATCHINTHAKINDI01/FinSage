@@ -291,7 +291,12 @@ deductions:
     formula_note: >
       Least of: actual HRA received; rent paid minus 10% of salary; 50% of
       salary in a metro or 40% elsewhere.
-    metros: [Mumbai, Delhi, Kolkata, Chennai]
+    # FY 2025-26 keeps the four original metros. The expansion to eight
+    # cities takes effect only from FY 2026-27, so applying 50% to Bengaluru
+    # here would over-state the exemption on a return filed in 2026.
+    cities_at_50_percent: [Mumbai, Delhi, Kolkata, Chennai]
+    rate_listed_city: "0.50"
+    rate_other: "0.40"
 
   24b:
     name: Interest on housing loan
@@ -432,5 +437,15 @@ deadlines:
   itr_non_audit: "2026-07-31"
   itr_audit: "2026-10-31"
   itr_transfer_pricing: "2026-11-30"
-  belated_revised: "2026-12-31"
+  belated: "2026-12-31"
+
+  # FY 2025-26 is AY 2026-27, the first year the revised-return window runs to
+  # the end of the assessment year rather than to 31 December. FY 2024-25 keeps
+  # the old single deadline. Source: ITR-1 FAQ Q19–Q21 on incometax.gov.in.
+  revised: "2027-03-31"
+  revised_late_fee_after: "2026-12-31"
+  revised_late_fee:
+    upto_5L_total_income: 1000
+    above_5L_total_income: 5000
+    legacy_section: "234I"
   updated_return_itr_u_months: 48

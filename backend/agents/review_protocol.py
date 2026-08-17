@@ -30,7 +30,7 @@ from enum import Enum
 from typing import Any
 
 
-class Verdict(str, Enum):  # noqa: UP042 — str-valued for JSON; 3.10-importable
+class Verdict(str, Enum):
     BLOCK = "block"
     AMEND = "amend"
     FLAG = "flag"
@@ -44,7 +44,7 @@ class Verdict(str, Enum):  # noqa: UP042 — str-valued for JSON; 3.10-importabl
         return {Verdict.BLOCK: 0, Verdict.AMEND: 1, Verdict.FLAG: 2}[self]
 
 
-class Category(str, Enum):  # noqa: UP042
+class Category(str, Enum):
     """What kind of problem this is. Recorded so the eval corpus can assert on
     the class of failure caught, not just that something was caught."""
 

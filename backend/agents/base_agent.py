@@ -3,13 +3,11 @@ Base agent class for all FinSage agents.
 Each agent inherits from this and implements execute() method.
 """
 
-from abc import ABC, abstractmethod
-from pydantic import BaseModel
-from typing import Optional, Dict, Any, List
 import logging
-from datetime import datetime
-from dataclasses import dataclass, field
-
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -28,10 +26,10 @@ class AgentOutput:
     # Validation metadata
     validation_report: dict = None
     data_sources_used: list = None
-    
+
     def __post_init__(self):
         if self.timestamp is None:
-            self.timestamp = datetime.utcnow().isoformat()
+            self.timestamp = datetime.now(timezone.utc).isoformat()
         if self.result is None:
             self.result = {}
         if self.validation_report is None:
@@ -56,7 +54,7 @@ class BaseAgent(ABC):
     - Benefits agents: government schemes, eligibility
     - etc.
     """
-    
+
     def __init__(self, name: str, intent: str):
         """
         Initialize agent.
@@ -68,12 +66,12 @@ class BaseAgent(ABC):
         self.name = name
         self.intent = intent
         self.logger = logging.getLogger(f"agent.{name}")
-    
+
     @abstractmethod
     async def execute(
         self,
         user_query: str,
-        user_context: Dict[str, Any],
+        user_context: dict[str, Any],
         **kwargs
     ) -> AgentOutput:
         """
@@ -88,15 +86,15 @@ class BaseAgent(ABC):
             AgentOutput with result
         """
         pass
-    
+
     async def preprocess(self, user_query: str) -> str:
         """
         Preprocess query (normalize, extract keywords, etc.).
         Override if needed.
         """
         return user_query.lower().strip()
-    
-    async def postprocess(self, result: Dict[str, Any]) -> Dict[str, Any]:
+
+    async def postprocess(self, result: dict[str, Any]) -> dict[str, Any]:
         """
         Postprocess result — runs validation on the output.
         Override if needed.
@@ -104,7 +102,7 @@ class BaseAgent(ABC):
         try:
             from backend.tools.data_validator import LLMResponseValidator
             validator = LLMResponseValidator()
-            
+
             # Validate deductions if present
             deductions = result.get("deductions") or result.get("deductions_found")
             if deductions and isinstance(deductions, list):
@@ -113,22 +111,22 @@ class BaseAgent(ABC):
                 if "deductions_found" in result:
                     result["deductions_found"] = validated_deductions
                 result["_validation_report"] = report.to_dict()
-            
+
             # Validate income sources if present
             sources = result.get("income_sources")
             if sources and isinstance(sources, list):
                 validated_sources, report = validator.validate_income_sources(sources)
                 result["income_sources"] = validated_sources
                 result["_validation_report"] = report.to_dict()
-                
+
         except Exception as e:
             self.logger.warning(f"Postprocess validation skipped: {e}")
-        
+
         return result
-    
+
     def _create_output(
         self,
-        result: Dict[str, Any],
+        result: dict[str, Any],
         status: str = "success",
         confidence: float = 1.0,
         reasoning: str = "",
@@ -138,7 +136,7 @@ class BaseAgent(ABC):
         # Extract validation report if present
         validation_report = result.pop("_validation_report", None)
         data_sources = result.pop("_data_sources", None)
-        
+
         return AgentOutput(
             agent_name=self.name,
             intent=self.intent,
@@ -147,7 +145,7 @@ class BaseAgent(ABC):
             confidence=confidence,
             reasoning=reasoning,
             execution_time_ms=execution_time_ms,
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
             validation_report=validation_report,
             data_sources_used=data_sources or []
         )
@@ -155,28 +153,28 @@ class BaseAgent(ABC):
 
 class TaxAgent(ABC):
     """Base class for tax agents with tool support."""
-    
+
     def __init__(self, name: str, intent: str = ""):
         self.name = name
         self.intent = intent
         self.tools = None
         self.logger = logging.getLogger(f"agent.{name}")
-    
+
     def set_tools(self, tools) -> "TaxAgent":
         """Inject tools into agent."""
         self.tools = tools
         self.logger.info(f"Tools injected ({len(tools.list_tools())} available)")
         return self
-    
+
     async def call_tool(self, tool_name: str, **kwargs) -> dict:
         """Call a tool via executor."""
         if not self.tools:
             self.logger.error("Tools not initialized")
             return {"success": False, "error": "Tools not initialized"}
-        
+
         self.logger.debug(f"Calling tool: {tool_name}")
         return await self.tools.execute_tool(tool_name, **kwargs)
-    
+
     @abstractmethod
     async def execute(
         self,
@@ -187,17 +185,17 @@ class TaxAgent(ABC):
     ) -> AgentOutput:
         """Execute the agent with optional tool support."""
         pass
-    
+
     async def preprocess(self, query: str) -> str:
         """Preprocess user query."""
         return query.strip().lower()
-    
+
     async def postprocess(self, result: dict) -> dict:
         """Postprocess agent result — runs validation."""
         try:
             from backend.tools.data_validator import LLMResponseValidator
             validator = LLMResponseValidator()
-            
+
             # Validate deductions if present
             deductions = result.get("deductions") or result.get("deductions_found")
             if deductions and isinstance(deductions, list):
@@ -206,19 +204,19 @@ class TaxAgent(ABC):
                 if "deductions_found" in result:
                     result["deductions_found"] = validated_deductions
                 result["_validation_report"] = report.to_dict()
-            
+
             # Validate income sources if present
             sources = result.get("income_sources")
             if sources and isinstance(sources, list):
                 validated_sources, report = validator.validate_income_sources(sources)
                 result["income_sources"] = validated_sources
                 result["_validation_report"] = report.to_dict()
-                
+
         except Exception as e:
             self.logger.warning(f"Postprocess validation skipped: {e}")
-        
+
         return result
-    
+
     def _create_output(
         self,
         result: dict,
@@ -231,7 +229,7 @@ class TaxAgent(ABC):
         # Extract validation report if present
         validation_report = result.pop("_validation_report", None) if isinstance(result, dict) else None
         data_sources = result.pop("_data_sources", None) if isinstance(result, dict) else None
-        
+
         return AgentOutput(
             agent_name=self.name,
             intent=self.intent,
@@ -240,7 +238,7 @@ class TaxAgent(ABC):
             confidence=confidence,
             reasoning=reasoning,
             execution_time_ms=execution_time_ms,
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
             validation_report=validation_report,
             data_sources_used=data_sources or []
         )
@@ -248,14 +246,14 @@ class TaxAgent(ABC):
 
 class InvestmentAgent(BaseAgent):
     """Base class for investment-focused agents"""
-    
+
     def __init__(self, name: str):
         super().__init__(name, "investment_related")
 
 
 class BenefitsAgent(BaseAgent):
     """Base class for government benefits agents"""
-    
+
     def __init__(self, name: str):
         super().__init__(name, "benefits_related")
 

@@ -28,7 +28,7 @@ from backend.core.provenance.citation import Citation
 from backend.core.provenance.money import ZERO, Money
 
 
-class Op(str, Enum):  # noqa: UP042
+class Op(str, Enum):
     """Operations a trace step can record.
 
     Deliberately small. Every tax computation decomposes into these, and a
@@ -131,9 +131,14 @@ class Step:
         pad = "  " * indent
         left = f"{pad}{self.label}"
         line = f"{left:<{width}}{self.result!s:>16}"
+        # Both, when both are present. These were once an if/elif, which meant
+        # attaching a citation to a step silently deleted its explanation from
+        # the worksheet — and the steps most worth citing are exactly the ones
+        # whose reasoning a reader needs (a rebate that vanished, a proviso
+        # that denied interest, a deduction disallowed by regime).
         if self.citation:
             line += f"   [{self.citation.display}]"
-        elif self.note:
+        if self.note:
             line += f"   ({self.note})"
         out = [line]
         for child in self.children:

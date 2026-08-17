@@ -15,7 +15,7 @@ from typing import Any, Protocol
 # harness importable on 3.10 so the phase gate can be run in environments
 # other than the one CI happens to use. A gate you can only run in CI is a
 # gate you stop running.
-class Verdict(str, Enum):  # noqa: UP042
+class Verdict(str, Enum):
     PASS = "pass"  # noqa: S105 — a verdict, not a credential
     FAIL = "fail"
     # The scenario could not be judged: a missing fixture, or a scorer that

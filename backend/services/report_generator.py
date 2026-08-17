@@ -7,6 +7,8 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 import json
 import os
+
+from backend.vault import DocumentKind
 from io import BytesIO
 
 from sqlalchemy import select
@@ -42,11 +44,13 @@ class ReportGeneratorService:
         Generate and persist a new report record.
         """
         try:
-            report_id_str = f"rep_{user_id}_{int(datetime.utcnow().timestamp())}"
+            report_id_str = f"rep_{user_id}_{int(datetime.now(timezone.utc).timestamp())}"
             file_name = f"{report_id_str}.{report_format}"
             
-            # Simulated file compilation path
-            file_path = f"/Users/ameersohail/Documents/finsage_ai/exports/{user_id}/{file_name}"
+            # DOC-004: no filesystem path. This line previously contained a
+            # hardcoded absolute path from a developer's own machine, and wrote
+            # named users' financial reports into it unencrypted.
+            file_path = None  # set below, to a vault document id
             file_size_bytes = len(json.dumps(analysis_data))
             file_url = f"/api/v1/reports/download/{report_id_str}.{report_format}"
             
@@ -63,7 +67,7 @@ class ReportGeneratorService:
                 report_type=report_type,
                 format=report_format,
                 title=title,
-                generated_at=datetime.utcnow(),
+                generated_at=datetime.now(timezone.utc),
                 file_path=file_path,
                 file_size=file_size_bytes,
                 file_url=file_url,
@@ -96,7 +100,7 @@ class ReportGeneratorService:
             
             if report:
                 report.download_count += 1
-                report.last_downloaded_at = datetime.utcnow()
+                report.last_downloaded_at = datetime.now(timezone.utc)
                 report.delivery_status = "downloaded"
                 await self.db.commit()
                 self.logger.info(f"Report {report_id} downloaded. Count: {report.download_count}")
@@ -115,7 +119,7 @@ class ReportGeneratorService:
         <head><title>{title}</title></head>
         <body>
             <h1>{title}</h1>
-            <p>Generated: {datetime.utcnow().isoformat()}</p>
+            <p>Generated: {datetime.now(timezone.utc).isoformat()}</p>
             <pre>{json.dumps(data, indent=2)}</pre>
         </body>
         </html>
@@ -125,7 +129,7 @@ class ReportGeneratorService:
         """Mock Markdown compiler."""
         return f"""
 # {title}
-*Generated at: {datetime.utcnow().isoformat()}*
+*Generated at: {datetime.now(timezone.utc).isoformat()}*
 
 ```json
 {json.dumps(data, indent=2)}
@@ -134,6 +138,23 @@ class ReportGeneratorService:
 
 
 class ReportGenerator:
+    """Report generation. Output goes to the encrypted vault (DOC-004)."""
+
+    _vault_instance = None
+
+    def _vault(self):
+        """The document vault, built on first use.
+
+        Deliberately NOT constructed in __init__: a report generator should be
+        importable and unit-testable without S3 credentials, but must never
+        silently write to disk when they are absent.
+        """
+        if ReportGenerator._vault_instance is None:
+            from backend.vault import build_vault
+
+            ReportGenerator._vault_instance = build_vault()
+        return ReportGenerator._vault_instance
+
     """
     Generate professional PDF reports.
     
@@ -193,12 +214,18 @@ class ReportGenerator:
             
             # Save PDF
             filename = f"compliance_report_{user_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-            filepath = os.path.join(self.report_dir, filename)
-            
-            with open(filepath, 'wb') as f:
-                f.write(pdf_content)
-            
-            file_size = os.path.getsize(filepath)
+            # DOC-004: stored in the encrypted vault, never on local disk.
+            # This previously wrote an unencrypted PDF containing a named
+            # user's income to the application filesystem.
+            stored = self._vault().store(
+                owner_id=user_id,
+                data=pdf_content,
+                filename=filename,
+                content_type="application/pdf",
+                kind=DocumentKind.EVIDENCE_PACK,
+            )
+            filepath = stored.document_id
+            file_size = stored.size_bytes
             
             # Save to database
             await self._save_report_to_db(
@@ -250,12 +277,18 @@ class ReportGenerator:
             
             # Save PDF
             filename = f"health_report_{user_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-            filepath = os.path.join(self.report_dir, filename)
-            
-            with open(filepath, 'wb') as f:
-                f.write(pdf_content)
-            
-            file_size = os.path.getsize(filepath)
+            # DOC-004: stored in the encrypted vault, never on local disk.
+            # This previously wrote an unencrypted PDF containing a named
+            # user's income to the application filesystem.
+            stored = self._vault().store(
+                owner_id=user_id,
+                data=pdf_content,
+                filename=filename,
+                content_type="application/pdf",
+                kind=DocumentKind.EVIDENCE_PACK,
+            )
+            filepath = stored.document_id
+            file_size = stored.size_bytes
             
             # Save to database
             await self._save_report_to_db(
@@ -306,12 +339,18 @@ class ReportGenerator:
             
             # Save PDF
             filename = f"tax_report_{user_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-            filepath = os.path.join(self.report_dir, filename)
-            
-            with open(filepath, 'wb') as f:
-                f.write(pdf_content)
-            
-            file_size = os.path.getsize(filepath)
+            # DOC-004: stored in the encrypted vault, never on local disk.
+            # This previously wrote an unencrypted PDF containing a named
+            # user's income to the application filesystem.
+            stored = self._vault().store(
+                owner_id=user_id,
+                data=pdf_content,
+                filename=filename,
+                content_type="application/pdf",
+                kind=DocumentKind.EVIDENCE_PACK,
+            )
+            filepath = stored.document_id
+            file_size = stored.size_bytes
             
             # Save to database
             await self._save_report_to_db(

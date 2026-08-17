@@ -39,7 +39,7 @@ from enum import Enum
 from typing import Any
 
 
-class Provenance(str, Enum):  # noqa: UP042
+class Provenance(str, Enum):
     """Where a single input value came from. Ordered best to worst."""
 
     OFFICIAL_DOCUMENT = "official_document"   # Form 16, AIS, broker statement
@@ -68,7 +68,7 @@ _PROVENANCE_PENALTY: dict[Provenance, Decimal] = {
 }
 
 
-class Level(str, Enum):  # noqa: UP042
+class Level(str, Enum):
     """What we tell the user. Deliberately words, not a percentage.
 
     A number invites false precision — nobody can defend 87% versus 84%. The
@@ -164,8 +164,16 @@ class Confidence:
         )
 
     def assumption(self, what: str, value: str) -> None:
+        # `value` often already reads "assumed ₹30k/mo from a city average",
+        # which prefixing again turned into "assumed rent = assumed ₹30k/mo".
+        # The label carries the word; the value should not have to.
+        detail = f"{what} = {value}"
+        if not value.lower().startswith("assumed"):
+            detail = f"assumed {detail}"
+        else:
+            detail = f"{what}: {value}"
         self.signals.append(
-            Signal("assumption", f"assumed {what} = {value}", Decimal("0.10"),
+            Signal("assumption", detail, Decimal("0.10"),
                    f"confirm or correct {what}")
         )
 
@@ -236,6 +244,25 @@ class Confidence:
             if s.remedy
         ]
 
+    def improvements_with_gain(self) -> list[dict[str, str]]:
+        """The same list, each paired with what it is worth.
+
+        "Confirm your rent" is advice. "Confirm your rent — this is the largest
+        single thing holding the score down, worth 0.10" is a reason to bother.
+        A confidence panel that lists remedies without their weight makes every
+        one look equally urgent, which is how users ignore all of them.
+        """
+        return [
+            {
+                "remedy": s.remedy,
+                "gain": str(s.penalty),
+                "because": s.detail,
+                "kind": s.kind,
+            }
+            for s in sorted(self.signals, key=lambda x: x.penalty, reverse=True)
+            if s.remedy
+        ]
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "level": self.level.value,
@@ -247,5 +274,6 @@ class Confidence:
             "signals": [s.to_dict() for s in self.signals],
             "blocking": self.blocking,
             "improvements": self.improvements(),
+            "improvements_with_gain": self.improvements_with_gain(),
         }
 

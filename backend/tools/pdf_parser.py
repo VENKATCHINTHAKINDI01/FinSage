@@ -6,23 +6,23 @@ Parses structured text and financial data from PDFs (e.g. Form 16, investment re
 """
 
 import logging
-from typing import Dict, Any
 import os
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
 class PDFStatementParser:
     """Mock parser to extract income, TDS, and investment details from financial PDF documents."""
-    
+
     @staticmethod
-    def parse_investment_receipt(file_path: str) -> Dict[str, Any]:
+    def parse_investment_receipt(file_path: str) -> dict[str, Any]:
         """
         Scan and parse investment receipts (ELSS mutual funds, NPS, PPF).
         """
         try:
             filename = os.path.basename(file_path).lower()
-            
+
             # Simulated parsing results based on filenames
             if "elss" in filename:
                 return {
@@ -50,7 +50,7 @@ class PDFStatementParser:
                         "section_eligibility": "80CCD(1B)"
                     }
                 }
-                
+
             return {
                 "success": True,
                 "document_type": "General Investment Receipt",
@@ -66,7 +66,7 @@ class PDFStatementParser:
             return {"success": False, "error": str(e)}
 
     @staticmethod
-    def parse_form16(file_path: str) -> Dict[str, Any]:
+    def parse_form16(file_path: str) -> dict[str, Any]:
         """
         Simulate parsing of Form 16 Part B (Salaried employee tax certificate).
         """

@@ -15,10 +15,10 @@ Tool Categories:
 7. Notification Tools - Alert users
 """
 
-from abc import ABC, abstractmethod
-from typing import Dict, Any, List, Optional
-from datetime import datetime
 import logging
+from abc import ABC, abstractmethod
+from datetime import datetime, timezone
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 class BaseTool(ABC):
     """Base class for all agent tools."""
-    
+
     def __init__(self, name: str, description: str):
         """
         Initialize tool.
@@ -41,9 +41,9 @@ class BaseTool(ABC):
         self.name = name
         self.description = description
         self.logger = logging.getLogger(f"tool.{name}")
-    
+
     @abstractmethod
-    async def execute(self, **kwargs) -> Dict[str, Any]:
+    async def execute(self, **kwargs) -> dict[str, Any]:
         """
         Execute the tool with given parameters.
         
@@ -51,7 +51,7 @@ class BaseTool(ABC):
             Result dict with status and data
         """
         pass
-    
+
     def _result(self, success: bool, data: Any, message: str = ""):
         """Format tool result."""
         return {
@@ -59,7 +59,7 @@ class BaseTool(ABC):
             "data": data,
             "message": message,
             "tool": self.name,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
 
@@ -69,20 +69,20 @@ class BaseTool(ABC):
 
 class CalculateTaxLiabilityTool(BaseTool):
     """Calculate total tax liability based on income and deductions."""
-    
+
     def __init__(self):
         super().__init__(
             "calculate_tax_liability",
             "Calculate tax liability from income and deductions"
         )
-    
+
     async def execute(
         self,
         total_income: float,
         deductions: float,
         age: int = 0,
         **kwargs
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Calculate tax liability.
         
@@ -96,18 +96,18 @@ class CalculateTaxLiabilityTool(BaseTool):
         """
         try:
             taxable_income = max(0, total_income - deductions)
-            
+
             # Simple tax bracket calculation (can be enhanced)
             tax = self._calculate_tax(taxable_income, age)
-            
+
             # Add surcharge (if applicable)
             surcharge = self._calculate_surcharge(taxable_income)
-            
+
             # Add health & education cess
             cess = (tax + surcharge) * 0.04
-            
+
             total_tax = tax + surcharge + cess
-            
+
             return self._result(
                 success=True,
                 data={
@@ -125,21 +125,19 @@ class CalculateTaxLiabilityTool(BaseTool):
         except Exception as e:
             logger.error(f"Error calculating tax: {e}")
             return self._result(False, None, str(e))
-    
+
     def _calculate_tax(self, taxable_income: float, age: int) -> float:
         """Calculate income tax based on brackets (India FY 2024-25)."""
-        
+
         # Exemption limit
-        if age >= 60:
-            exemption = 500000
-        elif age >= 80:
+        if age >= 60 or age >= 80:
             exemption = 500000
         else:
             exemption = 250000
-        
+
         if taxable_income <= exemption:
             return 0
-        
+
         # Tax brackets (India FY 2024-25)
         brackets = [
             (300000, 0.05),    # 0-3L: 5%
@@ -148,10 +146,10 @@ class CalculateTaxLiabilityTool(BaseTool):
             (1200000, 0.20),   # 9-12L: 20%
             (float('inf'), 0.30) # 12L+: 30%
         ]
-        
+
         tax = 0
         prev_limit = exemption
-        
+
         for limit, rate in brackets:
             if taxable_income > prev_limit:
                 taxable_in_bracket = min(taxable_income, limit) - prev_limit
@@ -159,9 +157,9 @@ class CalculateTaxLiabilityTool(BaseTool):
                 prev_limit = limit
             else:
                 break
-        
+
         return tax
-    
+
     def _calculate_surcharge(self, taxable_income: float) -> float:
         """Calculate surcharge on income tax."""
         if taxable_income > 10000000:
@@ -173,27 +171,27 @@ class CalculateTaxLiabilityTool(BaseTool):
 
 class CalculateDeductionImpactTool(BaseTool):
     """Calculate tax savings from a deduction."""
-    
+
     def __init__(self):
         super().__init__(
             "calculate_deduction_impact",
             "Calculate tax savings from a specific deduction"
         )
-    
+
     async def execute(
         self,
         deduction_amount: float,
         current_income: float,
         **kwargs
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Calculate tax savings from adding a deduction."""
         try:
             # Estimate tax bracket
             tax_bracket = self._estimate_bracket(current_income)
-            
+
             # Tax savings
             tax_savings = deduction_amount * tax_bracket
-            
+
             return self._result(
                 success=True,
                 data={
@@ -206,7 +204,7 @@ class CalculateDeductionImpactTool(BaseTool):
             )
         except Exception as e:
             return self._result(False, None, str(e))
-    
+
     def _estimate_bracket(self, income: float) -> float:
         """Estimate effective tax bracket."""
         if income <= 250000:
@@ -225,23 +223,23 @@ class CalculateDeductionImpactTool(BaseTool):
 
 class EstimateTaxRefundTool(BaseTool):
     """Estimate potential tax refund based on deductions."""
-    
+
     def __init__(self):
         super().__init__(
             "estimate_tax_refund",
             "Estimate potential tax refund from deductions and credits"
         )
-    
+
     async def execute(
         self,
         tds_paid: float,
         estimated_tax_liability: float,
         **kwargs
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Calculate estimated refund."""
         try:
             refund = max(0, tds_paid - estimated_tax_liability)
-            
+
             return self._result(
                 success=True,
                 data={
@@ -262,13 +260,13 @@ class EstimateTaxRefundTool(BaseTool):
 
 class GetSchemeDetailsTool(BaseTool):
     """Get details of a tax saving scheme."""
-    
+
     def __init__(self):
         super().__init__(
             "get_scheme_details",
             "Get details of a tax saving scheme (e.g., 80C, 80D)"
         )
-        
+
         # Hardcoded scheme database (can be replaced with DB)
         self.schemes = {
             "80C": {
@@ -327,23 +325,23 @@ class GetSchemeDetailsTool(BaseTool):
                 "benefits": "Tax deduction + pension"
             }
         }
-    
+
     async def execute(
         self,
         scheme_code: str,
         **kwargs
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Get scheme details."""
         try:
             scheme = self.schemes.get(scheme_code.upper())
-            
+
             if not scheme:
                 return self._result(
                     False,
                     None,
                     f"Scheme {scheme_code} not found"
                 )
-            
+
             return self._result(
                 True,
                 scheme,
@@ -355,13 +353,13 @@ class GetSchemeDetailsTool(BaseTool):
 
 class CheckSchemeEligibilityTool(BaseTool):
     """Check if user is eligible for a scheme."""
-    
+
     def __init__(self):
         super().__init__(
             "check_scheme_eligibility",
             "Check if user qualifies for a tax scheme"
         )
-    
+
     async def execute(
         self,
         scheme_code: str,
@@ -370,29 +368,29 @@ class CheckSchemeEligibilityTool(BaseTool):
         has_health_insurance: bool = False,
         has_education_loan: bool = False,
         **kwargs
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Check scheme eligibility."""
         try:
             eligible = True
             reasons = []
-            
+
             scheme = scheme_code.upper()
-            
+
             if scheme == "80TTB":
                 if user_age < 60:
                     eligible = False
                     reasons.append("Must be 60 years or older")
-            
+
             elif scheme == "80D":
                 if not has_health_insurance:
                     eligible = False
                     reasons.append("Must have health insurance policy")
-            
+
             elif scheme == "80E":
                 if not has_education_loan:
                     eligible = False
                     reasons.append("Must have active education loan")
-            
+
             return self._result(
                 True,
                 {
@@ -412,23 +410,23 @@ class CheckSchemeEligibilityTool(BaseTool):
 
 class GetUserFinancialDataTool(BaseTool):
     """Get user's financial profile data."""
-    
+
     def __init__(self):
         super().__init__(
             "get_user_financial_data",
             "Retrieve user's financial profile from database"
         )
-    
+
     async def execute(
         self,
         user_id: str,
         **kwargs
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Get user financial data."""
         try:
             # TODO: Integrate with actual DB
             # For now, return placeholder
-            
+
             return self._result(
                 True,
                 {
@@ -453,32 +451,32 @@ class GetUserFinancialDataTool(BaseTool):
 
 class SaveAnalysisTool(BaseTool):
     """Save analysis results for future reference."""
-    
+
     def __init__(self):
         super().__init__(
             "save_analysis",
             "Save agent analysis results to database"
         )
-    
+
     async def execute(
         self,
         user_id: str,
         analysis_type: str,
-        result_data: Dict[str, Any],
+        result_data: dict[str, Any],
         **kwargs
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Save analysis."""
         try:
             # TODO: Save to database
-            analysis_id = f"analysis_{user_id}_{datetime.utcnow().timestamp()}"
-            
+            analysis_id = f"analysis_{user_id}_{datetime.now(timezone.utc).timestamp()}"
+
             return self._result(
                 True,
                 {
                     "analysis_id": analysis_id,
                     "user_id": user_id,
                     "type": analysis_type,
-                    "saved_at": datetime.utcnow().isoformat()
+                    "saved_at": datetime.now(timezone.utc).isoformat()
                 },
                 f"Analysis saved with ID: {analysis_id}"
             )
@@ -492,30 +490,30 @@ class SaveAnalysisTool(BaseTool):
 
 class GenerateTaxReportTool(BaseTool):
     """Generate a tax analysis report."""
-    
+
     def __init__(self):
         super().__init__(
             "generate_tax_report",
             "Generate a comprehensive tax analysis report"
         )
-    
+
     async def execute(
         self,
         user_id: str,
-        analysis_data: Dict[str, Any],
+        analysis_data: dict[str, Any],
         format: str = "json",  # json, pdf, excel
         **kwargs
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Generate report."""
         try:
             # TODO: Implement report generation
-            
+
             return self._result(
                 True,
                 {
-                    "report_id": f"report_{user_id}_{datetime.utcnow().timestamp()}",
+                    "report_id": f"report_{user_id}_{datetime.now(timezone.utc).timestamp()}",
                     "format": format,
-                    "generated_at": datetime.utcnow().isoformat(),
+                    "generated_at": datetime.now(timezone.utc).isoformat(),
                     "url": f"/reports/{user_id}/latest.{format}"
                 },
                 "Report generated"
@@ -530,28 +528,28 @@ class GenerateTaxReportTool(BaseTool):
 
 class ToolRegistry:
     """Registry of all available tools."""
-    
+
     def __init__(self):
         """Initialize all tools."""
-        
+
         # Calculation tools
         self.calculate_tax_liability = CalculateTaxLiabilityTool()
         self.calculate_deduction_impact = CalculateDeductionImpactTool()
         self.estimate_tax_refund = EstimateTaxRefundTool()
-        
+
         # Scheme tools
         self.get_scheme_details = GetSchemeDetailsTool()
         self.check_scheme_eligibility = CheckSchemeEligibilityTool()
-        
+
         # Data tools
         self.get_user_financial_data = GetUserFinancialDataTool()
-        
+
         # Storage tools
         self.save_analysis = SaveAnalysisTool()
-        
+
         # Report tools
         self.generate_tax_report = GenerateTaxReportTool()
-        
+
         # Register all tools
         self.tools = {
             "calculate_tax_liability": self.calculate_tax_liability,
@@ -563,10 +561,10 @@ class ToolRegistry:
             "save_analysis": self.save_analysis,
             "generate_tax_report": self.generate_tax_report,
         }
-        
+
         logger.info(f"Registered {len(self.tools)} tools")
-    
-    async def execute_tool(self, tool_name: str, **kwargs) -> Dict[str, Any]:
+
+    async def execute_tool(self, tool_name: str, **kwargs) -> dict[str, Any]:
         """
         Execute a tool by name.
         
@@ -578,14 +576,14 @@ class ToolRegistry:
             Tool result
         """
         tool = self.tools.get(tool_name)
-        
+
         if not tool:
             return {
                 "success": False,
                 "message": f"Tool '{tool_name}' not found",
                 "available_tools": list(self.tools.keys())
             }
-        
+
         try:
             return await tool.execute(**kwargs)
         except Exception as e:
@@ -595,8 +593,8 @@ class ToolRegistry:
                 "message": str(e),
                 "tool": tool_name
             }
-    
-    def get_tool_info(self, tool_name: str) -> Optional[Dict[str, str]]:
+
+    def get_tool_info(self, tool_name: str) -> dict[str, str] | None:
         """Get information about a tool."""
         tool = self.tools.get(tool_name)
         if tool:
@@ -605,8 +603,8 @@ class ToolRegistry:
                 "description": tool.description
             }
         return None
-    
-    def list_tools(self) -> List[Dict[str, str]]:
+
+    def list_tools(self) -> list[dict[str, str]]:
         """List all available tools."""
         return [
             {

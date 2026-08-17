@@ -26,6 +26,7 @@ from typing import Any
 from backend.core.provenance.confidence import Confidence, Provenance
 from backend.core.provenance.money import ZERO, Money, format_rate
 from backend.core.provenance.trace import Op, Step, Trace
+from backend.core.rules.aliases import cite
 from backend.core.rules.loader import TaxRuleset, load_ruleset
 from backend.core.tax_engine.rebate import apply_rebate_87a
 from backend.core.tax_engine.slabs import compute_slab_tax, marginal_rate
@@ -87,8 +88,22 @@ class TaxResult:
     # invariants must be written against. See `pre_cess_liability` below.
     pre_cess_liability: Money
     cess: Money
+    # The exact liability, to the paisa. Needed by the property invariants and
+    # by the regime breakeven search, because s.288B rounding turns the tax
+    # function into a step and puts artefacts on otherwise exact answers.
+    #
+    # It is NOT the answer, and must never be shown to a user or handed to an
+    # agent. These two fields were originally named `total_tax` (exact) and
+    # `total_tax_rounded`, which meant every consumer that reached for the
+    # obvious name got the wrong one — ten call sites in the agent tool adapter
+    # were quoting figures like ₹97,502.08 against a demand that reads ₹97,500.
+    # They are named this way round so the natural reach is the correct one.
+    total_tax_exact: Money
+
+    # What the taxpayer actually pays: rounded to the nearest ₹10 under s.288B.
+    # This is the figure for every display, every API response, and every
+    # number an agent is allowed to see.
     total_tax: Money
-    total_tax_rounded: Money
     taxes_paid: Money
     balance_payable: Money
     refund_due: Money
@@ -110,8 +125,8 @@ class TaxResult:
             "surcharge": self.surcharge.to_json(),
             "pre_cess_liability": self.pre_cess_liability.to_json(),
             "cess": self.cess.to_json(),
+            "total_tax_exact": self.total_tax_exact.to_json(),
             "total_tax": self.total_tax.to_json(),
-            "total_tax_rounded": self.total_tax_rounded.to_json(),
             "balance_payable": self.balance_payable.to_json(),
             "refund_due": self.refund_due.to_json(),
             "effective_rate": self.effective_rate,
@@ -193,6 +208,7 @@ def compute_tax(
             "Standard deduction (salary)",
             applied_sd,
             note=f"FY {rs.fy}, {regime_cfg.get('name', inp.regime)}",
+            citation=cite("16(ia)", rs.fy),
         )
         allowed.append(applied_sd)
 
@@ -274,14 +290,14 @@ def compute_tax(
     cess, cess_step = compute_cess(subtotal, rs)
     trace.add(cess_step)
 
-    total_tax = subtotal + cess
+    total_tax_exact = subtotal + cess
     trace.sum_of("Total tax liability", subtotal, cess)
 
     # ── 8. statutory rounding ───────────────────────────────────────────────
-    rounded = total_tax.round_288b()
-    if rounded != total_tax:
+    rounded = total_tax_exact.round_288b()
+    if rounded != total_tax_exact:
         trace.rounded(
-            "Tax payable (rounded to nearest ₹10)", total_tax, rounded,
+            "Tax payable (rounded to nearest ₹10)", total_tax_exact, rounded,
             note="legacy s.288B",
         )
 
@@ -317,12 +333,12 @@ def compute_tax(
         surcharge=surcharge,
         pre_cess_liability=subtotal,
         cess=cess,
-        total_tax=total_tax,
-        total_tax_rounded=rounded,
+        total_tax_exact=total_tax_exact,
+        total_tax=rounded,
         taxes_paid=inp.taxes_paid,
         balance_payable=balance,
         refund_due=refund,
-        effective_rate=_pct(total_tax, gross + inp.special_rate_income),
+        effective_rate=_pct(rounded, gross + inp.special_rate_income),
         marginal_rate=f"{format_rate(marginal_rate(taxable, rs, inp.regime, inp.age))}%",
         trace=trace,
         confidence=conf,
@@ -352,7 +368,7 @@ def compute_total_tax(
         deductions={k: Money(v) for k, v in (deductions or {}).items()},
     )
     result = compute_tax(inp)
-    return result.total_tax, result.trace
+    return result.total_tax_exact, result.trace
 
 
 TaxAt = Callable[[Money], Money]

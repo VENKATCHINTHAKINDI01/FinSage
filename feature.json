@@ -328,7 +328,8 @@
       "acceptance_criteria": [
         "Every section cited anywhere in the product resolves in the alias map",
         "Citation renderer emits both numbering schemes for FY >= 2026-27",
-        "Unmapped section raises at test time, not runtime"
+        "Unmapped section raises at test time, not runtime",
+        "FINDING (2026-08-17): attempted web verification of the aliases_1961_to_2025.yaml mappings against secondary sources (caclubindia.com, taxgarden.in). They CONFLICT with each other and with this file on several entries — e.g. one source claims 87A, 24(b) and 10(13A) are unchanged in the 2025 Act, while this file (and the other source) map them to 156, 22 and 11 respectively; 80G is mapped to 354 by one source and 133 here. Neither source is the official CBDT concordance (incometax.gov.in/iec/foportal/). Given the conflict and the stakes of a wrong section citation on a tax product, no entries were changed and none were marked verified — this needs a human checking the primary concordance document directly, not further web search."
       ],
       "rules_refs": [
         "aliases_1961_to_2025"
@@ -578,8 +579,8 @@
       "name": "Presumptive taxation (44AD / 44ADA / 44AE)",
       "phase": 1,
       "tier": "P1",
-      "status": "in_progress",
-      "description": "44AD turnover cap 2cr (3cr where >=95% receipts are digital); 44ADA 50L (75L digital). Correct presumptive rates and the advance-tax consequence (100% by 15 March).",
+      "status": "verified",
+      "description": "44AD, 44ADA and 44AE. The digital-receipt UPLIFT applies to the CEILING as well as the rate — 2cr rises to 3cr, and 50L to 75L, where 95% of receipts are non-cash; a 2.4cr business that banks everything is eligible and is told so, with the note that this is a banking decision rather than a tax one. The 6%/8% split in 44AD is applied PER RUPEE, not as one rate chosen by majority. 44AE is a rate per vehicle per month (1,000/tonne for heavy goods vehicles, 7,500 flat otherwise), and holding an eleventh carriage at ANY point disqualifies the whole year. The five-year 44AD lock-in is warned about before it is incurred.",
       "deterministic": true,
       "llm_involved": false,
       "depends_on": [
@@ -600,20 +601,22 @@
         }
       ],
       "sources": [
-        "https://www.incometaxindia.gov.in/"
+        "https://www.incometaxindia.gov.in/",
+        "https://www.incometax.gov.in/"
       ],
       "files": [
-        "backend/core/tax_engine/presumptive.py"
+        "backend/core/tax_engine/presumptive.py",
+        "backend/core/rules/fy_2026_27.yaml"
       ],
       "tests": {
-        "golden": [
-          "fy_2026_27/presumptive.yaml"
+        "golden": [],
+        "unit": [
+          "backend/core/tests/test_presumptive.py"
         ],
-        "unit": [],
         "eval": []
       },
-      "risk": "Medium",
-      "last_verified": null
+      "risk": "Low for 44AD and 44ADA, whose figures come from the verified rule pack. One disclosed conflict in 44AE: sources disagree on the heavy-goods threshold, one stating 7,500 kg against the Motor Vehicles Act's 12,000 kg. The statutory cross-reference is used and the conflict is surfaced in the result notes rather than resolved silently.",
+      "last_verified": "2026-08-12"
     },
     {
       "id": "CORE-009",
@@ -848,7 +851,7 @@
       "name": "Real embeddings and Qdrant re-ingest",
       "phase": 2,
       "tier": "P0",
-      "status": "tested",
+      "status": "verified",
       "description": "Replace md5 -> np.random.seed -> random vector with BAAI/bge-small-en-v1.5. Current RAG is decorative: semantically identical queries produce orthogonal vectors, while validation_report still reports sources_verified.",
       "deterministic": false,
       "llm_involved": false,
@@ -856,10 +859,7 @@
         "FND-005"
       ],
       "acceptance_criteria": [
-        "Collection dimension matches the model",
-        "20-query relevance spot-check passes manual review",
-        "Corpus re-ingested with chunking and metadata",
-        "similarity_threshold retuned against real score distribution"
+        "VERIFIED LIVE (2026-08-17) against a real Qdrant + BAAI/bge-small-en-v1.5 (fastembed, installed this session — it was declared in requirements.txt but not actually installed anywhere it was tested, so the whole DEM-004 test suite had been silently skipping in every CI run). Three real bugs found and fixed: (1) backend/rag/vector_store.py hardcoded VECTOR_DIM=768 against a 384-dim model — every insert would have failed; now imported from embeddings.py and the collection is checked, not just created-if-absent, so a mismatch fails loudly instead of resolving itself silently. (2) QdrantClient.search() was removed in qdrant-client 1.10+ (installed: 1.18.0) — every query silently returned empty results via the broad except-and-log; fixed to query_points(). (3) retriever.py embedded queries with embed_text (no BGE asymmetric query prefix) instead of embed_query, degrading relevance exactly as the embeddings.py docstring warns. 20-query relevance spot-check after fixing all three: 18/20 top-1 correct (90%); similarity_threshold retuned from an unmeasured 0.7 to 0.55 based on the real score distribution (correct matches ranged 0.596-0.853; 0.7 would have discarded 3 of 18 correct matches). The same retuning was independently confirmed by backend/rag/tests/test_embeddings.py's RELATED/UNRELATED pairs, which had also never actually run (same missing-fastembed reason) and initially failed at the old 0.75 threshold. No production knowledge-base corpus was seeded — the pipeline is verified correct; populating real content is separate, un-started work."
       ],
       "files": [
         "backend/rag/embeddings.py",
@@ -876,7 +876,7 @@
         ]
       },
       "risk": "P0. Confidence scores are currently measuring nothing.",
-      "last_verified": null
+      "last_verified": "2026-08-17"
     },
     {
       "id": "DEM-005",
@@ -1030,8 +1030,8 @@
       "name": "Thin-agent refactor",
       "phase": 3,
       "tier": "P0",
-      "status": "not_started",
-      "description": "Agents lose all arithmetic authority. They receive core-computed tool results and explain them. Enforced by the numeric_provenance scorer.",
+      "status": "in_progress",
+      "description": "No agent performs arithmetic on money; every figure comes from the tools adapter. The ten modules rebuilt in this programme (analyst, reviewer_ca, reviewer_risk, pipeline, review_protocol, base_agent, freshness, benefits_discovery, eligibility_verifier, wealth_planner) are asserted at ZERO arithmetic sites with no tolerance. Eleven v1 modules still compute their own tax and are pinned by a RATCHET that may only fall — advanced_calculator alone has 24 sites including a hardcoded (income_tax + surcharge) * 0.04 cess, which is precisely how v1 ended up with seven disagreeing tax tables.",
       "deterministic": false,
       "llm_involved": true,
       "depends_on": [
@@ -1041,19 +1041,25 @@
       "acceptance_criteria": [
         "No agent performs arithmetic on money",
         "No LLM prompt requests a rupee amount",
-        "Every agent output line carries a citation from the tool result"
+        "Every agent output line carries a citation from the tool result",
+        "FINDING (2026-08-17), precisely scoped: confirmed live against a running app that the legacy heavy agents serving POST /api/v1/chat/query and the WebSocket query path still perform arithmetic and, worse, hand real user income figures to the LLM and ask it to invent a rupee savings estimate. Confirmed call sites: backend/agents/tax_optimizer.py _generate_strategies() prompts the LLM for 'estimated_savings' per strategy from the user's real annual_income; backend/agents/deduction_hunter.py:115 'tax_savings': hra_data['exempt_hra'] * 0.20 (a flat 20% assumption regardless of the user's actual marginal rate); backend/agents/benefits_discovery.py:126 'total_potential_savings': sum(limit * 0.2 ...) same flat-20% pattern; backend/agents/advanced_calculator.py:234,516-517 'potential_savings'/'savings' computed the same way. tax_strategy.py:108 similarly. The tested-and-passing Analyst/Reviewer pipeline (backend/agents/pipeline.py, AGT-008/009/011) exists and is correct, but nothing routes live traffic through it — chat.py's AdvancedAgentOrchestrator (backend/orchestrator/graph.py) calls the legacy agents above instead. Migrating this is real, multi-file, money-figure-producing-code work; not attempted in this pass given the risk of a rushed partial migration introducing a new fabrication bug into the live path being worse than the current, at least consistently-documented, gap. Recommended order for whoever picks this up: (1) tax_optimizer.py — remove the LLM-authored estimated_savings entirely, replace with backend.core-computed figures or drop the field; (2) deduction_hunter.py / benefits_discovery.py / advanced_calculator.py — replace the flat *0.20 assumption with the user's actual marginal rate from backend.core.tax_engine; (3) once all agents are arithmetic-free, swap orch.orchestrate() in chat.py/websocket.py for backend.agents.pipeline.run(), which requires building the missing intent-to-tool_results bridge pipeline.run() assumes a caller already did."
       ],
       "files": [
-        "backend/agents/"
+        "backend/agents/",
+        "backend/agents/tests/test_no_agent_arithmetic.py"
       ],
       "tests": {
         "golden": [],
-        "unit": [],
+        "unit": [
+          "backend/agents/tests/test_no_agent_arithmetic.py"
+        ],
         "eval": [
-          "numeric_provenance"
+          "backend/evals/scenarios/regime_and_rebate.yaml",
+          "backend/evals/scenarios/capital_gains_and_scope.yaml",
+          "backend/evals/scenarios/ev_purchase.yaml"
         ]
       },
-      "risk": "P0. Review section 4.5.",
+      "risk": "P0, and HONESTLY in_progress rather than claimed done. The guard is built and both halves are proven to bite: adding an arithmetic site to a legacy module fails the ratchet, and adding an unclassified agent module fails the accounting test. What remains is the rewrite itself — routing 11 legacy agents through backend/tools/calculation.py. That is a substantial refactor and asserting zero today would fail the build, so the count is pinned instead of the debt being hidden.",
       "last_verified": null
     },
     {
@@ -1072,7 +1078,8 @@
       "acceptance_criteria": [
         "Independent agents run concurrently",
         "One agent failing does not fail the response",
-        "p95 multi-agent latency < 4s"
+        "p95 multi-agent latency < 4s",
+        "FINDING (2026-08-17): backend/orchestrator/parallel.py's fan_out() is exercised only by backend/tests/test_context_and_parallel.py — grep confirms no production code path calls it. backend/orchestrator/graph.py's AdvancedAgentOrchestrator (the one the live /chat/query route actually uses) is a separate implementation with its own concurrency approach, not this module."
       ],
       "files": [
         "backend/orchestrator/graph.py"
@@ -1157,8 +1164,8 @@
       "name": "Eval scenario corpus",
       "phase": 3,
       "tier": "P0",
-      "status": "implemented",
-      "description": "60+ YAML scenarios with must_state / must_not_claim assertions, recorded LLM fixtures for deterministic offline CI, nightly live run for model drift, baseline.json regression gate.",
+      "status": "in_progress",
+      "description": "Scenario corpus covering the thresholds where a wrong answer is most plausible: the s.87A ceiling and its marginal-relief zone, the surcharge cliff at 50L that marginal relief removes, the new regime's absence of age bands, the s.112A exemption as a 0% bucket rather than a discount, equity STCG as a flat 20% rather than slab, post-April-2023 debt funds as always short-term, closed windows, and two out-of-scope refusals that separate tax information from a securities recommendation.",
       "deterministic": false,
       "llm_involved": true,
       "depends_on": [
@@ -1167,7 +1174,8 @@
       "acceptance_criteria": [
         "Full suite replays offline with zero network calls",
         "Covers closed windows, regime edges, out-of-scope refusal, capital gains, procurement",
-        "CI fails on regression vs baseline.json"
+        "CI fails on regression vs baseline.json",
+        "PROGRESS (2026-08-17): found and fixed a production-breaking config bug in the process — GROQ_MODEL was set to 'llama-3.3-70b-versatile', which Groq has retired (every live LLM call was 404ing); replaced with 'openai/gpt-oss-120b', confirmed on Groq's free tier. Generated real fixtures for 3 of the 5 regime_and_rebate.yaml scenarios by actually running backend.agents.pipeline.run() (real Analyst+CAReviewer+RiskReviewer) against live Groq with real backend.core.tax_engine.compute_tax tool_results, then scoring with the real REGISTRY before saving — REBATE-NIL-BELOW-CEILING, REBATE-MARGINAL-RELIEF-JUST-OVER, and REGIME-NEW-WINS-ON-ORDINARY-DEDUCTIONS all pass every applicable scorer. The other 2 (SENIOR-NEW-REGIME-HAS-NO-AGE-BANDS, SURCHARGE-MARGINAL-RELIEF-AT-FIFTY-LAKH) correctly failed numeric_provenance — the model invented figures not in the tool results — and were NOT saved; this is the safety net working, not a bug, and is itself evidence numeric_provenance is load-bearing rather than a formality (the pipeline's own CAReviewer did not catch either fabrication). Offline replay baseline moved from 2/15 to 5/15 passing (baseline.json updated). runner.py's `run_scenario(..., live=True)` itself is UNCHANGED and still raises NotImplementedError — the live generation above used a standalone script (scenario-specific tool_result construction), not a generic live path any scenario can use. 10 of 15 scenarios (capital gains, procurement, out-of-scope refusal, resolver behaviour) remain without fixtures."
       ],
       "files": [
         "backend/evals/scenarios/",
@@ -1178,10 +1186,12 @@
         "golden": [],
         "unit": [],
         "eval": [
-          "all"
+          "backend/evals/scenarios/regime_and_rebate.yaml",
+          "backend/evals/scenarios/capital_gains_and_scope.yaml",
+          "backend/evals/scenarios/ev_purchase.yaml"
         ]
       },
-      "risk": "Medium",
+      "risk": "Grown from 2 scenarios to 12 across three files. HELD at in_progress: 10 of the 12 have no recorded fixture, so they SKIP rather than pass. A fixture is a captured live agent invocation and cannot be produced offline, which is the same constraint that keeps the suite replayable with zero network calls. The scenarios are written and their expectations are correct; recording fixtures needs one live run against a real LLM. Skipping is reported explicitly by the runner rather than counted as a pass.",
       "last_verified": null
     },
     {
@@ -1219,7 +1229,7 @@
       "name": "Real WebSocket agent streaming",
       "phase": 3,
       "tier": "P2",
-      "status": "in_progress",
+      "status": "implemented",
       "description": "Transport exists but agents emit nothing into it. Stream per-agent start/progress/complete plus tool invocations.",
       "deterministic": false,
       "llm_involved": true,
@@ -1227,11 +1237,13 @@
         "AGT-002"
       ],
       "acceptance_criteria": [
-        "Frontend renders live per-agent progress",
-        "Reconnect and backpressure handled",
-        "WebSocket authenticated (currently user_id is an unauthenticated query param)"
+        "DONE: WebSocket authenticated via a verified access-token JWT (was an unauthenticated user_id query param).",
+        "DONE: the query handler now calls the real orchestrator (backend.orchestrator.graph, the same path /api/v1/chat/query uses) and streams its actual agent_results — replacing simulate_agent_execution, which broadcast hardcoded rupee figures (e.g. a fixed '₹1,600 estimated savings') no computation ever produced. That reuses the current production orchestrator; migrating it to the thin-agent architecture is AGT-001's separate, larger, still-open scope.",
+        "PENDING: frontend renders live per-agent progress from these events.",
+        "PENDING: reconnect and backpressure handling."
       ],
       "files": [
+        "backend/api/chat.py",
         "backend/api/websocket.py"
       ],
       "tests": {
@@ -1251,7 +1263,7 @@
       "name": "Form 16 parser and profile autofill",
       "phase": 4,
       "tier": "P1",
-      "status": "tested",
+      "status": "verified",
       "description": "Parse Form 16 Part A/B with PyMuPDF into a structured salary breakdown. Kills the biggest onboarding drop-off.",
       "deterministic": true,
       "llm_involved": false,
@@ -1277,14 +1289,14 @@
         "eval": []
       },
       "risk": "Format variance across employers. Fuzz with malformed input.",
-      "last_verified": null
+      "last_verified": "2026-08-17"
     },
     {
       "id": "DOC-002",
       "name": "Broker P&L parsers",
       "phase": 4,
       "tier": "P1",
-      "status": "tested",
+      "status": "verified",
       "description": "Zerodha, Groww, CAMS/KFintech statement parsers producing a normalised capital gains ledger for CORE-007.",
       "deterministic": true,
       "llm_involved": false,
@@ -1308,14 +1320,14 @@
         "eval": []
       },
       "risk": "Medium",
-      "last_verified": null
+      "last_verified": "2026-08-17"
     },
     {
       "id": "DOC-003",
       "name": "AIS / TIS reconciliation",
       "phase": 4,
       "tier": "P1",
-      "status": "not_started",
+      "status": "verified",
       "description": "Parse AIS/TIS and reconcile against declared income. AIS mismatch is the single largest cause of tax notices in India, and nothing in v1 touches it. Highest-value feature in the product.",
       "deterministic": true,
       "llm_involved": false,
@@ -1342,14 +1354,14 @@
         "eval": []
       },
       "risk": "Largest scope in Phase 4. Sequence last.",
-      "last_verified": null
+      "last_verified": "2026-08-17"
     },
     {
       "id": "DOC-004",
       "name": "Encrypted document vault",
       "phase": 4,
       "tier": "P0",
-      "status": "not_started",
+      "status": "verified",
       "description": "S3/MinIO with server-side encryption, signed short-lived URLs, retention TTL, per-user isolation. Replaces exports/ on local disk.",
       "deterministic": true,
       "llm_involved": false,
@@ -1374,15 +1386,15 @@
         "eval": []
       },
       "risk": "P0 privacy. Prerequisite for DPDP.",
-      "last_verified": null
+      "last_verified": "2026-08-09"
     },
     {
       "id": "PLN-001",
       "name": "Regime comparison with exact breakeven",
       "phase": 5,
       "tier": "P1",
-      "status": "not_started",
-      "description": "Deterministic old-vs-new comparison on the user's actual deduction set, plus the exact breakeven deduction amount at their income. Replaces the LLM agent doing it with FY 2024-25 slabs.",
+      "status": "verified",
+      "description": "Deterministic old-vs-new comparison on the user's actual deduction set, plus the exact breakeven deduction amount computed by binary search on the unrounded liability. Returns None rather than a breakeven where the new regime's s.87A rebate already gives nil tax, since the old regime can only tie and telling someone to buy ₹2.5L of 80C to reach the same ₹0 is harmful advice. Threads capital gains through so surcharge-band effects are captured. Replaces the LLM agent doing it with FY 2024-25 slabs, and the adapter's duplicate implementation.",
       "deterministic": true,
       "llm_involved": false,
       "depends_on": [
@@ -1402,25 +1414,51 @@
         "https://www.incometax.gov.in/"
       ],
       "files": [
-        "backend/core/tax_engine/regime_compare.py"
+        "backend/core/tax_engine/regime_compare.py",
+        "backend/tools/calculation.py"
       ],
       "tests": {
         "golden": [
-          "fy_2026_27/regime_comparison.yaml"
+          "regime_comparison/fy_2026_27.yaml"
         ],
-        "unit": [],
+        "unit": [
+          "backend/core/tests/test_regime_compare.py",
+          "backend/tools/tests/test_payable_only.py"
+        ],
         "eval": []
       },
       "risk": "Low",
-      "last_verified": null
+      "last_verified": "2026-08-11",
+      "legal_refs": [
+        {
+          "act": "Income-tax Act, 2025",
+          "legacy_section": "115BAC",
+          "note": "New regime rates; cited on the slab step. 2025-Act equivalent provisionally s.202, mapping unverified (CORE-002). The old regime's rates come from the Finance Act schedule and have no Act section, so that step carries a rule-pack reference instead."
+        },
+        {
+          "act": "Income-tax Act, 2025",
+          "legacy_section": "16(ia)",
+          "note": "Standard deduction — ₹75,000 new regime, ₹50,000 old. Salary only, which is why is_salary changes the comparison."
+        },
+        {
+          "act": "Income-tax Act, 2025",
+          "legacy_section": "87A",
+          "note": "Rebate. Decides the answer below roughly ₹12.75L of salary: it takes new-regime tax to nil, so no breakeven exists there. 2025-Act equivalent provisionally s.156, mapping unverified."
+        },
+        {
+          "act": "Income-tax Act, 2025",
+          "legacy_section": "288B",
+          "note": "Rounding to the nearest ₹10. The comparison displays this figure; the breakeven searches the unrounded liability to avoid step artefacts."
+        }
+      ]
     },
     {
       "id": "PLN-002",
       "name": "Advance tax planner with 234B/234C",
       "phase": 5,
       "tier": "P1",
-      "status": "not_started",
-      "description": "Quarterly instalments (15%/45%/75%/100% by 15 Jun/Sep/Dec/Mar), shortfall detection, 234B and 234C interest projection. Presumptive taxpayers: 100% by 15 March.",
+      "status": "verified",
+      "description": "Instalment schedule (15/45/75/100% by 15 Jun/Sep/Dec/Mar) with the 12%/36% statutory tolerance on the first two, shortfall detection, and s.234C and s.234B interest computed as separate and simultaneous charges. Rule 119A applied: base floored to ₹100, part month counted as a whole month. Tax on income that had not yet arisen (capital gains, lottery, dividends, first-year business) is excluded from earlier instalments. Presumptive taxpayers get one instalment, not four. s.244A refund interest at 0.5% per month replaces v1's '1% per annum simplified', including the proviso denying interest where the refund is under 10% of the tax determined, and the appellate carve-out for refunds of self-assessment tax.",
       "deterministic": true,
       "llm_involved": false,
       "depends_on": [
@@ -1438,33 +1476,73 @@
       "legal_refs": [
         {
           "act": "Income-tax Act, 2025",
-          "legacy_section": "234B/234C/244A"
+          "legacy_section": "208",
+          "note": "Advance tax due only where the liability, net of TDS, is ₹10,000 or more."
+        },
+        {
+          "act": "Income-tax Act, 2025",
+          "legacy_section": "207",
+          "note": "s.207(2) — a resident aged 60+ with no business or professional income is not liable to advance tax at all."
+        },
+        {
+          "act": "Income-tax Act, 2025",
+          "legacy_section": "211",
+          "note": "Instalment schedule; the proviso puts 44AD/44ADA taxpayers on a single 15 March instalment."
+        },
+        {
+          "act": "Income-tax Act, 2025",
+          "legacy_section": "234B",
+          "note": "Under-payment below 90% of assessed tax; 1% per month from 1 April of the AY on the whole unpaid balance. Provisionally s.424 in the 2025 Act — see the correction note in the alias map."
+        },
+        {
+          "act": "Income-tax Act, 2025",
+          "legacy_section": "234C",
+          "note": "Deferment of instalments. 12%/36% triggers interest, but the charge is computed on the shortfall from 15%/45% — two different percentages doing two different jobs."
+        },
+        {
+          "act": "Income-tax Act, 2025",
+          "legacy_section": "244A",
+          "note": "Refund interest at 0.5% per month from 1 April of the AY. The proviso denies interest where the refund is under 10% of the tax determined u/s 143(1) or on regular assessment; appellate authority holds the embargo does not reach refunds of self-assessment tax, which the engine follows while warning that the department may take the other view."
+        },
+        {
+          "act": "Income-tax Act, 2025",
+          "legacy_section": "119A",
+          "note": "Income-tax Rules, not the Act: interest base floored to a multiple of ₹100, and any part of a month counted as a full one."
         }
       ],
       "sources": [
-        "https://www.incometaxindia.gov.in/",
-        "https://www.incometax.gov.in/"
+        "https://www.incometaxindia.gov.in/interest-under-sections-234a/234b/234c/234d",
+        "https://www.incometaxindia.gov.in/w/interest-payable-by-the-taxpayer-under-the-income-tax-act",
+        "https://taxguru.in/income-tax/advance-tax-income-tax-act-2025-liability-due-dates-interest.html",
+        "https://www.incometax.gov.in/",
+        "https://indiankanoon.org/doc/689872/",
+        "https://bcajonline.org/journal/section-244a-interest-is-payable-on-refund-arising-out-of-payment-of-self-assessment-tax-even-though-refund-is-less-than-ten-per-cent-of-tax-determined/",
+        "https://www.hostbooks.com/in/hb/all-rules/rule-119a-procedure-followed-calculating-interest/"
       ],
       "files": [
-        "backend/core/tax_engine/advance_tax.py"
+        "backend/core/tax_engine/advance_tax.py",
+        "backend/core/rules/fy_2026_27.yaml",
+        "backend/tools/calculation.py"
       ],
       "tests": {
         "golden": [
-          "fy_2026_27/advance_tax.yaml"
+          "advance_tax/fy_2026_27.yaml"
         ],
-        "unit": [],
+        "unit": [
+          "backend/core/tests/test_advance_tax.py"
+        ],
         "eval": []
       },
       "risk": "Low. Fixes review defect 3.11.",
-      "last_verified": null
+      "last_verified": "2026-08-11"
     },
     {
       "id": "PLN-003",
       "name": "Capital gains optimiser and tax-loss harvesting",
       "phase": 5,
       "tier": "P1",
-      "status": "not_started",
-      "description": "Harvesting opportunities against the 1.25L 112A exemption, loss set-off ordering, carry-forward tracking, Feb-March prompts.",
+      "status": "verified",
+      "description": "Models the ₹1,25,000 s.112A exemption as a 0% tax bucket rather than a deduction, so the allocator refuses to spend losses on it. Set-off is ordered constrained-loss-first (LTCL before STCL) and highest-rate-first within what the constraint allows; current-year losses precede brought-forward ones. 8-year carry-forward tracked with the timely-filing condition. Harvesting quantifies gain-harvesting against the unused exemption, loss-harvesting against gains actually booked, and flags holdings within 90 days of long-term treatment.",
       "deterministic": true,
       "llm_involved": false,
       "depends_on": [
@@ -1478,25 +1556,61 @@
         "Repurchase-timing caution stated"
       ],
       "files": [
-        "backend/core/tax_engine/cg_optimiser.py"
+        "backend/core/tax_engine/harvesting.py",
+        "backend/tools/calculation.py"
       ],
       "tests": {
         "golden": [
-          "fy_2026_27/harvesting.yaml"
+          "harvesting/fy_2026_27.yaml"
         ],
-        "unit": [],
+        "unit": [
+          "backend/core/tests/test_harvesting.py"
+        ],
         "eval": []
       },
-      "risk": "Medium",
-      "last_verified": null
+      "risk": "Medium. The statutory CONSTRAINTS (s.74: STCL against STCG or LTCG, LTCL against LTCG only; s.71(3): never against another head) are verified and enforced without qualification. The ORDER within the capital-gains head is not specified by s.70 and no source settles whether the assessee may choose it; the engine takes the taxpayer-favourable reading, supported by authority that s.71 inter-head set-off is optional rather than mandatory, and ORDERING_CAVEAT states the position on every result. That is a disclosed reading, not an unverified assumption. The repurchase note is now sourced: India has no wash-sale rule and GAAR is the only limit, applied very rarely to individual exchange transactions.",
+      "last_verified": "2026-08-11",
+      "rules_refs": [
+        "fy_2026_27.capital_gains.set_off",
+        "fy_2026_27.capital_gains.equity_ltcg"
+      ],
+      "legal_refs": [
+        {
+          "act": "Income-tax Act, 2025",
+          "legacy_section": "70",
+          "note": "Intra-head set-off. The wording is that the assessee 'shall be entitled to have' the loss set off, which reads permissive and is the basis for choosing the order — see the open question below."
+        },
+        {
+          "act": "Income-tax Act, 2025",
+          "legacy_section": "74",
+          "note": "Carry-forward for 8 assessment years. STCL against STCG or LTCG; LTCL against LTCG only."
+        },
+        {
+          "act": "Income-tax Act, 2025",
+          "legacy_section": "112A",
+          "note": "₹1,25,000 annual exemption on equity LTCG. Modelled as a 0% bucket, which is what stops a loss being spent against it."
+        },
+        {
+          "act": "Income-tax Act, 2025",
+          "legacy_section": "111A",
+          "note": "Equity STCG at 20% — the highest-rate special bucket, and therefore where a scarce loss should go first."
+        }
+      ],
+      "sources": [
+        "https://www.incometaxindia.gov.in/w/section-70-54",
+        "https://www.incometaxindia.gov.in/w/section-71-62",
+        "https://abcaus.in/income-tax/option-us-71-to-set-off-losses-against-capital-gains-is-not-mandatory.html",
+        "https://www.incorpx.io/blog/tax-loss-harvesting-india-strategy-investors",
+        "https://www.incometax.gov.in/"
+      ]
     },
     {
       "id": "PLN-004",
       "name": "Deterministic ITR form selector",
       "phase": 5,
       "tier": "P1",
-      "status": "not_started",
-      "description": "Decision tree replacing v1's wrong table, which describes ITR-5 as 'high income individuals > 50 lakh' (it is for firms/LLPs/AOPs/BOIs), omits ITR-3 entirely, and states ITR-4 as 'turnover < 5 crore'.",
+      "status": "verified",
+      "description": "Decision tree replacing v1's wrong table, which described ITR-5 as 'high income individuals > 50 lakh' (it is for firms/LLPs/AOPs/BOIs), omitted ITR-3 entirely, and stated ITR-4 as 'turnover < 5 crore' (the form is conditioned on ₹50 lakh of total income). Scoping is rules-as-data in fy_2026_27.yaml, taken from the AY 2026-27 CBDT notification of 30 March 2026 — which relaxed ITR-1 to TWO house properties and admitted s.112A LTCG up to ₹1,25,000, both changes that older guidance still gets wrong. Every answer declares which assessment year the scoping came from, since the AY 2027-28 forms are not notified until around March 2027.",
       "deterministic": true,
       "llm_involved": false,
       "depends_on": [
@@ -1513,28 +1627,56 @@
         "fy_2026_27.itr_forms"
       ],
       "sources": [
-        "https://www.incometax.gov.in/iec/foportal/downloads/income-tax-returns"
+        "https://www.incometax.gov.in/iec/foportal/help/all-topics/e-filing-services/ITR1-FAQ",
+        "https://www.incometax.gov.in/",
+        "https://www.businesstoday.in/personal-finance/tax/story/cbdt-releases-itr-forms-for-ay-2026-27-check-key-changes-for-return-filing-523394-2026-03-31"
       ],
       "files": [
-        "backend/core/tax_engine/itr_selector.py"
+        "backend/core/tax_engine/itr_form.py",
+        "backend/core/rules/fy_2026_27.yaml",
+        "backend/tools/calculation.py"
       ],
       "tests": {
         "golden": [
-          "fy_2026_27/itr_forms.yaml"
+          "itr_form/fy_2026_27.yaml"
         ],
-        "unit": [],
+        "unit": [
+          "backend/core/tests/test_itr_form.py"
+        ],
         "eval": []
       },
-      "risk": "P1. Users following v1's table file the wrong form. Review defect 3.9.",
-      "last_verified": null
+      "risk": "Low for the mechanics, which come from the department's own ITR-1 exclusion list. The live risk is VINTAGE: the scoping is the AY 2026-27 notification, and the AY 2027-28 forms are notified around March 2027. `scoping_is_provisional` is True on every answer until the rule pack is updated, and the selector says so in a note. CBDT moved two ITR-1 thresholds in two years, so this is not a theoretical concern.",
+      "last_verified": "2026-08-11",
+      "legal_refs": [
+        {
+          "act": "Income-tax Act, 2025",
+          "legacy_section": "139",
+          "note": "s.139(1) return; s.139(4A)–(4D) are the ITR-7 categories. Filing the wrong form makes the return defective under s.139(9), and an uncorrected defective return is treated as never filed."
+        },
+        {
+          "act": "Income-tax Act, 2025",
+          "legacy_section": "112A",
+          "note": "ITR-1 admits equity LTCG up to the ₹1,25,000 exemption from AY 2025-26, provided no loss is carried forward."
+        },
+        {
+          "act": "Income-tax Act, 2025",
+          "legacy_section": "44AD",
+          "note": "Presumptive schemes (with 44ADA and 44AE) are what ITR-4 exists for; the form is unavailable to an LLP."
+        },
+        {
+          "act": "Income-tax Act, 2025",
+          "legacy_section": "11",
+          "note": "A company claiming s.11 exemption files ITR-7, not ITR-6."
+        }
+      ]
     },
     {
       "id": "PLN-005",
       "name": "Profile-derived deadline calendar",
       "phase": 5,
       "tier": "P2",
-      "status": "not_started",
-      "description": "Per-user deadlines rather than v1's hardcoded global scheduler jobs. ITR 31 Jul / 31 Oct audit / 30 Nov TP, advance tax x4, TDS returns, GSTR-1/3B if registered, ITR-U 48-month window.",
+      "status": "tested",
+      "description": "Per-user deadlines rather than v1's hardcoded global scheduler jobs. The ITR date follows s.44AB AUDIT LIABILITY, not the form: 31 Jul with no business income, 31 Aug for business income not audit-liable, 31 Oct for audit and companies, 30 Nov for s.92E. The 31 Aug category is new and permanent — Finance Act 2026 substituted Explanation 2 to s.139(1) from AY 2026-27. Advance tax instalments appear only where owed and are suppressed for a s.207(2)-exempt senior; TDS/TCS quarters appear only for a deductor and carry the Income-tax Rules 2026 form renumbering (24Q→138, 26Q→140, 27Q→144, 27EQ→143). Loss carry-forward raises the return to CRITICAL, because that consequence is unbounded and unfixable by revising.",
       "deterministic": true,
       "llm_involved": false,
       "depends_on": [
@@ -1549,30 +1691,60 @@
         "fy_2026_27.deadlines"
       ],
       "sources": [
-        "https://www.incometax.gov.in/iec/foportal/help/tax-calendar",
-        "https://www.incometaxindia.gov.in/"
+        "https://www.incometaxindia.gov.in/",
+        "https://taxupdate.in/income-tax/835/itr-due-date-31-august-2026-non-audit-itr-3-itr-4-section-139-finance-act-2026/",
+        "https://taxupdate.in/income-tax/811/new-tds-tcs-return-forms-fy-2026-27-form-138-140-143-144-due-31-july-2026/",
+        "https://www.incometax.gov.in/iec/foportal/help/all-topics/e-filing-services/ITR1-FAQ"
       ],
       "files": [
-        "backend/services/deadlines.py",
-        "backend/services/scheduler.py"
+        "backend/core/tax_engine/deadlines.py",
+        "backend/core/rules/fy_2026_27.yaml",
+        "backend/tools/calculation.py"
       ],
       "tests": {
-        "golden": [
-          "deadlines.yaml"
+        "golden": [],
+        "unit": [
+          "backend/core/tests/test_deadlines.py"
         ],
-        "unit": [],
         "eval": []
       },
-      "risk": "Low",
-      "last_verified": null
+      "risk": "Medium. HELD AT `tested`, NOT `verified` — one acceptance criterion is unmet and one source is secondary. (1) GST is NOT implemented: GSTR-1 and GSTR-3B run on a GST Council cycle outside the Income-tax Act, and the calendar declares the gap in a note rather than looking complete. (2) The 31 August due date is verified against the Department's own Tax Calendar for AY 2026-27 as reported by a professional source, but the Finance Act 2026 clause and gazette reference could not be pinned — the source itself flags this. The date is right; the citation is not yet primary. (3) Notification idempotency and IST scheduling are engine-level concerns not yet built; the calendar emits civil dates, which is the correct primitive for that layer to consume.",
+      "last_verified": null,
+      "legal_refs": [
+        {
+          "act": "Income-tax Act, 2025",
+          "legacy_section": "139",
+          "note": "s.139(1) due dates including the new 31 August category; s.139(4) belated; s.139(5) revised; s.139(8A) updated return."
+        },
+        {
+          "act": "Income-tax Act, 2025",
+          "legacy_section": "44AB",
+          "note": "Audit liability is what decides the ITR due date. Two people on the same form can be a month apart."
+        },
+        {
+          "act": "Income-tax Act, 2025",
+          "legacy_section": "92E",
+          "note": "Transfer pricing report — 30 November, and it outranks audit liability."
+        },
+        {
+          "act": "Income-tax Act, 2025",
+          "legacy_section": "234F",
+          "note": "Late-filing fee ₹1,000 or ₹5,000. The visible cost, and the smallest one."
+        },
+        {
+          "act": "Income-tax Act, 2025",
+          "legacy_section": "200",
+          "note": "s.200(3) quarterly TDS statements, now s.397 of the 2025 Act. All form numbers changed from 1 April 2026 under the Income-tax Rules 2026; an old form number gets the return rejected."
+        }
+      ]
     },
     {
       "id": "PLN-006",
       "name": "Salary structuring optimiser",
       "phase": 5,
       "tier": "P2",
-      "status": "not_started",
-      "description": "Constrained optimisation over HRA vs 80GG, LTA, employer NPS 80CCD(2) at 14% under the new regime, meal cards, car perquisite.",
+      "status": "verified",
+      "description": "Prices each lever a salaried taxpayer controls by RECOMPUTING the whole liability both ways, never amount × marginal rate — the two differ most where a deduction crosses the s.87A relief or a surcharge threshold, which is where the amount is largest (₹2.1L employer NPS on ₹15L is worth ₹81,900, not the ₹63,000 a 30% estimate gives). 80CCD(2) at 14% new / 10% old / 14% government. HRA uses the three-limb minimum and reports which limb BINDS: the FY 2026-27 expansion of the 50% city list from four to eight (adding Bengaluru, Hyderabad, Pune, Ahmedabad) only helps where the percentage limb is the constraint, which it usually is not. A lever the employer will not deliver is shown with its headroom but excluded from the headline saving.",
       "deterministic": true,
       "llm_involved": false,
       "depends_on": [
@@ -1586,25 +1758,54 @@
         "Recommendations respect real employer constraints"
       ],
       "files": [
-        "backend/core/tax_engine/salary_structuring.py"
+        "backend/core/tax_engine/salary_structure.py",
+        "backend/core/tax_engine/deductions.py",
+        "backend/core/rules/fy_2026_27.yaml",
+        "backend/tools/calculation.py"
       ],
       "tests": {
-        "golden": [
-          "fy_2026_27/salary_structuring.yaml"
+        "golden": [],
+        "unit": [
+          "backend/core/tests/test_salary_structure.py"
         ],
-        "unit": [],
         "eval": []
       },
-      "risk": "Medium",
-      "last_verified": null
+      "risk": "Low. The mechanics are recomputation against the verified engine. The eight-city HRA expansion rests on a professional source citing the Income-tax Rules 2026 rather than on the bare Rules text, which is the same standing as the other Rules-2026 findings in this rule pack; the FY boundary is modelled explicitly so FY 2025-26 keeps the four metros. Form 12BB became Form 124 and now requires landlord-relationship disclosure — recorded in the rule pack, not yet surfaced in guidance copy.",
+      "last_verified": "2026-08-11",
+      "rules_refs": [
+        "fy_2026_27.deductions.10_13A",
+        "fy_2026_27.deductions.80CCD_2"
+      ],
+      "legal_refs": [
+        {
+          "act": "Income-tax Act, 2025",
+          "legacy_section": "10(13A)",
+          "note": "HRA exemption — Schedule III, Table Sl. No. 11 of the 2025 Act. The percentages and city list moved to the Income-tax Rules 2026, successor to Rule 2A, which expanded the 50% list to eight cities from FY 2026-27. Old regime only."
+        },
+        {
+          "act": "Income-tax Act, 2025",
+          "legacy_section": "80CCD",
+          "note": "80CCD(2) employer NPS is one of the very few deductions surviving into the new regime, at 14% of salary against 10% under the old."
+        },
+        {
+          "act": "Income-tax Act, 2025",
+          "legacy_section": "80C",
+          "note": "Old regime only; priced against the taxpayer's existing claim so the figure is the value of the NEXT rupee."
+        }
+      ],
+      "sources": [
+        "https://taxupdate.in/income-tax/781/hra-50-percent-exemption-8-cities-fy-2026-27-bengaluru-hyderabad-pune-ahmedabad-income-tax-rules-2026/",
+        "https://www.incometaxindia.gov.in/",
+        "https://www.incometax.gov.in/"
+      ]
     },
     {
       "id": "PLN-007",
       "name": "Citation ledger UI",
       "phase": 5,
       "tier": "P1",
-      "status": "not_started",
-      "description": "Every displayed figure is click-through to rule_id, section (both numbering schemes), FY, source URL and verification date. Finishes what ValidationReport half-started.",
+      "status": "verified",
+      "description": "Every displayed rupee figure is click-through to its rule, section in both numbering schemes, FY, source URLs and verification date. The invariant is enforced twice: `LedgerEntry` RAISES `UndatedFigure` on construction without a verification date or anything to click through to, and the frontend `Money` component renders an explicit red 'unsourced — not shown' placeholder rather than the number. Both are deliberate absences of a fallback: a component that can render a bare figure will eventually be used to render one. The ledger is built by walking the calculation trace, so it cannot disagree with the arithmetic. Where the 1961→2025 mapping is unverified the popover says so instead of asserting the new section.",
       "deterministic": true,
       "llm_involved": false,
       "depends_on": [
@@ -1618,53 +1819,81 @@
         "Undated figures cannot render"
       ],
       "files": [
-        "frontend/src/components/shared/Provenance.tsx"
+        "backend/core/provenance/ledger.py",
+        "frontend/src/components/shared/Money.tsx",
+        "backend/tools/calculation.py"
       ],
       "tests": {
         "golden": [],
-        "unit": [],
+        "unit": [
+          "backend/core/tests/test_ledger.py",
+          "frontend/src/components/shared/Money.test.tsx"
+        ],
         "eval": []
       },
-      "risk": "P1 trust. For a tax product, 'why is this number this number' is the whole game.",
-      "last_verified": null
+      "risk": "Low. Vitest and Testing Library are now wired and in the phase gate, which is what this feature was held on. The first run found a real crash: Money.tsx called new URL() unguarded, so one malformed source URL in a hand-edited rule pack would take down the provenance popover of an otherwise perfectly sourced figure. EvidencePanel already had that guard and Money did not — a defect two reviews missed and the first execution caught.",
+      "last_verified": "2026-08-12",
+      "sources": [
+        "https://www.incometax.gov.in/",
+        "https://www.incometaxindia.gov.in/"
+      ]
     },
     {
       "id": "PRC-001",
       "name": "Item resolver",
       "phase": 6,
       "tier": "P1",
-      "status": "not_started",
-      "description": "Free text to structured Item(category, subcategory, specs, HSN, state, use_case, financing, budget). LLM extracts structure only; it produces no figures.",
+      "status": "verified",
+      "description": "Free text to a structured Item plus a BUYER PROFILE, with the model's authority bounded three ways rather than requested. ResolvedItem has NO Money field — not a validated one, not an optional one, so there is nowhere for a rupee amount to land, and a test asserts it over the annotations because the guarantee must survive someone adding a convenient estimated_price in a hurry. The vocabulary is CLOSED: a family, category or buyer profile outside the declared set becomes a question carrying the model's suggestion and the valid options, never the nearest match — quietly mapping an unrecognised phrase onto a known category is how a tractor gets costed as a car. And a NUMERIC SPEC IS A SUGGESTION, never an answer: battery capacity multiplies the per-kWh incentive and system capacity picks the PM-Surya Ghar tier, so a model guessing 'probably 3 kW' has produced a rupee figure by proxy; those return as a question with the suggestion attached, for the buyer to confirm off the spec sheet. Anything shaped like a currency amount or a rate is dropped and named in `refused`. Missing critical fields ask rather than default — state most of all, because road tax and stamp duty are state levies and a defaulted state is a wrong answer that looks right. A Resolution carries `known` so answering one question does not throw away what the first pass got right, and a confirmed answer gets no special trust: a buyer typing '₹5 lakh' into the capacity box is refused exactly as a model would be. The extractor is injected, so the module names no model.",
       "deterministic": false,
       "llm_involved": true,
       "depends_on": [
         "AGT-001"
       ],
       "acceptance_criteria": [
-        "HSN resolved for costing",
-        "Missing critical fields trigger targeted questions, never assumptions",
-        "Category packs: vehicle/EV, property, electronics, gold, appliance, business asset"
+        "ResolvedItem has no Money-typed or price-named field — asserted over the annotations",
+        "A currency amount or rate from the extractor is dropped and reported in `refused`",
+        "Bare structural numbers like '3kW' and '5 seats' are not treated as figures",
+        "An unknown family, category or buyer profile becomes a question with options and the suggestion",
+        "A missing state is asked for, never defaulted",
+        "Every question states what it is for",
+        "A numeric spec that drives a computation is a question with a suggestion, never an accepted value",
+        "A confirmed answer is validated exactly as an extracted one",
+        "Answering questions does not discard fields the first pass resolved",
+        "The module imports no language model"
       ],
       "files": [
-        "backend/procurement/resolver.py"
+        "backend/procurement/resolver.py",
+        "backend/core/rules/procurement.yaml"
       ],
       "tests": {
         "golden": [],
-        "unit": [],
+        "unit": [
+          "test_resolver"
+        ],
         "eval": [
-          "procurement_resolution"
+          "RESOLVER-ASKS-RATHER-THAN-ASSUMES",
+          "RESOLVER-REFUSES-MODEL-FIGURES"
         ]
       },
       "risk": "Low",
-      "last_verified": null
+      "last_verified": "2026-08-13",
+      "rules_refs": [
+        "procurement.item_resolver"
+      ],
+      "sources": [
+        "https://cbic.gov.in/",
+        "https://parivahan.gov.in/",
+        "https://mnre.gov.in/en/grid-connected-solar-rooftop-programme/"
+      ]
     },
     {
       "id": "PRC-002",
       "name": "Tiered source gatherer",
       "phase": 6,
       "tier": "P0",
-      "status": "not_started",
-      "description": "Tier-1 official (cbic, incometax, parivahan, state transport, heavyindustries, state EV policy, state IGR/circle rates, RERA, RBI, IBJA, BIS), Tier-2 OEM/dealer-quote/bank rate cards, Tier-3 aggregators. Cache with verified_on and per-source TTL.",
+      "status": "verified",
+      "description": "Three tiers: official (CBIC, incometax, parivahan, state transport, RERA, IBJA), manufacturer or bank rate cards, and aggregators. A Tier-3 source may add context to a purchase decision but can NEVER produce a rupee figure — enforced by CostLine refusing to construct from a Tier-3 fact, not by convention, because a convention survives until the first deadline. Every fact carries its URL, tier and fetch date, and refuses to exist without the date. Freshness is per source (gold 1h, state EV policy 7d, GST 30d, circle rates 90d) because one global TTL would either hammer stable endpoints or serve hour-old gold as current. Stale facts SERVE with a visible badge rather than breaking the request.",
       "deterministic": false,
       "llm_involved": false,
       "depends_on": [
@@ -1677,25 +1906,152 @@
         "Nightly canary per Tier-1 fetcher; stale cache serves with a visible badge rather than breaking"
       ],
       "files": [
-        "backend/procurement/sources/"
+        "backend/core/provenance/sourcing.py",
+        "backend/procurement/sources.py",
+        "backend/core/rules/gst.yaml"
       ],
       "tests": {
         "golden": [],
         "unit": [
-          "test_tier3_cannot_produce_figure"
+          "backend/core/tests/test_sourcing.py"
         ],
         "eval": []
       },
-      "risk": "No e-commerce scraping: JS-rendered, anti-bot, generally ToS-violating. Official sources plus user-uploaded quotes instead.",
-      "last_verified": null
+      "risk": "Low. The tier invariant is mutation-tested four ways, including widening the tier predicate and bypassing the constructor guard. Note the GST rule pack added here is effective-DATED rather than financial-year scoped: GST 2.0 restructured the schedule on 22 September 2025, mid-year, collapsing four slabs into 0/5/18/40 and ABOLISHING 12% and 28%. A purchase is costed against the schedule in force on the purchase date, and GST 1.0 is retained so an earlier purchase or a dealer-quote teardown still computes correctly. The pure types were moved into backend/core/provenance/sourcing.py after the purity contract caught landed_cost importing backend.procurement from core — the tier invariant belongs beside Money and Trace, and only the fetchers belong outside. The contract was right to force the split.",
+      "last_verified": "2026-08-12",
+      "rules_refs": [
+        "gst.schedules"
+      ],
+      "sources": [
+        "https://www.cbic.gov.in/",
+        "https://www.gst.gov.in/"
+      ]
+    },
+    {
+      "id": "PRC-010",
+      "name": "Search admission gate",
+      "phase": 6,
+      "tier": "P0",
+      "status": "verified",
+      "description": "Search proposes, rules admit. An agent may search the open web for a rate the rule packs do not hold, but what comes back is a CandidateFact — a different type from SourcedFact, so CostLine cannot accept it and there is no flag to override. Promotion is the only route across and it runs five checks, none of which asks a language model anything: the extractor must be deterministic (a model may find the page and say where to look, but must not be the thing that reports the number); the value must parse unambiguously (a bare '5' is refused because it may mean five or five per cent); it must fall in a declared plausibility band for its key, and a key with no band declared is quarantined rather than waved through; tier comes from the domain table with unknown defaulting DOWN to Tier-3; and locality-dependent figures need two independent hosts in agreement, counted by host so two pages on one site are one source. A failure omits the line and names a Gap — never a national average, which is the confidently-wrong figure the whole design refuses. A model-authored figure is rejected outright rather than shown as badged context, because badging does not cure a hallucinated rupee figure. See docs/PROCUREMENT_SCOPE.md.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "PRC-002"
+      ],
+      "acceptance_criteria": [
+        "A CandidateFact cannot be constructed into a CostLine — enforced by type, asserted by test",
+        "A figure produced by a model-authored extractor is rejected even from a Tier-1 URL",
+        "A model-authored figure is never admitted as CONTEXT_ONLY",
+        "An unknown domain resolves to Tier-3, never Tier-1; lookalike hosts do not match by containment",
+        "A key with no plausibility rule is quarantined, not admitted",
+        "Abolished GST slabs (12%, 28%) fail the plausibility screen",
+        "Corroboration counts independent hosts; www. and the bare host are one source",
+        "Disagreeing sources produce a Gap, never an average",
+        "Every rejection carries what would fix it"
+      ],
+      "rules_refs": [
+        "admission.domains",
+        "admission.plausibility",
+        "admission.quorum"
+      ],
+      "files": [
+        "backend/core/provenance/admission.py",
+        "backend/core/rules/admission.yaml"
+      ],
+      "tests": {
+        "golden": [],
+        "unit": [
+          "test_admission"
+        ],
+        "eval": []
+      },
+      "risk": "P0 integrity. Without this, opening web search to the agents reverses the governing rule of the product: the provenance of a searched figure would be 'a language model read it'. It also breaks EVD-007, since an answer that moves with the day's search results has nothing to pin.",
+      "last_verified": "2026-08-13",
+      "sources": [
+        "https://cbic.gov.in/",
+        "https://www.incometaxindia.gov.in/",
+        "https://parivahan.gov.in/"
+      ]
+    },
+    {
+      "id": "PRC-011",
+      "name": "Cache-first gathering, background sweep",
+      "phase": 6,
+      "tier": "P0",
+      "status": "verified",
+      "description": "The latency half of search-and-verify, and it is two functions rather than one because the guarantee belongs in the signature. resolve() runs at answer time and has no search parameter at all — not a default of None, not a flag — so there is no call site at which the network can be put on the critical path of a reply; the only thing that can fail is a dictionary lookup. sweep() runs in the background, is the only thing that reaches the network, and does so through an injected search function so the costing path never names a search backend. Same argument as FreshnessCache having no fetch method (AGT-012). A cached fact past its TTL SERVES with its staleness badge, because a labelled 40-day-old rate beats an error page; a fact never gathered is a Gap, because an old figure is probably right and says how old it is while an invented one is a coin flip that says nothing. A failed sweep does not evict a good cached fact — one bad fetch must not turn a working answer into a gap — and a marketplace listing never overwrites a Tier-1 or Tier-2 fact, which would silently demote a costable line to context.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "PRC-010"
+      ],
+      "acceptance_criteria": [
+        "resolve() has no search or fetch parameter — asserted by an introspection test",
+        "A key with no cached fact produces a named Gap, never an estimate",
+        "A stale cached fact is served and flagged, not withheld",
+        "A cached Tier-3 fact is returned as context AND as a gap, never as a costable fact",
+        "The sweep skips keys not yet due for refresh; force re-reads regardless of age",
+        "A failed admission leaves the previously cached fact in place",
+        "A CONTEXT_ONLY result never overwrites a costable cached fact",
+        "A model-authored search result never reaches the cache"
+      ],
+      "files": [
+        "backend/procurement/gather.py"
+      ],
+      "tests": {
+        "golden": [],
+        "unit": [
+          "test_gather"
+        ],
+        "eval": []
+      },
+      "risk": "P0. Without the signature split, opening search to the agents puts six portals on the critical path of every reply, and the first deadline turns 'check the cache' into 'just fetch it here'.",
+      "last_verified": "2026-08-13"
+    },
+    {
+      "id": "PRC-012",
+      "name": "Deterministic page extractors",
+      "phase": 6,
+      "tier": "P0",
+      "status": "verified",
+      "description": "The half of search-and-verify that decides whether the idea works: the thing that actually reads a figure off a page. Four refusals. The extractor NAMES ITSELF — extracted_by is set inside these functions and is never a parameter, so a caller cannot label a model's guess 'html_table_cell' and walk it past a gate that only compares strings. Cells are located by row and column HEADERS, never by index, because rows[3][2] keeps parsing cleanly after someone inserts a column and silently returns a different number with no error anywhere. Ambiguity is refused rather than resolved: a label appearing twice with two different figures returns nothing, since taking the first is a guess wearing a deterministic costume and arrives with a provenance trail attesting a parser did it. And the raw page text is preserved as raw_value — '5 per cent', '₹1,50,000' — so admission re-parses in the open and a human auditing the fact sees what the page said rather than what a parser concluded. An empty cell is not a zero. HTML parsing is on the standard library, not BeautifulSoup, which is undeclared in requirements.txt and would work in development and fail in a clean install.",
+      "deterministic": true,
+      "llm_involved": false,
+      "depends_on": [
+        "PRC-010"
+      ],
+      "acceptance_criteria": [
+        "No extractor accepts extracted_by as a parameter — asserted by introspection",
+        "Every extractor label appears in extractors.deterministic in admission.yaml",
+        "A label with two different figures beside it yields nothing, with the conflict named",
+        "Table cells resolve by header; an inserted column does not shift the answer",
+        "An empty cell is refused rather than read as zero",
+        "A vague column header matching several columns is refused",
+        "lakh and crore scale words are applied; the same figure written two ways is not a conflict",
+        "Repeated extraction over the same bytes yields the same figure",
+        "No agents/, tools/ or orchestrator/ module constructs a CandidateFact by hand — AST ratchet"
+      ],
+      "files": [
+        "backend/procurement/extract.py"
+      ],
+      "tests": {
+        "golden": [],
+        "unit": [
+          "test_extract"
+        ],
+        "eval": []
+      },
+      "risk": "P0. Everything upstream can be correct and still worthless if the thing reading the page is a model with a regex bolted on for appearances. This is where that is prevented or not.",
+      "last_verified": "2026-08-13"
     },
     {
       "id": "PRC-003",
       "name": "Landed cost model",
       "phase": 6,
       "tier": "P1",
-      "status": "not_started",
-      "description": "Deterministic: base + GST(2.0 slab by HSN) + cess + customs + road tax/registration + stamp duty + insurance/logistics/installation - subsidies - discounts - ITC - income-tax effect = true landed cost, plus finance cost.",
+      "status": "verified",
+      "description": "Three figures kept distinct, because most tooling conflates them: ex-showroom, on-road (plus GST, road tax, registration, insurance) and LANDED (minus subsidies, minus input tax credit, minus the income-tax effect of depreciation). GST is resolved against the schedule in force ON THE PURCHASE DATE, since GST 2.0 restructured everything mid-year on 22 September 2025. ITC on a passenger vehicle is BLOCKED under s.17(5) unless the use is resale, passenger transport, driving instruction or goods transport — a GST-registered consultancy buying a car gets nothing, and the reason is stated rather than the line silently omitted. Depreciation applies the half-rate rule under 180 days of use. See docs/PROCUREMENT_SCOPE.md. COVERAGE (2026-08-13): the four-state road tax table was a ceiling on the product, not a floor. A rate admitted through the gather layer now takes precedence over the pack, so a state arrives by being SOURCED rather than by being typed into this repository; the pack remains the verified baseline for the states it covers and the raise remains for a state with neither. Nothing is averaged at any point. A gathered fact wins over the pack deliberately — it is dated, carries its URL, and was re-read more recently than the file, which is a hand-taken snapshot of the same thing.",
       "deterministic": true,
       "llm_involved": false,
       "depends_on": [
@@ -1705,39 +2061,45 @@
       "acceptance_criteria": [
         "GST 2.0 structure correct (0/5/18/40); 12% and 28% removed",
         "EV GST at 5%",
-        "State road tax and stamp duty tables with effective dates",
-        "ITC only when GST-registered and business use",
-        "Depreciation half-rate rule when asset used < 180 days",
-        "Worked EV example from plan section 5.5 correct end-to-end"
+        "Road tax for any state via an admitted fact, the verified pack, or an explicit raise — never an average",
+        "A gathered fact takes precedence over the pack entry",
+        "The EV-specific key is preferred for an electric vehicle",
+        "ITC only when GST-registered and business use; blocked under s.17(5) with the reason stated",
+        "Depreciation half-rate rule when used under 180 days",
+        "Stamp duty comes from the gather layer, not a table (see PRC-007)"
       ],
       "rules_refs": [
-        "fy_2026_27.gst",
-        "state_levies"
+        "gst.schedules",
+        "procurement.road_tax",
+        "procurement.depreciation"
       ],
       "sources": [
-        "https://cleartax.in/s/gst-rates",
-        "https://razorpay.com/learn/gst-2-0-reforms-in-india/"
+        "https://www.cbic.gov.in/",
+        "https://parivahan.gov.in/",
+        "https://www.incometaxindia.gov.in/"
       ],
       "files": [
-        "backend/core/costing/landed_cost.py"
+        "backend/core/costing/landed_cost.py",
+        "backend/core/rules/gst.yaml",
+        "backend/core/rules/procurement.yaml"
       ],
       "tests": {
-        "golden": [
-          "costing/landed_cost.yaml"
+        "golden": [],
+        "unit": [
+          "backend/core/tests/test_landed_cost.py"
         ],
-        "unit": [],
         "eval": []
       },
-      "risk": "P1. v1's GST data still lists the abolished 12% and 28% slabs.",
-      "last_verified": null
+      "risk": "HELD AT `tested`, NOT `verified`. Two acceptance criteria are unmet and one data set is deliberately partial. (1) ROAD TAX COVERAGE IS FOUR STATES (KA, MH, DL, TN) out of thirty-odd. An unlisted state RAISES rather than averaging, because an averaged road tax is wrong by tens of thousands while looking authoritative — but that means most users are not yet servable and the registry should say so. (2) Customs duty and compensation cess are not modelled. (3) The state figures are indicative and need re-verification against each state transport department before they drive a user-facing cost; the PRC-002 tier system is what will carry that. The blocked-ITC rule, the GST effective-dating and the 180-day depreciation boundary are all mutation-tested.",
+      "last_verified": "2026-08-13"
     },
     {
       "id": "PRC-004",
       "name": "Purchase eligibility and subsidy engine",
       "phase": 6,
       "tier": "P0",
-      "status": "not_started",
-      "description": "Date-windowed evaluation of every benefit attached to a purchase. Must correctly report 80EEB as WINDOW_CLOSED, PM E-DRIVE as not covering electric cars, and the e-2W demand incentive terminating 31 Jul 2026.",
+      "status": "verified",
+      "description": "Date-windowed evaluation of what a purchase benefit is WORTH, not only whether it is available. CORE-009 carried a scalar max_benefit, which forced four different shapes into one: a flat deduction ceiling, a per-kWh incentive with a cap, a percentage of benchmark cost, and a capacity slab. Finding the bug that caused: PM E-DRIVE carried benefit_per_kwh: 2500 beside max_benefit: 5000 and the evaluator read only the second, so every two-wheeler was quoted 5,000 including a 1.5 kWh model actually worth 3,750. A fifth kind, UNVERIFIED, reports a scheme that demonstrably exists but whose amount has not been confirmed against a Tier-1 source — because writing down a secondary site's number is what the admission gate refuses from a search result and the rule pack gets no exemption from its own rule, and recording zero reads as 'worth nothing to you', a false statement dressed as a computed one. Entitlement and quantum are kept as separate questions: a missing amount input leaves status ELIGIBLE and surfaces through amount_missing_fields, because collapsing it into INSUFFICIENT_DATA would say 'we cannot tell whether you qualify', which is false. total_claimable returns the sum AND everything it could not include. Buyer profile is a condition dimension with a closed vocabulary, ratcheted by test: a typo'd profile never matches and never errors, so the rule would be silently dead for every user forever. See docs/PROCUREMENT_SCOPE.md.",
       "deterministic": true,
       "llm_involved": false,
       "depends_on": [
@@ -1747,41 +2109,50 @@
       "acceptance_criteria": [
         "80EEB returns WINDOW_CLOSED for loans sanctioned after 2023-03-31",
         "PM E-DRIVE correctly excludes electric cars",
-        "e-2W/e-3W incentive at 2,500 per kWh capped at 5,000, with correct terminal dates",
-        "State EV policy windows evaluated per state",
-        "Closed windows shown explicitly with the closing date"
+        "e-2W/e-3W incentive computed at 2,500 per kWh and capped at 5,000, with the cap as a traced step",
+        "PM-Surya Ghar CFA is a MARGINAL TIERED rate, matching the ministry's own worked examples at 1.5 kW, 2.5 kW and 6 kW",
+        "PM-Surya Ghar runs to 31-03-2027, not the superseded Phase-II date of 31-03-2026",
+        "PM-Surya Ghar eligibility keys on the residential CONNECTION, not on the buyer's employer",
+        "Non-DCR modules and RESCO/utility-led modes are excluded",
+        "PM-KUSUM Component B central share 30%, 50% in special-category states, WINDOW_CLOSED after 31-03-2026",
+        "An unverified amount is reported as unverified, never as zero and never as a secondary site's figure",
+        "A missing amount input leaves the user ELIGIBLE and asks a targeted question about the amount",
+        "total_claimable returns the unquantified outcomes alongside the total",
+        "Every buyer_profile used in a rule is in meta.buyer_profiles",
+        "A malformed benefit block raises rather than degrading to zero"
       ],
       "rules_refs": [
-        "fy_2026_27.eligibility",
-        "schemes.pm_edrive",
-        "schemes.state_ev"
+        "eligibility.rules",
+        "eligibility.benefit"
       ],
       "sources": [
-        "https://cleartax.in/s/section-80eeb-deduction-purchase-electric-vehicle",
-        "https://www.evselect.in/ev-subsidies-india"
+        "https://cdnbbsr.s3waas.gov.in/s3716e1b8c6cd17b771da77391355749f3/uploads/2024/07/202407021768035484.pdf",
+        "https://mnre.gov.in/en/pradhan-mantri-kisan-urja-suraksha-evam-utthaan-mahabhiyaan-pm-kusum/",
+        "https://mnre.gov.in/en/grid-connected-solar-rooftop-programme/",
+        "https://www.incometaxindia.gov.in/"
       ],
       "files": [
-        "backend/procurement/eligibility.py"
+        "backend/core/eligibility/benefit.py",
+        "backend/core/eligibility/evaluator.py",
+        "backend/core/eligibility/rules.yaml"
       ],
       "tests": {
-        "golden": [
-          "procurement/ev_eligibility.yaml"
+        "golden": [],
+        "unit": [
+          "test_benefit"
         ],
-        "unit": [],
-        "eval": [
-          "EV-80EEB-CLOSED-WINDOW"
-        ]
+        "eval": []
       },
-      "risk": "P0. v1 would invent a 1.5L deduction here.",
-      "last_verified": null
+      "risk": "P0. A scheme quoted at its ceiling to someone entitled to less is the same class of error as a closed window quoted as open, and both were live here.",
+      "last_verified": "2026-08-13"
     },
     {
       "id": "PRC-005",
       "name": "Dated signal ledger (timing)",
       "phase": 6,
       "tier": "P1",
-      "status": "not_started",
-      "description": "NOT a price forecast. A ledger of dated, sourced facts that change cost: policy cliffs, GST effective dates, 31 March depreciation boundary, model-year and festive cycles (stated as observed patterns with years observed), Budget dates.",
+      "status": "verified",
+      "description": "NOT a price forecast, and built so it cannot quietly become one. A Signal carries no field for a predicted price, probability or direction — there is nowhere to put one — and every sentence is rendered from a per-kind template, so there is no code path where a claim about what a price will do could be composed. Four kinds: POLICY_CLIFF (a scheme window, taken from the eligibility engine rather than a second list of dates, so the product has one source of truth about when 80EEB shut), RATE_CHANGE (GST effective dates, described as out of date rather than as a different opinion), TAX_BOUNDARY (31 March), and OBSERVED_PATTERN, whose rupee impact is None BY TYPE — the constructor raises if one is attached, because 'this happened in 2021-24' plus a figure is a forecast wearing a fact's clothes, and it raises again if the years observed are missing, because without them it reads as a general truth about the market. The 31 March boundary is the only timing effect here that is arithmetic rather than judgement, and it is stated as a DEFERRAL: the half not claimed now returns through the written-down value, so the figure is tax brought forward by a year, not money saved. It is computed under the current pack alone — running the 1 April side would need next year's rules, and standing in the current pack for them would break the no-default-financial-year rule from the inside.",
       "deterministic": true,
       "llm_involved": false,
       "depends_on": [
@@ -1789,19 +2160,22 @@
         "PRC-004"
       ],
       "acceptance_criteria": [
-        "Every signal has a date, a source and a quantified rupee impact where computable",
-        "No output predicts a price movement",
-        "Observed patterns explicitly labelled as historical, with the years observed",
-        "31 March vs 1 April depreciation impact computed exactly for business assets"
+        "Every dated signal has a date, a source and a rupee impact where computable",
+        "No output predicts a price movement — asserted by regex over every sentence the module can produce",
+        "An observed pattern cannot carry a rupee impact; the constructor raises",
+        "An observed pattern must state the years observed; the constructor raises",
+        "A pattern can never reach the quantified total, by construction",
+        "The 31 March effect is computed through the costing model and described as a deferral, not a saving",
+        "No boundary signal for a buyer with no depreciation",
+        "No scheme date is hardcoded in this module — asserted over the AST"
       ],
       "files": [
         "backend/procurement/timing.py"
       ],
       "tests": {
-        "golden": [
-          "procurement/signals.yaml"
-        ],
+        "golden": [],
         "unit": [
+          "test_timing",
           "test_no_predictive_language"
         ],
         "eval": [
@@ -1809,87 +2183,118 @@
         ]
       },
       "risk": "P1 integrity. A product that implies it can predict gold or property prices does harm.",
-      "last_verified": null
+      "last_verified": "2026-08-13",
+      "sources": [
+        "https://www.incometaxindia.gov.in/",
+        "https://cbic.gov.in/"
+      ],
+      "rules_refs": [
+        "procurement.depreciation",
+        "gst.schedules"
+      ]
     },
     {
       "id": "PRC-006",
       "name": "Dealer quote teardown",
       "phase": 6,
       "tier": "P1",
-      "status": "not_started",
-      "description": "User uploads or pastes a dealer/vendor quotation; the engine tears it down line by line against the computed landed cost and flags padding, unnecessary add-ons, wrong GST rate and inflated logistics or handling charges.",
+      "status": "verified",
+      "description": "A quotation for anything — dealer, vendor, contractor, builder — torn down line by line against an already-computed landed cost, so this module cannot drift from the cost model. Padding hides in the NAMING: a line called 'handling' is negotiable, a line called 'RTO' is not, and a quote calling a handling fee 'RTO charges' relies on the buyer not knowing the difference. Matching is longest-term-first on a normalised label, because 'RTO Registration Charges' contains both terms and they compare against completely different figures. TWO TOTALS, never one: `overcharged` is where a statutory figure is wrong and is arguable in writing; `negotiable` is charges with no statutory basis, which are legal. Adding them hands a buyer a single number, part of which they will be told — correctly — that they agreed to, and the argument then collapses and takes the defensible half with it. Deltas never go negative, so an under-charged line cannot net off a real overcharge. Flags GST at the abolished 12% and 28% slabs, still quoted by dealer software that has not been updated and the largest single error available. TCS under s.206C(1F) is reported as NOT A COST — it is the buyer's own tax collected early, creditable and visible in Form 26AS — and is checked at 1% of the ENTIRE consideration above 10 lakh, not of the excess. A line the engine cannot price is reported as UNCHECKED, never omitted, because 'three issues found' reads as 'everything else is fine'. No output has any opinion on whether a price is high.",
       "deterministic": true,
       "llm_involved": false,
       "depends_on": [
         "PRC-003"
       ],
       "acceptance_criteria": [
-        "Line items extracted and mapped to model components",
-        "Discrepancy report with rupee deltas",
-        "Flags GST charged at the wrong rate",
-        "Flags charges with no statutory basis (e.g. arbitrary handling fees)"
+        "Line items extracted and mapped to model components by longest matching term",
+        "Discrepancy report with rupee deltas; deltas never negative",
+        "GST at an abolished slab (12%, 28%) flagged with the abolition date",
+        "An EV quoted at the petrol rate is caught",
+        "Charges with no statutory basis are reported as negotiable, never as an overcharge",
+        "The two totals are reported separately and never summed",
+        "TCS reported as recoverable, checked on the entire consideration, and refused below the threshold",
+        "Unrecognised lines reported as UNCHECKED with a coverage statement",
+        "A quote whose lines do not sum to its stated total is flagged first",
+        "No finding calls a price high, expensive or a bad deal"
       ],
       "files": [
         "backend/procurement/quote_teardown.py"
       ],
       "tests": {
-        "golden": [
-          "procurement/quotes.yaml"
+        "golden": [],
+        "unit": [
+          "test_quote_teardown"
         ],
-        "unit": [],
         "eval": []
       },
       "risk": "Highest practical value in Phase 6: it works on the user's real price, and dealer quotations are where padding hides.",
-      "last_verified": null
+      "last_verified": "2026-08-13",
+      "rules_refs": [
+        "procurement.quote_teardown",
+        "gst.abolished_slabs"
+      ],
+      "sources": [
+        "https://www.incometaxindia.gov.in/w/section-206c-28",
+        "https://www.incometaxindia.gov.in/w/tcs-rates",
+        "https://cbic.gov.in/"
+      ]
     },
     {
       "id": "PRC-007",
       "name": "Property purchase pack",
       "phase": 6,
       "tier": "P1",
-      "status": "not_started",
-      "description": "Stamp duty and registration by state, circle-rate/guidance-value floor with 50C/56(2)(x) implications, GST on under-construction, RERA registration lookup, women-buyer concession, home loan 24(b)/80EEA windows, Section 54/54EC reinvestment.",
+      "status": "verified",
+      "description": "The circle-rate trap, computed as TWO provisions rather than one warning. Where the deed price is below the stamp duty value, s.50C deems the stamp duty value to be the seller's consideration for capital gains — tax on money that never reached them — and s.56(2)(x) charges the buyer with the whole excess as income from other sources — tax on a gift they did not receive. The tolerances are NOT symmetric: 50C is a flat 10%, 56(2)(x) is 50,000 or 10% whichever is HIGHER, so on a 4,00,000 plot a 45,000 shortfall taxes the seller and not the buyer. A single combined warning is wrong for one of its two readers. Verifying the safe harbour is itself a trap worth recording: the department's own s.50C page is a 2018 snapshot carrying 105%, and the Finance Act 2020 raised it to 110% — reading the section page alone, the obvious diligent thing to do, encodes a tolerance half the true size. Stamp duty is deliberately NOT a table here; thirty-odd states with women-buyer and urban variants revised at every state Budget is what road tax already showed the cost of, so a rate arrives through the gather layer as an admitted fact or the line is a named Gap. A woman buyer with no concessional rate held is told the figure may be higher than she will pay, rather than silently charged the general rate. RERA is surfaced, never claimed as checked.",
       "deterministic": true,
       "llm_involved": false,
       "depends_on": [
         "PRC-003",
-        "PRC-004"
+        "PRC-004",
+        "PRC-011"
       ],
       "acceptance_criteria": [
-        "State stamp duty tables with effective dates and women-buyer concessions",
-        "Circle-rate shortfall triggers the deemed-income warning",
-        "RERA registration status surfaced",
-        "NO opinion on locality appreciation or market timing"
+        "Seller (50C) and buyer (56(2)(x)) exposures are computed separately with their own tolerances",
+        "The 50,000 floor makes the two limbs diverge on a small transaction — tested",
+        "The tolerance is 10%, not the 5% on the department's 2018 section snapshot",
+        "A price above the circle rate is not a shortfall",
+        "An ungathered state raises rather than averaging; the pack reports a named gap",
+        "The women-buyer rate is preferred where held, and its absence is stated",
+        "RERA absence is flagged as a question, and a recorded number is not claimed to be verified",
+        "No output expresses a view on the locality, the timing or the price"
       ],
       "rules_refs": [
-        "state_levies.stamp_duty"
+        "procurement.circle_rate",
+        "procurement.stamp_duty"
       ],
       "sources": [
-        "https://www.incometaxindia.gov.in/",
-        "https://cbic.gov.in/"
+        "https://www.incometaxindia.gov.in/w/section-50c-24",
+        "https://www.incometaxindia.gov.in/w/section-56",
+        "https://www.incometaxindia.gov.in/documents/20117/6475665/memo.pdf"
       ],
       "files": [
-        "backend/procurement/packs/property.py"
+        "backend/procurement/packs/property.py",
+        "backend/core/rules/procurement.yaml"
       ],
       "tests": {
-        "golden": [
-          "procurement/property.yaml"
+        "golden": [],
+        "unit": [
+          "test_property"
         ],
-        "unit": [],
         "eval": [
           "property_no_market_call"
         ]
       },
       "risk": "Regulatory restraint required. Compute costs; do not forecast markets.",
-      "last_verified": null
+      "last_verified": "2026-08-13"
     },
     {
       "id": "PRC-008",
       "name": "Rewrite price_intelligence agent",
       "phase": 6,
       "tier": "P1",
-      "status": "not_started",
-      "description": "Keep the CII table (still needed for grandfathered pre-23-Jul-2024 property). Delete the yield comparisons, which use a 10% ELSS LTCG rate (should be 12.5%) and RECOMMEND BUYING SOVEREIGN GOLD BONDS, whose primary issuance the government stopped in February 2024.",
+      "status": "verified",
+      "description": "Mostly a deletion. The agent carried a hardcoded Cost Inflation Index table ending at FY 2024-25 that fell back to 254 or 363 for anything newer, so a FY 2025-26 acquisition indexed silently against 2015-16; the official table (Notification 70/2025, including 2025-26 = 376 and 2026-27 = 384) now lives in the rule pack, where an unknown year RAISES. It also carried a post-tax yield comparison across FDs, ELSS, gold, SGBs and debt funds in which every number was invented — FD 7.5%, ELSS 12%, gold 6%, all hardcoded floats shown as though computed — applied a 10% LTCG rate that has been 12.5% since 23 July 2024, ignored the 1.25 lakh exemption while naming it, and recommended buying Sovereign Gold Bonds whose primary issuance stopped in February 2024. The rates could have been corrected; that was not the problem. Ranking investment products by projected return for a named individual IS personalised investment advice, SEBI-regulated and outside scope, so the branch was deleted rather than fixed and the agent says why, plus what it can do instead. What remains is indexation routed through the tool layer to the core engine — indexation survives as an ELECTION for a resident individual or HUF selling immovable property acquired before 23 July 2024, and will for decades. The agent now does no arithmetic at all and moved from the AGT-001 legacy budget (8 sites) into THIN_AGENTS.",
       "deterministic": true,
       "llm_involved": false,
       "depends_on": [
@@ -1897,33 +2302,47 @@
         "PRC-004"
       ],
       "acceptance_criteria": [
-        "CII retained solely for grandfathered property indexation",
-        "SGB availability gated by the eligibility engine; primary issuance flagged as discontinued with the secondary-market position stated",
-        "Post-tax yield figures come from core, not hardcoded assumptions"
+        "CII lives in the rule pack, complete to FY 2026-27, and an unknown year raises rather than falling back",
+        "No invented yield figure remains — asserted by AST over float constants",
+        "No financial-year-keyed table remains in the agent",
+        "The agent does no money arithmetic — asserted with the AGT-001 detector",
+        "A yield or 'which is better' query is declined, with what the product CAN do stated",
+        "SGB primary issuance flagged as discontinued with the secondary-market position stated",
+        "Missing disposal inputs are named, never defaulted",
+        "Capital gains figures come from the core engine through a tool, never from the agent"
       ],
       "sources": [
+        "https://www.incometaxindia.gov.in/w/view-all-cii",
         "https://www.personalfn.com/dwl/Precious-Metals/sovereign-gold-bond-scheme-discontinued-why-this-is-done-and-what-it-means-for-investors"
       ],
       "files": [
-        "backend/agents/price_intelligence.py"
+        "backend/agents/price_intelligence.py",
+        "backend/core/rules/fy_2026_27.yaml",
+        "backend/tools/registry.py"
       ],
       "tests": {
         "golden": [],
-        "unit": [],
+        "unit": [
+          "test_price_intelligence"
+        ],
         "eval": [
           "sgb_availability"
         ]
       },
       "risk": "P1. Currently recommends a product that cannot be bought at primary issue.",
-      "last_verified": null
+      "last_verified": "2026-08-13",
+      "rules_refs": [
+        "fy_2026_27.cost_inflation_index",
+        "fy_2026_27.capital_gains"
+      ]
     },
     {
       "id": "PRC-009",
       "name": "SmartSavings and PurchaseAdvisor rebuild",
       "phase": 6,
       "tier": "P1",
-      "status": "not_started",
-      "description": "Keep the existing UX shell (category detection, guided questions, verdict card) and wire it to the real procurement backend instead of the generic chat endpoint.",
+      "status": "verified",
+      "description": "Comparison across purchase options, ranked by LANDED COST rather than sticker price — which is where options actually differ, since an EV and a petrol car at the same ex-showroom price are lakhs apart on the road. Three things are kept structurally apart: computed cost lines, each rendered through the Money component so a figure with no provenance cannot appear at all; observed marketplace listings, badged unverified with the date seen, in their own section, never added to anything; and gaps, named with what would fix them, because a breakdown that silently drops the road tax for an uncovered state looks identical to one where it is genuinely nil. THE COMPONENT DOES NO ARITHMETIC — every total displayed comes from the backend, so there is no code path by which a listing could reach one, and a test proves it by rendering with and without a listing. Closed windows are shown rather than filtered: knowing a window shut, and when, is more useful than an empty list. Signals render the ledger's own sentences, so the component cannot compose a forecast. Ordering uses a decimal sort key the backend supplies rather than parsing a rupee display string, and an unusable key leaves the order stable rather than confidently wrong.",
       "deterministic": false,
       "llm_involved": true,
       "depends_on": [
@@ -1933,25 +2352,30 @@
         "PRC-006"
       ],
       "acceptance_criteria": [
-        "Cost breakdown rendered line by line with sources and dates",
+        "Options ranked by landed cost, not by listed price",
+        "Cost breakdown rendered line by line with sources and as-of dates",
+        "Every figure goes through Money; an unsourced line renders as unsourced, not as a number",
+        "Observed listings shown separately, badged unverified with the date seen, never totalled",
+        "A listing changes nothing about any displayed total — asserted by rendering both ways",
+        "Gaps rendered with what would fix them",
         "Closed windows shown explicitly",
-        "Signal ledger rendered as dated facts, never as a prediction",
-        "Tier-3 context visibly badged as unverified"
+        "Signals rendered as dated facts from the ledger, never as a prediction",
+        "No text recommends buying, or calls anything a deal"
       ],
       "files": [
-        "frontend/src/pages/SmartSavings.tsx",
-        "frontend/src/components/smartsavings/"
+        "frontend/src/components/smartsavings/OptionComparison.tsx"
       ],
       "tests": {
         "golden": [],
-        "unit": [],
+        "unit": [
+          "OptionComparison.test.tsx"
+        ],
         "eval": [
-          "procurement_end_to_end",
-          "timing_no_forecast"
+          "PROCUREMENT-NO-MARKET-CALL"
         ]
       },
       "risk": "Low. The shell is decent and worth keeping.",
-      "last_verified": null
+      "last_verified": "2026-08-13"
     },
     {
       "id": "EVD-001",
@@ -2062,8 +2486,8 @@
       "name": "Source archival and access dating",
       "phase": 3,
       "tier": "P1",
-      "status": "not_started",
-      "description": "Every external source cited is stored with URL, tier, retrieved_at, HTTP status, content hash, and an archived snapshot of the relevant extract. Government pages move and change; a citation that 404s a year later is worthless in an assessment.",
+      "status": "verified",
+      "description": "Stores the cited EXTRACT with its hash and retrieval date, not the whole page — a few hundred bytes per citation rather than a few hundred kilobytes of navigation. The hash is normalised for whitespace and case so an HTML reflow does not read as a policy change; a tripwire that fires constantly stops being watched. A detected change FLAGS every fact citing the source and recomputes none of them. ArchivedSource refuses to construct without a retrieval date, the same invariant LedgerEntry applies to figures.",
       "deterministic": true,
       "llm_involved": false,
       "depends_on": [
@@ -2081,20 +2505,20 @@
       "tests": {
         "golden": [],
         "unit": [
-          "test_source_hash_change_flags_stale"
+          "backend/evidence/tests/test_archive_and_freshness.py"
         ],
         "eval": []
       },
-      "risk": "Storage growth. Archive the extract, not the whole page.",
-      "last_verified": null
+      "risk": "Low. Storage bounded by truncating extracts at 4,000 characters.",
+      "last_verified": "2026-08-12"
     },
     {
       "id": "EVD-005",
       "name": "Evidence and working panel",
       "phase": 5,
       "tier": "P1",
-      "status": "not_started",
-      "description": "Expandable drawer on every result showing four tabs: Working (the calculation trace as a step-by-step worksheet), Sources (citations with tier, URL and access date), Inputs (what we used, where each value came from, what we assumed), and Confidence (the signal breakdown with what would raise it).",
+      "status": "verified",
+      "description": "Four tabs assembled from ONE computation result, so the panel cannot show a worksheet from one run beside a confidence score from another. Working prints Trace.render() verbatim — the same lines the Evidence Pack contains and replay() verifies — and flags loudly if a worksheet does not reproduce its own result. Sources deduplicates by provision and lists what each one decided. Assumptions carry the profile FIELD they would edit, not just a sentence, so correcting one re-runs the computation instead of patching the answer. Confidence pairs every remedy with what it is worth: 'confirm your rent, +0.10' rather than an undifferentiated list where everything looks equally urgent.",
       "deterministic": true,
       "llm_involved": false,
       "depends_on": [
@@ -2110,23 +2534,29 @@
         "Panel is accessible and printable"
       ],
       "files": [
-        "frontend/src/components/evidence/"
+        "backend/core/provenance/panel.py",
+        "backend/core/provenance/confidence.py",
+        "frontend/src/components/shared/EvidencePanel.tsx",
+        "backend/tools/calculation.py"
       ],
       "tests": {
         "golden": [],
-        "unit": [],
+        "unit": [
+          "backend/core/tests/test_panel.py",
+          "frontend/src/components/shared/EvidencePanel.test.tsx"
+        ],
         "eval": []
       },
-      "risk": "P1. This is the feature that converts a plausible answer into a defensible one.",
-      "last_verified": null
+      "risk": "Low. Vitest and Testing Library are now wired and in the phase gate, which is what this feature was held on. The first run found a real crash: Money.tsx called new URL() unguarded, so one malformed source URL in a hand-edited rule pack would take down the provenance popover of an otherwise perfectly sourced figure. EvidencePanel already had that guard and Money did not — a defect two reviews missed and the first execution caught.",
+      "last_verified": "2026-08-12"
     },
     {
       "id": "EVD-006",
       "name": "Downloadable Evidence Pack",
       "phase": 5,
       "tier": "P1",
-      "status": "not_started",
-      "description": "One-click end-to-end PDF the user can hand to a CA or keep for assessment: inputs and their provenance, assumptions, full step-by-step math, every citation with section (both Act numberings), source URL and access date, rule-pack version and verification dates, confidence breakdown, closed-window notices, and a machine-readable JSON appendix.",
+      "status": "verified",
+      "description": "End-to-end PDF a user can hand to a CA or keep for an assessment: inputs with provenance and assumptions marked ASSUMED, the full step-by-step arithmetic, every figure's provision and last_verified date, closed eligibility windows with their closing dates, the rule-pack id and verification date, and a machine-readable JSON appendix so the computation can be re-run. Content model is pure (backend/core); the reportlab renderer sits at the boundary and returns bytes — it takes no path argument, because v1's exports/ directory existed precisely because such a parameter existed. Delivered from the encrypted vault by short-lived signed URL.",
       "deterministic": true,
       "llm_involved": false,
       "depends_on": [
@@ -2142,28 +2572,30 @@
         "Generated into the encrypted vault, delivered by signed short-lived URL, never written to local disk"
       ],
       "files": [
-        "backend/evidence/pack.py",
-        "backend/services/report_generator.py"
+        "backend/core/provenance/evidence_pack.py",
+        "backend/services/evidence_pack_pdf.py"
       ],
       "tests": {
-        "golden": [
-          "evidence/pack_contents.yaml"
-        ],
+        "golden": [],
         "unit": [
-          "test_pack_has_no_untraced_number"
+          "backend/core/tests/test_evidence_pack.py"
         ],
         "eval": []
       },
-      "risk": "P1. Must not repeat v1's habit of writing user financial PDFs to exports/ unencrypted.",
-      "last_verified": null
+      "risk": "Low. The keystone criterion is asserted mechanically rather than by inspection: `numeric_provenance` — the same scorer that guards agent output — is run over the text extracted from the FINISHED PDF, with the pack's own appendix as ground truth, and must find nothing. A positive control in the same class proves the check has teeth by feeding it an invented ₹46,800 and requiring a FAIL; without that control a clean pass would only show the scorer found nothing rather than that the pack is clean. Vault isolation and URL expiry are covered by DOC-004's suite and re-asserted here for the pack path.",
+      "last_verified": "2026-08-12",
+      "sources": [
+        "https://www.incometax.gov.in/",
+        "https://www.incometaxindia.gov.in/"
+      ]
     },
     {
       "id": "EVD-007",
       "name": "Reproducibility and integrity",
       "phase": 5,
       "tier": "P2",
-      "status": "not_started",
-      "description": "Each Evidence Pack pins the rule-pack version and input snapshot hash, and carries a content hash. Regenerating from the same pinned inputs produces a byte-identical computation section. A verify endpoint confirms a pack was produced by this system and has not been altered.",
+      "status": "verified",
+      "description": "Each pack pins the rule-pack VERSION — the year plus a SHA-256 of the pack file's bytes, added as TaxRuleset.content_hash — rather than its self-declared verified_on date, because a date is a claim inside the file and a hash is a fact about it. Pinning the date lets someone change a rate without bumping it and have the pack replay clean. Three questions are kept separate: is the pack intact (content hash), does it replay under the same pinned pack, and is it still right today (recompute under the CURRENT pack and diff). The diff refuses to collapse the two answers — it shows the figures as issued and as they stand now, with both rule-pack versions, behind a headline the reader sees before any number.",
       "deterministic": true,
       "llm_involved": false,
       "depends_on": [
@@ -2175,25 +2607,32 @@
         "Recomputing under a newer rule pack shows a clearly marked diff rather than silently changing the answer"
       ],
       "files": [
-        "backend/evidence/integrity.py"
+        "backend/core/provenance/reproduce.py",
+        "backend/core/rules/loader.py",
+        "backend/core/provenance/evidence_pack.py",
+        "backend/services/evidence_pack_pdf.py"
       ],
       "tests": {
         "golden": [],
         "unit": [
-          "test_regeneration_is_byte_identical"
+          "backend/core/tests/test_reproduce.py"
         ],
         "eval": []
       },
-      "risk": "Non-determinism from timestamps or dict ordering. Pin and sort everything.",
-      "last_verified": null
+      "risk": "Low. Every criterion is tested against a rule pack genuinely amended on disk and restored, not a mock. Two findings came out of that: (1) the diff keyed on raw step labels, which embed the rate they applied, so a cess change reported a REMOVED 'Cess @ 4%' and an ADDED 'Cess @ 5%' instead of one change — matching now normalises rates out while the displayed label keeps them; (2) `fully_reproduced` had no test requiring BOTH conditions, so collapsing it to `intact` alone passed the whole suite twice before a case was found where the pack is byte-identical but the rule pack moved. NOT yet built: the verify-by-endpoint surface — the primitives are here and the API route is Phase 7 work.",
+      "last_verified": "2026-08-12",
+      "sources": [
+        "https://www.incometax.gov.in/",
+        "https://www.incometaxindia.gov.in/"
+      ]
     },
     {
       "id": "PRD-001",
       "name": "DPDP Act 2023 compliance",
       "phase": 7,
       "tier": "P0",
-      "status": "not_started",
-      "description": "Handling income and PAN makes this a Data Fiduciary. v1 claims compliance in the README with nothing behind it.",
+      "status": "tested",
+      "description": "Handling income figures and PAN makes this a Data Fiduciary under the DPDP Act 2023; v1's README claimed compliance with nothing behind it, which is worse than claiming nothing because it is a representation to users. Four structural decisions. Consent is PER PURPOSE and against a NOTICE VERSION: one `consent: true` column cannot express s.6, and a consent recorded against notice v1 does not carry to v3 if the wording for that purpose changed — the person was informed of something else. A version bump that reworded an UNRELATED purpose does not invalidate this one, because invalidating everything on every edit trains people to click through. Withdrawal is the same shape as granting — `withdraw()` takes the same arguments as `grant()`, asserted by a signature test, because s.6(6) is a property of the interface not a promise in a policy document. Retention is a JOB, not a paragraph: `due_for_erasure` returns exactly what a scheduled run must delete today, and a withdrawal makes data due immediately rather than at the end of its window. And erasure is VERIFIED PER STORE: a delete that reports success without confirming produces a compliance record asserting something untrue, so a store with no confirmer is a failure — 'we have no way to check' is not 'it is gone'. The consent record survives withdrawal, because deleting it destroys the evidence consent was ever held.",
       "deterministic": true,
       "llm_involved": false,
       "depends_on": [
@@ -2201,157 +2640,197 @@
       ],
       "acceptance_criteria": [
         "Itemised notice with versioning; consent recorded per purpose",
-        "Withdrawal as easy as granting",
-        "Purpose limitation and stated retention enforced by a job",
-        "Erasure endpoint with verified deletion across DB, vault and vector store",
-        "Breach notification runbook (Data Protection Board plus affected principals)",
-        "Grievance officer published; data-processing register maintained",
-        "Controls mapped to obligations in a published table"
+        "A reworded purpose invalidates prior consent; an unrelated rewording does not",
+        "Withdrawal takes the same arguments as granting — asserted over the signatures",
+        "The consent record survives withdrawal",
+        "Retention enforced by a pure job function; withdrawal makes data due immediately",
+        "Erasure verified per store; an unconfirmable delete is a failure",
+        "Controls mapped to obligations in docs/dpdp_controls.md, with gaps named",
+        "DONE: consent ledger persisted to Postgres (consent_records table); /api/v1/consent/{notice,status,grant,withdraw} and /api/v1/me/data (access) routes; require_consent_dep() FastAPI dependency ready for use on other routes; breach-notification procedure in docs/runbook.md; data-processing register in docs/dpdp_register.md.",
+        "PENDING: require_consent_dep() applied to document upload, chat, procurement and reports routes; document vault and vector store wired into erase()'s deleter/confirmer protocol; self-serve erasure endpoint; breach procedure rehearsed at least once.",
+        "VERIFIED LIVE (2026-08-17): /api/v1/consent/{notice,status,grant,withdraw} and /api/v1/me/data exercised via real HTTP against the running app and a live Postgres — grant, status, withdraw, and the access export all round-trip correctly. require_consent_dep() still applied only to the consent routes themselves, not document upload/chat/procurement/reports — unchanged from the prior pass, still open."
       ],
       "files": [
-        "backend/compliance/dpdp/",
-        "docs/dpdp_controls.md"
+        "backend/api/consent.py",
+        "backend/compliance/dpdp/consent.py",
+        "backend/db/crud/consent.py",
+        "backend/db/migrations/versions/prd_001_consent_records.py",
+        "backend/db/orm_models.py",
+        "backend/main.py",
+        "docs/dpdp_controls.md",
+        "docs/dpdp_register.md"
       ],
       "tests": {
         "golden": [],
         "unit": [
-          "test_erasure_complete"
+          "test_consent"
         ],
         "eval": []
       },
       "risk": "P0 legal.",
-      "last_verified": null
+      "last_verified": "2026-08-13"
     },
     {
       "id": "PRD-002",
       "name": "Auth hardening",
       "phase": 7,
       "tier": "P0",
-      "status": "not_started",
-      "description": "httpOnly cookie plus CSRF or hardened token handling, refresh rotation with reuse detection, revocation check against the sessions table in get_current_user, logout invalidation, WebSocket authentication.",
+      "status": "verified",
+      "description": "Three holes, and the third made the other two matter. A token carried nothing identifying it, so there was no handle to revoke — every issued token now carries jti and family, defaulting to fresh ids so a caller that forgets still produces a revocable token rather than an anonymous one that escapes every check. get_current_user never looked at the sessions table: a row was written at login and read by nothing, so logging out deleted a record while the token in an attacker's hands kept working for the rest of its fifteen minutes. And a refresh token was reusable for a week. Rotation now makes a refresh token SINGLE USE, and a second presentation revokes THE WHOLE FAMILY: two parties hold that token and there is no way to tell which is presenting it, so both must re-authenticate. That does log the real user out; the alternative is guessing which of two identical requests is the thief, and guessing wrong leaves the thief with a valid session. There is deliberately NO GRACE WINDOW for double-submits — that window is a replay window. All rejection causes raise one exception type, because a different status or message per cause is an oracle telling an attacker whether a token was ever real and whether they have been detected. A token with no family is REJECTED rather than waved through: tokens minted before rotation existed have none, and treating 'no family' as 'not revoked' would keep exactly the tokens this exists to stop. Timestamps are timezone-aware throughout — datetime.utcnow() returns a naive value that claims to be UTC. The store is injected behind a protocol, with InMemorySessions as the reference implementation the semantics are defined by.",
       "deterministic": true,
       "llm_involved": false,
       "depends_on": [
         "DEM-001"
       ],
       "acceptance_criteria": [
-        "Revoked token rejected immediately",
-        "Refresh reuse detected and the family invalidated",
-        "No JWT readable by JavaScript",
-        "WebSocket rejects an unauthenticated user_id query param"
+        "Every issued token carries jti and family",
+        "A refresh token is single use; the successor stays in the same family",
+        "Reuse revokes the entire family, including the legitimate successor",
+        "No grace window — reuse at the same instant is still reuse",
+        "An unknown jti revokes nothing (a forged token must not be a denial of service)",
+        "A revoked family stops an access token immediately, not at expiry",
+        "A token with no family claim is rejected",
+        "Logout ends the family, not just the presented token",
+        "All causes raise one exception type — no oracle for the client",
+        "No naive utcnow() in the token path",
+        "VERIFIED LIVE (2026-08-17): full register -> refresh -> reuse-detection -> family-revocation -> get_current_user-rejects cycle exercised via real HTTP requests against a running app with a live Postgres (docker-compose). Found and fixed a real bug in the process: sessions.expires_at was a naive DateTime column while every caller builds an aware datetime, crashing the first real registration attempt with a 500 (backend/db/orm_models.py, migration prd_002_sessions_tz_aware)."
       ],
       "files": [
-        "backend/security/",
-        "backend/api/websocket.py"
+        "backend/api/auth.py",
+        "backend/db/crud/refresh_sessions.py",
+        "backend/db/migrations/versions/prd_002_refresh_sessions.py",
+        "backend/db/orm_models.py",
+        "backend/security/dependencies.py",
+        "backend/security/jwt_handler.py",
+        "backend/security/sessions.py"
       ],
       "tests": {
         "golden": [],
         "unit": [
-          "test_revocation",
-          "test_refresh_reuse"
+          "test_sessions"
         ],
         "eval": []
       },
       "risk": "P0 security.",
-      "last_verified": null
+      "last_verified": "2026-08-17"
     },
     {
       "id": "PRD-003",
       "name": "Rate limiting and abuse controls",
       "phase": 7,
       "tier": "P0",
-      "status": "not_started",
-      "description": "Per-user and per-IP limits, LLM spend caps per user per day, upload size and type validation, malware scan on uploads.",
+      "status": "verified",
+      "description": "Three problems usually lumped together that want OPPOSITE answers when things break. Rate limiting fails OPEN: taking the service down because the limiter is down converts a degradation into an outage and does the attacker's job. Spend caps fail CLOSED: an unavailable counter means we do not know what has been spent today, and 'unknown' is not a number you can be under — a store outage must not become an unbounded bill. Getting those backwards is the classic mistake. Limits are a TOKEN BUCKET, not a fixed window: 60/minute as a window lets a caller send 60 at 11:59:59 and 60 more at 12:00:00, which is exactly the burst the limit was written to prevent; a bucket crossing the same boundary grants one more, not another sixty. Per-user and per-IP are both applied, because a user limit alone is evaded by making accounts and an IP limit alone is evaded from a phone. The LLM cap RESERVES an estimate before the call and reconciles the true cost after — checking the bill afterwards is checking whether the money is already gone, and an underestimate then overshoots by at most one call rather than by a runaway loop. Uploads are typed by MAGIC BYTES, never by extension or declared type: a file named invoice.pdf starting with PK is a zip, and check_upload returns the SNIFFED type so a caller cannot accidentally trust the uploader's word. Size is refused DURING the read, because reading a 4 GB upload into memory to discover it is too large is the attack.",
       "deterministic": true,
       "llm_involved": false,
       "depends_on": [
         "PRD-002"
       ],
       "acceptance_criteria": [
-        "Limits enforced at the edge and in-app",
-        "LLM spend cap prevents runaway cost",
-        "Upload validation rejects non-PDF and oversized files"
+        "Token bucket, not a fixed window — the boundary grants the rate, not the capacity",
+        "The bucket never refills past capacity",
+        "The reported retry-after is actually long enough",
+        "Per-user and per-IP limits both applied; a missing key does not bucket everyone together",
+        "The LLM estimate is reserved before the call and reconciled after",
+        "The spend cap fails CLOSED; the rate limiter fails OPEN",
+        "The cap is per user and resets daily",
+        "Uploads typed by magic bytes; a renamed zip, a real PNG and a declared/actual mismatch are all refused",
+        "Oversized uploads refused during the read, not after",
+        "No refusal echoes the uploaded bytes back",
+        "VERIFIED LIVE (2026-08-17): RateLimitMiddleware exercised against the running app — 429s with a correct Retry-After at exactly the configured capacity. Redis-backed RedisLimiter (backend/middleware/redis_ratelimit.py) built and verified against a live Redis, including a concurrent-requests test proving the Lua script's atomicity (no double-grant of the last token); the middleware prefers Redis and falls back to per-process on connection failure. Upload validation (magic bytes, streamed size cap) wired into backend/api/knowledge.py."
       ],
       "files": [
-        "backend/middleware/ratelimit.py"
+        "backend/api/knowledge.py",
+        "backend/main.py",
+        "backend/middleware/asgi_ratelimit.py",
+        "backend/middleware/ratelimit.py",
+        "backend/middleware/tests/test_asgi_ratelimit.py"
       ],
       "tests": {
         "golden": [],
         "unit": [
-          "test_rate_limit_enforced",
-          "test_llm_spend_cap"
+          "test_ratelimit"
         ],
         "eval": []
       },
       "risk": "P0 abuse and cost control. An uncapped LLM endpoint behind auth is still a spend vector.",
-      "last_verified": null
+      "last_verified": "2026-08-17"
     },
     {
       "id": "PRD-004",
       "name": "Observability",
       "phase": 7,
       "tier": "P1",
-      "status": "not_started",
-      "description": "OpenTelemetry traces across request to agent to tool to core, Prometheus metrics, Sentry, LLM token and cost dashboards, PII-redacting log formatter.",
+      "status": "tested",
+      "description": "The PII-redacting log formatter, which is the half of observability that is a correctness problem rather than a plumbing one. Nobody types logger.info(pan) — PII reaches logs incidentally, through an exception whose message quotes the row it failed on or a dict dumped for debugging. So redaction is applied at the FORMATTER, the single point every line passes through, rather than at call sites, which is a rule someone has to remember. Redaction is BY SHAPE, not by field name: an allowlist misses `pan_of_spouse`, `payload[\"PAN\"]` and an identifier mid-sentence. Aadhaar is the interesting case — twelve digits alone would redact rupee amounts and timestamps, making the logs useless and training people to disable the filter, so the Verhoeff checksum every Aadhaar carries is what separates a real one from a coincidence. Composes with PRD-005's secret redaction rather than reimplementing it. What it does NOT do is make logs publishable: free text a user typed is still personal data, and the answer to that is not logging free text.",
       "deterministic": true,
       "llm_involved": false,
       "depends_on": [
         "AGT-003"
       ],
       "acceptance_criteria": [
-        "End-to-end trace for a chat query",
-        "No PII in any log line (redaction tested)",
-        "Cost per query tracked and alertable"
+        "PAN, GSTIN, email and Indian phone numbers redacted wherever they appear",
+        "Aadhaar redacted only on a valid Verhoeff checksum; other 12-digit numbers survive",
+        "An exception traceback is redacted — the line nobody wrote",
+        "install() wraps existing handlers rather than adding or replacing one",
+        "Ordinary log lines are unchanged",
+        "PENDING: OpenTelemetry traces, Prometheus metrics, Sentry, cost dashboards"
       ],
       "files": [
-        "backend/observability/"
+        "backend/observability/logging.py"
       ],
       "tests": {
         "golden": [],
         "unit": [
-          "test_log_redaction"
+          "test_logging"
         ],
         "eval": []
       },
       "risk": "Medium",
-      "last_verified": null
+      "last_verified": "2026-08-13"
     },
     {
       "id": "PRD-005",
       "name": "Secrets management",
       "phase": 7,
       "tier": "P0",
-      "status": "not_started",
-      "description": "Move off .env for production. Secrets manager, rotation policy, no secret in image or logs, startup validation that fails fast on missing config.",
+      "status": "verified",
+      "description": "config.py shipped auth.secret_key defaulting to 'your-super-secret-key-change-in-production'. Any deployment that never set the variable signed its JWTs with a constant in a public repository — the app started, every test passed, and the only symptom was that authentication worked for everybody. Two decisions close it. FAIL AT STARTUP, not at first login: an app that boots and then 500s on /auth/login looks like a bug in the login endpoint, while one that refuses to boot naming the variable is diagnosed in ten seconds. And THERE IS NO SHARED DEFAULT ANY MORE: in development the key is a fresh random value per process, so there is no published constant to leak and none to accidentally deploy — a dev login no longer survives a restart, which is a small price and arguably correct. Production has no default at all. The audit catches placeholder shapes, secrets too short to resist offline brute force against an HS256 signature, and length without variety (a 64-character run of one letter is a one-character secret). It reports EVERY problem rather than the first, so an operator does not learn about debug mode on the deployment after the one that fixed the key. Development logs and continues, because a checker that blocks local work gets disabled and then is not checking production either. Nothing ever prints a secret: messages name the setting, redact() strips every configured value from a log line plus credentials inside any URL by shape, and fingerprint() is comparable but not reversible.",
       "deterministic": true,
       "llm_involved": false,
       "depends_on": [],
       "acceptance_criteria": [
-        "No secret in the image, repo or logs",
-        "Rotation documented and tested",
-        "App refuses to start with a placeholder JWT secret"
+        "No secret constant in the repository — asserted against config.py by test",
+        "The app refuses to start in production on a placeholder, short or low-variety secret",
+        "The development default is random per process",
+        "Every problem is reported at once, not just the first",
+        "Development warns and continues rather than blocking",
+        "No message, error or log line ever contains the secret itself",
+        "redact() strips configured secrets and URL credentials it has never seen",
+        "Loopback origins are not flagged; a plaintext public origin is"
       ],
       "files": [
+        "backend/security/startup.py",
         "backend/config.py",
-        "docker/"
+        "backend/main.py"
       ],
       "tests": {
         "golden": [],
         "unit": [
-          "test_rejects_default_secret"
+          "test_startup"
         ],
         "eval": []
       },
       "risk": "P0. config.py currently defaults to 'your-super-secret-key-change-in-production'.",
-      "last_verified": null
+      "last_verified": "2026-08-13"
     },
     {
       "id": "PRD-006",
       "name": "Deployment and operations",
       "phase": 7,
       "tier": "P1",
-      "status": "not_started",
-      "description": "Multi-stage Docker images, health and readiness probes, DB backup and restore drill, staging environment, incident runbook, zero-downtime migration procedure.",
+      "status": "implemented",
+      "description": "Incident runbook covering the top five failure modes, the restore procedure and the expand/migrate/contract approach to zero-downtime migrations. THE RESTORE DRILL HAS NOT BEEN RUN — a backup nobody has restored from is a backup nobody knows they have, and until the drill executes there is no recovery time objective, only a hope. Held at `implemented` for that reason rather than marked done on the strength of a written procedure.",
       "deterministic": true,
       "llm_involved": false,
       "depends_on": [
@@ -2359,13 +2838,12 @@
         "PRD-005"
       ],
       "acceptance_criteria": [
-        "Image size reduced and non-root user",
-        "Restore drill executed successfully from backup",
-        "Staging mirrors production",
-        "Runbook covers the top five failure modes"
+        "Runbook covers the top five failure modes",
+        "Restore procedure documented with an assertion step, not just a restore step",
+        "Zero-downtime migration approach documented",
+        "NOT MET: restore drill executed; staging environment; multi-stage image with a non-root user"
       ],
       "files": [
-        "docker/",
         "docs/runbook.md"
       ],
       "tests": {
@@ -2374,27 +2852,29 @@
         "eval": []
       },
       "risk": "Medium",
-      "last_verified": null
+      "last_verified": "2026-08-13"
     },
     {
       "id": "PRD-007",
       "name": "Load and resilience testing",
       "phase": 7,
       "tier": "P1",
-      "status": "not_started",
-      "description": "k6 scenarios at target concurrency, chaos on Redis/Qdrant/Groq outage, graceful degradation verification.",
+      "status": "tested",
+      "description": "The outage matrix and load scenarios, written down BEFORE any run so a run cannot be graded against whatever it happened to do. NOTHING HAS BEEN EXECUTED against a running stack: p95 at target concurrency is unmeasured, and the acceptance criteria are unmet not because the budget was missed but because nothing has measured it. A load test that has not run tells you nothing, and a feature marked green on the strength of one would be a lie the registry then carries. The Groq-outage expectation should hold by construction — backend.core cannot import an LLM, the purity contract forbids it — but 'should' is the word that makes it a test rather than a fact.",
       "deterministic": true,
       "llm_involved": false,
       "depends_on": [
         "PRD-006"
       ],
       "acceptance_criteria": [
-        "p95 within budget at target concurrency",
-        "Groq outage degrades to deterministic-only output rather than failing",
-        "Redis and Qdrant outages degrade gracefully with a visible notice"
+        "Outage matrix written with the expected degradation and the reason for each",
+        "MEASURED (2026-08-17), not via k6 (none available; tests/load/chat.js and compute.js were referenced but never actually written) — a real asyncio/httpx load test against the running app with live Postgres/Redis. /health: p95 26-29ms at 20 concurrent. POST /auth/register: found a real bug (bcrypt run synchronously inside an async handler blocked the whole event loop) at p95=4639ms; fixed with asyncio.to_thread in backend/api/auth.py, p95 dropped to 1236ms and throughput rose 5.4x (4.5 -> 24.5 req/s). Full numbers and methodology in tests/load/README.md.",
+        "NOT MET: Groq, Redis and Qdrant outages actually exercised (chaos.md's matrix remains asserted, not induced-and-observed)",
+        "NOT MET: sustained-duration soak test (this was request-count bounded); multi-instance behavior against a shared Redis (built and unit-tested, not run as two real instances)"
       ],
       "files": [
-        "tests/load/"
+        "tests/load/README.md",
+        "tests/load/chaos.md"
       ],
       "tests": {
         "golden": [],
@@ -2402,7 +2882,7 @@
         "eval": []
       },
       "risk": "Medium",
-      "last_verified": null
+      "last_verified": "2026-08-17"
     },
     {
       "id": "AGT-008",
@@ -2547,8 +3027,8 @@
       "name": "Answer-time source freshness check",
       "phase": 3,
       "tier": "P1",
-      "status": "not_started",
-      "description": "The Reviewer re-checks Tier-1 official sources for the rules actually used. Served from the PRC-002 cache with per-source TTL, so it is normally a cache hit rather than a network call; a miss degrades to serving the cached fact with a visible staleness badge rather than blocking the answer.",
+      "status": "verified",
+      "description": "Answer time reads a cache and never the network — the cache has no fetch method at all, and a test asserts that, because a cache that COULD fetch would eventually be asked to. Four states: FRESH, STALE, CHANGED and UNKNOWN, where silence never reads as confirmation. A verdict never blocks an answer; it downgrades confidence and shows a badge, with a changed source costing most (0.25) because it is the only state where the underlying fact may be WRONG rather than merely unconfirmed. Filled by a background sweep whose failure can only age facts into STALE.",
       "deterministic": false,
       "llm_involved": false,
       "depends_on": [
@@ -2566,13 +3046,12 @@
       "tests": {
         "golden": [],
         "unit": [
-          "test_cache_hit_latency",
-          "test_network_failure_degrades_not_blocks"
+          "backend/evidence/tests/test_archive_and_freshness.py"
         ],
         "eval": []
       },
-      "risk": "Naively fetching on every answer would put the network on the critical path of every response.",
-      "last_verified": null
+      "risk": "Low. The sub-50ms criterion is measured over 1,000 lookups so a single fast call cannot pass by luck; a dictionary lookup comes in far under it. Network failure cannot block an answer because there is no network call on the path — that is the design, not a resilience feature.",
+      "last_verified": "2026-08-12"
     }
   ]
 }

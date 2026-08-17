@@ -10,9 +10,9 @@ Tools for agents to interact with database:
 """
 
 import logging
-from typing import Dict, Any, List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ class AnalysisType(str, Enum):
 
 class UserFinancialDataTool:
     """Access user's financial profile from database."""
-    
+
     def __init__(self, db_session):
         """
         Initialize with database session.
@@ -47,15 +47,16 @@ class UserFinancialDataTool:
         """
         self.db = db_session
         self.logger = logging.getLogger("tool.user_data")
-    
-    async def get_user_profile(self, user_id: str) -> Dict[str, Any]:
+
+    async def get_user_profile(self, user_id: str) -> dict[str, Any]:
         """
         Get complete user financial profile.
         """
         try:
             from sqlalchemy import select
+
             from backend.db.orm_models import FinancialProfile, User
-            
+
             # Fetch user
             stmt_user = select(User).where(User.id == user_id)
             res_user = await self.db.execute(stmt_user)
@@ -67,12 +68,12 @@ class UserFinancialDataTool:
             stmt_profile = select(FinancialProfile).where(FinancialProfile.user_id == user_id)
             res_profile = await self.db.execute(stmt_profile)
             profile_rec = res_profile.scalar_one_or_none()
-            
+
             profile_data = profile_rec.profile_data if (profile_rec and profile_rec.profile_data) else {}
-            
+
             annual_income = float(profile_rec.annual_income) if profile_rec else 0.0
             employment_type = profile_rec.employment_type if profile_rec else "individual"
-            
+
             return {
                 "success": True,
                 "result": {
@@ -118,19 +119,19 @@ class UserFinancialDataTool:
                         "financial_year": "2025-26"
                     },
                     "profile_data": profile_data,
-                    "last_updated": profile_rec.updated_at.isoformat() if (profile_rec and profile_rec.updated_at) else datetime.utcnow().isoformat()
+                    "last_updated": profile_rec.updated_at.isoformat() if (profile_rec and profile_rec.updated_at) else datetime.now(timezone.utc).isoformat()
                 }
             }
-        
+
         except Exception as e:
             self.logger.error(f"Error fetching user profile: {e}")
             return None
-    
+
     async def get_user_income_history(
         self,
         user_id: str,
         years: int = 3
-    ) -> Dict[str, List[Dict[str, Any]]]:
+    ) -> dict[str, list[dict[str, Any]]]:
         """
         Get user's income history for multiple years.
         
@@ -174,23 +175,24 @@ class UserFinancialDataTool:
         except Exception as e:
             self.logger.error(f"Error fetching income history: {e}")
             return None
-    
-    async def get_user_deductions(self, user_id: str) -> Dict[str, Any]:
+
+    async def get_user_deductions(self, user_id: str) -> dict[str, Any]:
         """Get user's claimed deductions."""
         try:
             from sqlalchemy import select
+
             from backend.db.orm_models import FinancialProfile
-            
+
             stmt = select(FinancialProfile).where(FinancialProfile.user_id == user_id)
             res = await self.db.execute(stmt)
             profile_rec = res.scalar_one_or_none()
-            
+
             profile_data = profile_rec.profile_data if (profile_rec and profile_rec.profile_data) else {}
-            
+
             c_80c = float(profile_data.get("ppf", 0)) + float(profile_data.get("elss", 0)) + float(profile_data.get("lic", 0)) + float(profile_data.get("ulip", 0)) + float(profile_data.get("fd5yr", 0)) + float(profile_data.get("nsc", 0)) + float(profile_data.get("sukanyaSamriddhi", 0)) + float(profile_data.get("homeLoanPrincipal", 0))
             c_80d = float(profile_data.get("healthInsuranceSelf", 0)) + float(profile_data.get("healthInsuranceParents", 0))
             c_nps = float(profile_data.get("npsEmployee", 0)) + float(profile_data.get("npsEmployer", 0))
-            
+
             return {
                 "success": True,
                 "result": {
@@ -254,8 +256,8 @@ class UserFinancialDataTool:
         except Exception as e:
             self.logger.error(f"Error fetching deductions: {e}")
             return None
-    
-    async def get_user_investments(self, user_id: str) -> Dict[str, Any]:
+
+    async def get_user_investments(self, user_id: str) -> dict[str, Any]:
         """Get user's investment portfolio."""
         try:
             return {
@@ -296,20 +298,20 @@ class UserFinancialDataTool:
 
 class AnalysisStorageTool:
     """Store and retrieve agent analysis results."""
-    
+
     def __init__(self, db_session):
         """Initialize with database session."""
         self.db = db_session
         self.logger = logging.getLogger("tool.storage")
-    
+
     async def save_analysis(
         self,
         user_id: str,
         analysis_type: AnalysisType,
-        analysis_data: Dict[str, Any],
+        analysis_data: dict[str, Any],
         agent_name: str = "unknown",
-        conversation_id: Optional[str] = None
-    ) -> Dict[str, Any]:
+        conversation_id: str | None = None
+    ) -> dict[str, Any]:
         """
         Save analysis results.
         
@@ -326,57 +328,57 @@ class AnalysisStorageTool:
         try:
             # TODO: Save to database
             analysis_record = {
-                "analysis_id": f"analysis_{user_id}_{int(datetime.utcnow().timestamp() * 1000)}",
+                "analysis_id": f"analysis_{user_id}_{int(datetime.now(timezone.utc).timestamp() * 1000)}",
                 "user_id": user_id,
                 "type": analysis_type.value,
                 "agent": agent_name,
                 "data": analysis_data,
                 "conversation_id": conversation_id,
-                "created_at": datetime.utcnow().isoformat(),
+                "created_at": datetime.now(timezone.utc).isoformat(),
                 "status": "saved"
             }
-            
+
             self.logger.info(f"Saved {analysis_type.value} analysis for user {user_id}")
-            
+
             return analysis_record
-        
+
         except Exception as e:
             self.logger.error(f"Error saving analysis: {e}")
             return {"status": "error", "message": str(e)}
-    
+
     async def save_recommendation(
         self,
         user_id: str,
         recommendation_type: str,
-        recommendation: Dict[str, Any],
+        recommendation: dict[str, Any],
         agent_name: str = "unknown"
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Save agent recommendation."""
         try:
             record = {
-                "recommendation_id": f"rec_{user_id}_{int(datetime.utcnow().timestamp() * 1000)}",
+                "recommendation_id": f"rec_{user_id}_{int(datetime.now(timezone.utc).timestamp() * 1000)}",
                 "user_id": user_id,
                 "type": recommendation_type,
                 "agent": agent_name,
                 "recommendation": recommendation,
-                "created_at": datetime.utcnow().isoformat(),
+                "created_at": datetime.now(timezone.utc).isoformat(),
                 "status": "active"
             }
-            
+
             self.logger.info(f"Saved {recommendation_type} recommendation for user {user_id}")
-            
+
             return record
-        
+
         except Exception as e:
             self.logger.error(f"Error saving recommendation: {e}")
             return {"status": "error", "message": str(e)}
-    
+
     async def get_analysis_history(
         self,
         user_id: str,
-        analysis_type: Optional[str] = None,
+        analysis_type: str | None = None,
         limit: int = 10
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Get user's analysis history."""
         try:
             # TODO: Query from database
@@ -392,12 +394,12 @@ class AnalysisStorageTool:
         except Exception as e:
             self.logger.error(f"Error fetching analysis history: {e}")
             return []
-    
+
     async def get_recommendation_history(
         self,
         user_id: str,
         limit: int = 10
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Get user's recommendations."""
         try:
             return []
@@ -412,17 +414,17 @@ class AnalysisStorageTool:
 
 class UserDataUpdateTool:
     """Update user's financial profile."""
-    
+
     def __init__(self, db_session):
         """Initialize with database session."""
         self.db = db_session
         self.logger = logging.getLogger("tool.update")
-    
+
     async def update_income(
         self,
         user_id: str,
-        income_sources: Dict[str, float]
-    ) -> Dict[str, Any]:
+        income_sources: dict[str, float]
+    ) -> dict[str, Any]:
         """
         Update user's income information.
         
@@ -440,17 +442,17 @@ class UserDataUpdateTool:
                 "updated": True,
                 "income_sources": income_sources,
                 "total_income": sum(income_sources.values()),
-                "updated_at": datetime.utcnow().isoformat()
+                "updated_at": datetime.now(timezone.utc).isoformat()
             }
         except Exception as e:
             self.logger.error(f"Error updating income: {e}")
             return {"error": str(e)}
-    
+
     async def update_deductions(
         self,
         user_id: str,
-        deductions: Dict[str, float]
-    ) -> Dict[str, Any]:
+        deductions: dict[str, float]
+    ) -> dict[str, Any]:
         """Update user's deductions."""
         try:
             # TODO: Update in database
@@ -459,17 +461,17 @@ class UserDataUpdateTool:
                 "updated": True,
                 "deductions": deductions,
                 "total_deductions": sum(deductions.values()),
-                "updated_at": datetime.utcnow().isoformat()
+                "updated_at": datetime.now(timezone.utc).isoformat()
             }
         except Exception as e:
             self.logger.error(f"Error updating deductions: {e}")
             return {"error": str(e)}
-    
+
     async def update_investments(
         self,
         user_id: str,
-        investments: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        investments: dict[str, Any]
+    ) -> dict[str, Any]:
         """Update user's investments."""
         try:
             # TODO: Update in database
@@ -477,7 +479,7 @@ class UserDataUpdateTool:
                 "user_id": user_id,
                 "updated": True,
                 "investments": investments,
-                "updated_at": datetime.utcnow().isoformat()
+                "updated_at": datetime.now(timezone.utc).isoformat()
             }
         except Exception as e:
             self.logger.error(f"Error updating investments: {e}")
@@ -490,48 +492,48 @@ class UserDataUpdateTool:
 
 class AuditLogTool:
     """Log all agent actions and decisions."""
-    
+
     def __init__(self, db_session):
         """Initialize with database session."""
         self.db = db_session
         self.logger = logging.getLogger("tool.audit")
-    
+
     async def log_agent_action(
         self,
         user_id: str,
         agent_name: str,
         action: str,
-        input_data: Dict[str, Any],
-        output_data: Dict[str, Any],
-        conversation_id: Optional[str] = None
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any],
+        output_data: dict[str, Any],
+        conversation_id: str | None = None
+    ) -> dict[str, Any]:
         """Log an agent action for audit trail."""
         try:
             log_entry = {
-                "log_id": f"log_{user_id}_{int(datetime.utcnow().timestamp() * 1000)}",
+                "log_id": f"log_{user_id}_{int(datetime.now(timezone.utc).timestamp() * 1000)}",
                 "user_id": user_id,
                 "agent": agent_name,
                 "action": action,
                 "input": input_data,
                 "output": output_data,
                 "conversation_id": conversation_id,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
-            
+
             # TODO: Save to database
             self.logger.info(f"Logged action: {agent_name}/{action} for user {user_id}")
-            
+
             return {"status": "logged", "log_id": log_entry["log_id"]}
-        
+
         except Exception as e:
             self.logger.error(f"Error logging action: {e}")
             return {"status": "error", "message": str(e)}
-    
+
     async def get_user_audit_log(
         self,
         user_id: str,
         limit: int = 50
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Get audit log for user."""
         try:
             # TODO: Query from database
@@ -547,12 +549,12 @@ class AuditLogTool:
 
 class DatabaseToolFactory:
     """Factory to create database tools with session."""
-    
+
     def __init__(self, db_session):
         """Initialize with database session."""
         self.db_session = db_session
-    
-    def create_tools(self) -> Dict[str, Any]:
+
+    def create_tools(self) -> dict[str, Any]:
         """Create all database tools."""
         return {
             "user_data": UserFinancialDataTool(self.db_session),

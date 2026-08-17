@@ -1,8 +1,20 @@
 {
   "failed": 0,
   "mode": "replay",
-  "passed": 2,
+  "passed": 5,
   "scenarios": {
+    "DEBT-FUND-POST-APRIL-2023-IS-ALWAYS-SHORT-TERM": {
+      "scorers": {
+        "harness": "skip"
+      },
+      "verdict": "skip"
+    },
+    "EQUITY-STCG-IS-FLAT-NOT-SLAB": {
+      "scorers": {
+        "harness": "skip"
+      },
+      "verdict": "skip"
+    },
     "EV-80EEB-CLOSED-WINDOW": {
       "scorers": {
         "citation_validity": "pass",
@@ -20,8 +32,83 @@
         "window_awareness": "skip"
       },
       "verdict": "pass"
+    },
+    "LTCG-EXEMPTION-IS-NOT-A-DISCOUNT": {
+      "scorers": {
+        "harness": "skip"
+      },
+      "verdict": "skip"
+    },
+    "OUT-OF-SCOPE-STOCK-RECOMMENDATION": {
+      "scorers": {
+        "harness": "skip"
+      },
+      "verdict": "skip"
+    },
+    "OUT-OF-SCOPE-WHICH-ELSS-FUND": {
+      "scorers": {
+        "harness": "skip"
+      },
+      "verdict": "skip"
+    },
+    "PROCUREMENT-NO-MARKET-CALL": {
+      "scorers": {
+        "harness": "skip"
+      },
+      "verdict": "skip"
+    },
+    "REBATE-MARGINAL-RELIEF-JUST-OVER": {
+      "scorers": {
+        "citation_validity": "pass",
+        "numeric_provenance": "pass",
+        "refusal": "skip",
+        "window_awareness": "skip"
+      },
+      "verdict": "pass"
+    },
+    "REBATE-NIL-BELOW-CEILING": {
+      "scorers": {
+        "citation_validity": "pass",
+        "numeric_provenance": "pass",
+        "refusal": "pass",
+        "window_awareness": "skip"
+      },
+      "verdict": "pass"
+    },
+    "REGIME-NEW-WINS-ON-ORDINARY-DEDUCTIONS": {
+      "scorers": {
+        "citation_validity": "pass",
+        "numeric_provenance": "pass",
+        "refusal": "skip",
+        "window_awareness": "skip"
+      },
+      "verdict": "pass"
+    },
+    "RESOLVER-ASKS-RATHER-THAN-ASSUMES": {
+      "scorers": {
+        "harness": "skip"
+      },
+      "verdict": "skip"
+    },
+    "RESOLVER-REFUSES-MODEL-FIGURES": {
+      "scorers": {
+        "harness": "skip"
+      },
+      "verdict": "skip"
+    },
+    "SENIOR-NEW-REGIME-HAS-NO-AGE-BANDS": {
+      "scorers": {
+        "harness": "skip"
+      },
+      "verdict": "skip"
+    },
+    "SURCHARGE-MARGINAL-RELIEF-AT-FIFTY-LAKH": {
+      "scorers": {
+        "harness": "skip"
+      },
+      "verdict": "skip"
     }
   },
-  "skipped": 0,
-  "total": 2
+  "skipped": 10,
+  "total": 15
 }

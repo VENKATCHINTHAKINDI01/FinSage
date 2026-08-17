@@ -7,7 +7,7 @@ import asyncio
 import smtplib
 import os
 from typing import Dict, Any, List, Optional
-from datetime import datetime, timezone, time, timedelta
+from datetime import datetime, time, timedelta, timezone
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
@@ -221,7 +221,7 @@ class NotificationService:
                 pref.frequency = frequency
                 if preferred_time_obj is not None:
                     pref.preferred_time = preferred_time_obj
-                pref.updated_at = datetime.utcnow()
+                pref.updated_at = datetime.now(timezone.utc)
             else:
                 pref = NotificationPreference(
                     user_id=user_id,
@@ -398,7 +398,7 @@ class NotificationService:
                 subject=subject,
                 message=message or "",
                 status=status,
-                sent_at=datetime.utcnow() if status == "sent" else None
+                sent_at=datetime.now(timezone.utc) if status == "sent" else None
             )
             
             self.db.add(notification)
@@ -553,7 +553,7 @@ class NotificationService:
                 
             if success:
                 notification.status = "sent"
-                notification.sent_at = datetime.utcnow()
+                notification.sent_at = datetime.now(timezone.utc)
                 self.logger.info(f"Notification {notification.id} sent successfully via {channel}")
             else:
                 notification.status = "failed"
@@ -606,7 +606,7 @@ class NotificationService:
                 preference.frequency = frequency
                 preference.preferred_time = preferred_time
                 preference.notification_types = notification_types
-                preference.updated_at = datetime.utcnow()
+                preference.updated_at = datetime.now(timezone.utc)
             else:
                 preference = NotificationPreference(
                     user_id=user_id,

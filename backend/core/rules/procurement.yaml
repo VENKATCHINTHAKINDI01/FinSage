@@ -1,0 +1,274 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# PROCUREMENT — road tax, registration, depreciation
+#
+# COVERAGE IS PARTIAL AND SAYS SO. Road tax is a STATE levy: 30-odd states and
+# union territories, each with its own slabs, its own EV concessions and its own
+# effective dates. A table claiming national coverage would be wrong for most
+# users while looking authoritative.
+#
+# So `states` lists only what has been verified, and a state that is absent
+# raises rather than falling back to an average. An engine that silently
+# averages road tax produces a landed cost that is confidently wrong by tens of
+# thousands of rupees.
+# ═══════════════════════════════════════════════════════════════════════════
+
+meta:
+  verified_on: "2026-08-12"
+  coverage: partial
+  sources:
+    - https://parivahan.gov.in/
+    - https://www.incometaxindia.gov.in/
+  coverage_note: >
+    Road tax figures below are indicative slab rates gathered for the states
+    listed. They must be re-verified against the state transport department
+    before being shown in a cost breakdown, and the source tier system
+    (PRC-002) is what enforces that. An unlisted state is an error, never an
+    assumption.
+
+# ── Road tax and registration ───────────────────────────────────────────────
+# Percentages apply to ex-showroom price unless stated otherwise.
+# ── Item resolver vocabulary — PRC-001 ──────────────────────────────────────
+# Closed sets. A value outside them is a QUESTION, never a guess — a resolver
+# that quietly maps an unrecognised phrase onto the nearest known category is
+# how a tractor gets costed as a car.
+item_resolver:
+  families:
+    home_and_durables:
+      label: Home and consumer durables
+      examples: [appliance, electronics, furniture, rooftop_solar]
+    construction_and_land:
+      label: Construction, land and property
+      examples: [cement, steel, land, residential_property]
+    business_and_agri:
+      label: Business and agricultural assets
+      examples: [machinery, tractor, solar_pump, commercial_vehicle]
+    vehicles:
+      label: Vehicles
+      examples: [car, two_wheeler, three_wheeler, electric_vehicle]
+
+  # Fields without which no useful answer exists. Absence produces a targeted
+  # question rather than a default — `state` in particular, because road tax
+  # and stamp duty are state levies and a defaulted state is a wrong answer
+  # that looks right.
+  critical_fields: [family, category, state, buyer_profile]
+
+  # Numeric specs a model may SUGGEST but never assert. Each drives a
+  # computation — battery capacity multiplies the per-kWh incentive, capacity
+  # in kW picks the PM-Surya Ghar tier — so a hallucinated value becomes a
+  # rupee figure. They come back as a question with the suggestion attached,
+  # for the buyer to confirm off the spec sheet.
+  confirmable_specs:
+    battery_kwh:
+      ask: What is the battery capacity in kWh?
+      why: >
+        The PM E-DRIVE incentive is per kWh, so this decides the amount. It is
+        on the vehicle's specification sheet or the registration certificate.
+    capacity_kw:
+      ask: What is the rated capacity of the solar system in kW?
+      why: >
+        The PM-Surya Ghar subsidy is a tiered rate per kWp, so this decides the
+        amount. Use the rated DC capacity of the modules, not the inverter.
+    seats:
+      ask: How many seats?
+      why: Seating capacity changes the road tax band in several states.
+
+# ── Property: the circle-rate trap — PRC-007 ────────────────────────────────
+# Verified 2026-08-13 against incometaxindia.gov.in, and the verification is
+# worth recording because the primary source is itself a trap.
+#
+# The s.50C page on the department's own site is a 2018 SNAPSHOT — it says so
+# in its metadata ("Year: 2018") — and carries the third proviso at ONE
+# HUNDRED AND FIVE per cent, inserted by the Finance Act 2018 w.e.f. 1-4-2019.
+# That is not the law today. The Finance Bill 2020 memorandum, also on
+# incometaxindia.gov.in, records the safe harbour being raised from five per
+# cent to ten per cent. Anyone who reads only the section page will encode 5%
+# and be wrong by half.
+#
+# The two limbs are NOT symmetric, and that is the part most summaries miss:
+#   s.50C     seller side, capital gains       — a flat 10% tolerance
+#   s.56(2)(x) buyer side, other sources       — ₹50,000 OR 10%, whichever is
+#                                                HIGHER
+# So a small transaction has a floor on the buyer side that the seller does
+# not get, and a shortfall can be inside the tolerance for one party and
+# outside it for the other on the same sale.
+circle_rate:
+  seller:
+    legacy_section: "50C"
+    tolerance_rate: "0.10"
+    note: >
+      Where the stamp duty value exceeds the consideration by more than the
+      tolerance, the STAMP DUTY VALUE is deemed to be the full value of
+      consideration for capital gains. The seller is taxed on money that never
+      reached them.
+  buyer:
+    legacy_section: "56(2)(x)"
+    tolerance_rate: "0.10"
+    tolerance_floor: 50000
+    note: >
+      Where the stamp duty value exceeds the consideration by more than the
+      HIGHER of ₹50,000 and 10% of the consideration, the whole excess is
+      charged to the buyer as income from other sources. The buyer is taxed on
+      a gift they did not receive.
+  source_note: >
+    s.50C text read at incometaxindia.gov.in/w/section-50c-24 (a 2018 snapshot
+    carrying 105%); the increase to 110% is recorded in the Finance Bill 2020
+    memorandum on the same domain. Re-verify against the Income-tax Act 2025
+    equivalent before relying on the section NUMBER — the alias map does not
+    yet cover it.
+
+# Stamp duty is deliberately NOT a table here.
+#
+# Road tax already demonstrates the cost of a partial table that looks
+# national: four states, and an unlisted state has to raise. Stamp duty is
+# worse — thirty-odd states, each with women-buyer, urban/rural and
+# first-time-buyer variants, revised at every state Budget. A table written
+# today is wrong somewhere within months and nobody notices.
+#
+# So a stamp duty rate arrives through the gather layer (PRC-011) as an
+# admitted fact from an official source, or it does not arrive and the line is
+# a named Gap. `stamp_duty.<STATE>` is the key.
+stamp_duty:
+  coverage: none_hardcoded
+  key_pattern: "stamp_duty.{state}"
+  women_concession_key_pattern: "stamp_duty.{state}.female"
+  note: >
+    Rates come from the source gatherer, not from this file. A state with no
+    admitted fact produces a gap that says so, rather than an average that
+    looks authoritative and is wrong for most buyers.
+
+# ── Quote teardown — PRC-006 ────────────────────────────────────────────────
+# Vocabulary for reading a dealer, vendor or contractor quotation. Dealers name
+# the same charge a dozen ways and the naming is where padding hides: a line
+# called "handling" is negotiable, a line called "RTO" is not, and a quote that
+# calls a handling fee "RTO charges" is relying on the buyer not knowing that.
+quote_teardown:
+  # Terms that map onto a figure this engine can actually compute. Matching is
+  # on a normalised substring, longest match first.
+  statutory_terms:
+    gst:
+      - goods and services tax
+      - gst
+      - cgst
+      - sgst
+      - igst
+    road_tax:
+      - road tax
+      - lifetime tax
+      - motor vehicle tax
+      - rto tax
+      - rto
+    registration:
+      - registration
+      - reg charges
+      - smart card
+    insurance:
+      - insurance
+      - own damage
+      - third party premium
+    tcs:
+      - tcs
+      - tax collected at source
+
+  # LEGAL TO CHARGE, no statutory basis. These are not improper and calling
+  # them an overcharge would be wrong — they are the part of a quote that is
+  # negotiable, which is a different and more useful thing to tell a buyer.
+  no_statutory_basis:
+    - handling
+    - logistics
+    - dealer charge
+    - documentation
+    - doc charge
+    - pdi
+    - pre-delivery inspection
+    - pre delivery inspection
+    - transportation
+    - freight
+
+  # s.206C(1F). Verified 2026-08-13 against incometaxindia.gov.in.
+  tcs:
+    legacy_section: "206C(1F)"
+    rate: "0.01"
+    threshold: 1000000
+    on_entire_consideration: true
+    note: >
+      One per cent of the sale consideration where a motor vehicle exceeds
+      ₹10,00,000 — charged on the ENTIRE consideration, not on the excess, and
+      the threshold applies per item rather than to a year's purchases. CBDT
+      Notification 36/2025 extended the same treatment to ten categories of
+      luxury goods with effect from 22 April 2025.
+    creditable_note: >
+      TCS is not a cost. It is your own tax, collected early, and it is
+      creditable against your income tax liability or refundable — it appears
+      in your Form 26AS. A quote that lists it alongside genuine charges makes
+      the on-road price look higher than the money you are actually out.
+
+road_tax:
+  registration_charge_default: 600
+  hypothecation_charge_default: 1500
+  fastag_default: 500
+
+  states:
+    KA:
+      name: Karnataka
+      ev_rate: "0.00"
+      ev_note: Karnataka exempts battery electric vehicles from road tax.
+      petrol_bands:
+        - { upto: 500000, rate: "0.13" }
+        - { upto: 1000000, rate: "0.14" }
+        - { upto: 2000000, rate: "0.17" }
+        - { upto: null, rate: "0.18" }
+    MH:
+      name: Maharashtra
+      ev_rate: "0.00"
+      petrol_bands:
+        - { upto: 1000000, rate: "0.11" }
+        - { upto: 2000000, rate: "0.12" }
+        - { upto: null, rate: "0.13" }
+    DL:
+      name: Delhi
+      ev_rate: "0.00"
+      petrol_bands:
+        - { upto: 600000, rate: "0.04" }
+        - { upto: 1000000, rate: "0.07" }
+        - { upto: null, rate: "0.10" }
+    TN:
+      name: Tamil Nadu
+      ev_rate: "0.00"
+      petrol_bands:
+        - { upto: 1000000, rate: "0.10" }
+        - { upto: null, rate: "0.15" }
+
+# ── Depreciation, for business assets ───────────────────────────────────────
+depreciation:
+  legacy_section: "32"
+  half_rate_if_used_under_days: 180
+  half_rate_note: >
+    An asset put to use for LESS than 180 days in the year of acquisition gets
+    HALF the normal rate. This is why a 31 March purchase and a 1 April purchase
+    differ so sharply for a business buyer — the March one earns half a year's
+    depreciation immediately, the April one earns a full year but twelve months
+    later. PRC-005 quantifies that.
+  block_rates:
+    motor_vehicle: "0.15"
+    motor_vehicle_commercial_hire: "0.30"
+    computer_and_software: "0.40"
+    plant_and_machinery_general: "0.15"
+    furniture_and_fittings: "0.10"
+    building_residential: "0.05"
+    building_other: "0.10"
+
+# ── Input tax credit ────────────────────────────────────────────────────────
+input_tax_credit:
+  requires_gst_registration: true
+  requires_business_use: true
+  blocked_credit_note: >
+    ITC on motor vehicles for passenger transport is BLOCKED under s.17(5) of
+    the CGST Act except in narrow cases — further supply of the vehicle,
+    passenger transport, or driving instruction. A GST-registered business
+    buying a car for general use gets NO credit, and an engine that grants it
+    overstates the benefit by the whole GST amount.
+  motor_vehicle_blocked_unless:
+    - resale_of_vehicles
+    - passenger_transport_service
+    - driving_school
+    - goods_transport

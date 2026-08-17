@@ -119,6 +119,25 @@ def check_rule_packs(limit: int, today: date) -> list[str]:
                     f"rule pack for FY {successor}. The Budget has landed."
                 )
 
+    # The non-year packs — gst.yaml, procurement.yaml, admission.yaml — age
+    # exactly like the FY packs and were previously not checked at all. GST 2.0
+    # restructured every slab on one day in September 2025; a procurement pack
+    # nobody re-reads is how a stale road tax rate survives a state Budget.
+    for path in sorted(RULES_DIR.glob("*.y*ml")):
+        if path.name.startswith("fy_"):
+            continue
+        pack = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        verified_on = (pack.get("meta") or {}).get("verified_on")
+        if not verified_on:
+            problems.append(f"{path.name}: meta.verified_on is missing")
+            continue
+        age = _age(str(verified_on), today)
+        if age > limit:
+            problems.append(
+                f"{path.name}: verified {age} days ago (limit {limit}) — "
+                f"re-check against the sources listed in the pack"
+            )
+
     return problems
 
 

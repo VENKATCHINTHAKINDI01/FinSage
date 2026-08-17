@@ -34,12 +34,12 @@ import pytest
 
 pytest.importorskip("hypothesis", reason="hypothesis is a dev dependency")
 
-from hypothesis import HealthCheck, given, settings
-from hypothesis import strategies as st
+from hypothesis import HealthCheck, given, settings  # noqa: E402
+from hypothesis import strategies as st  # noqa: E402
 
-from backend.core.provenance.money import ZERO, Money
-from backend.core.rules import load_ruleset
-from backend.core.tax_engine import TaxInput, compute_tax
+from backend.core.provenance.money import ZERO, Money  # noqa: E402
+from backend.core.rules import load_ruleset  # noqa: E402
+from backend.core.tax_engine import TaxInput, compute_tax  # noqa: E402
 
 FY = "2026-27"
 CESS = load_ruleset(FY).cess_rate
@@ -83,13 +83,13 @@ def _result(income: int, regime: str = "new", age: int = 35):
 @SLOW
 @given(income=incomes, regime=regimes)
 def test_tax_is_never_negative(income: int, regime: str) -> None:
-    assert _result(income, regime).total_tax >= ZERO
+    assert _result(income, regime).total_tax_exact >= ZERO
 
 
 @SLOW
 @given(income=incomes, extra=st.integers(min_value=1, max_value=50_000).map(lambda n: n * 10))
 def test_total_tax_is_monotonic(income: int, extra: int) -> None:
-    assert _result(income + extra).total_tax >= _result(income).total_tax
+    assert _result(income + extra).total_tax_exact >= _result(income).total_tax_exact
 
 
 @SLOW
@@ -118,7 +118,7 @@ def test_all_in_marginal_rate_never_exceeds_one_plus_cess(income: int, extra: in
     d_income = (after.taxable_income - before.taxable_income).amount
     if d_income <= 0:
         return
-    d_tax = (after.total_tax - before.total_tax).amount
+    d_tax = (after.total_tax_exact - before.total_tax_exact).amount
     assert d_tax <= d_income * MAX_MARGINAL, (
         f"at ₹{income:,}: marginal rate {d_tax / d_income:.4%} exceeds "
         f"{MAX_MARGINAL:.0%}"
@@ -140,7 +140,7 @@ def test_deductions_never_increase_tax(income: int, deduction: int) -> None:
             deductions={"80C": Money(deduction)},
         )
     )
-    assert reduced.total_tax <= plain.total_tax
+    assert reduced.total_tax_exact <= plain.total_tax_exact
 
 
 @SLOW
@@ -156,27 +156,27 @@ def test_trace_replays_to_the_computed_value(income: int, regime: str) -> None:
 def test_new_regime_has_no_age_bands(income: int) -> None:
     """v1 switched a 60-year-old to old-regime senior slabs inside a
     new-regime table. Age must make no difference under the new regime."""
-    base = _result(income, "new", age=35).total_tax
+    base = _result(income, "new", age=35).total_tax_exact
     for age in (60, 62, 80, 95):
-        assert _result(income, "new", age=age).total_tax == base
+        assert _result(income, "new", age=age).total_tax_exact == base
 
 
 @SLOW
 @given(income=_grid(300_000, 20_000_000))
 def test_old_regime_age_bands_only_ever_reduce_tax(income: int) -> None:
-    regular = _result(income, "old", age=45).total_tax
-    senior = _result(income, "old", age=65).total_tax
-    super_senior = _result(income, "old", age=85).total_tax
+    regular = _result(income, "old", age=45).total_tax_exact
+    senior = _result(income, "old", age=65).total_tax_exact
+    super_senior = _result(income, "old", age=85).total_tax_exact
     assert senior <= regular
     assert super_senior <= senior
 
 
 def test_zero_income_is_zero_tax() -> None:
     for regime in ("new", "old"):
-        assert _result(0, regime).total_tax == ZERO
+        assert _result(0, regime).total_tax_exact == ZERO
 
 
 def test_rebate_ceiling_is_exactly_nil() -> None:
     """The single most important boundary in the FY 2026-27 new regime."""
-    assert _result(1_200_000).total_tax == ZERO
-    assert _result(1_200_010).total_tax > ZERO
+    assert _result(1_200_000).total_tax_exact == ZERO
+    assert _result(1_200_010).total_tax_exact > ZERO

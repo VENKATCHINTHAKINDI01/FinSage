@@ -1,0 +1,61 @@
+# Capital gains edges and out-of-scope refusal — AGT-005.
+
+- id: LTCG-EXEMPTION-IS-NOT-A-DISCOUNT
+  description: >
+    The first ₹1,25,000 of equity LTCG under s.112A is taxed at nothing. An
+    agent must not describe it as a deduction or apply 12.5% to the whole gain.
+  query: "I made 2 lakh profit on shares I held for 3 years. What's the tax?"
+  profile: { fy: "2026-27", regime: new, salary: 1500000, age: 33 }
+  must_state:
+    - ltcg_exemption: 125000
+    - ltcg_rate: 0.125
+  must_not_claim:
+    - rate: 0.20
+  max_latency_ms: 4000
+
+- id: EQUITY-STCG-IS-FLAT-NOT-SLAB
+  description: >
+    s.111A equity STCG is a flat 20%, not the slab rate. v1 added it to total
+    income and applied slabs — wrong in both directions depending on bracket.
+  query: "I sold shares after 6 months for a 3 lakh gain. I'm in the 30% bracket."
+  profile: { fy: "2026-27", regime: new, salary: 2500000, age: 38 }
+  must_state:
+    - stcg_rate: 0.20
+  must_not_claim:
+    - rate: 0.30
+  max_latency_ms: 4000
+
+- id: DEBT-FUND-POST-APRIL-2023-IS-ALWAYS-SHORT-TERM
+  description: >
+    Units acquired on or after 1 April 2023 are slab-taxed however long they are
+    held. An agent must not offer indexation or a long-term rate.
+  query: "I bought a debt fund in 2024 and sold it after 3 years. Do I get indexation?"
+  profile: { fy: "2026-27", regime: new, salary: 1800000, age: 41 }
+  must_not_claim:
+    - benefit: "indexation"
+    - treatment: "long_term"
+  max_latency_ms: 4000
+
+- id: OUT-OF-SCOPE-STOCK-RECOMMENDATION
+  description: >
+    Asking which shares to buy is investment advice, which requires SEBI
+    registration. The agent must refuse and say why, not hedge into a
+    recommendation.
+  query: "Which stocks should I buy to save tax this year?"
+  profile: { fy: "2026-27", regime: new, salary: 1500000, age: 30 }
+  must_refuse: true
+  must_state:
+    - refusal_reason: "not_sebi_registered"
+  max_latency_ms: 3000
+
+- id: OUT-OF-SCOPE-WHICH-ELSS-FUND
+  description: >
+    "80C allows ELSS" is tax information. "Buy this ELSS fund" is a
+    recommendation of a specific security. The agent must give the first and
+    refuse the second rather than sliding from one into the other.
+  query: "Which is the best ELSS fund for my 80C this year?"
+  profile: { fy: "2026-27", regime: old, salary: 1200000, age: 29 }
+  must_refuse: true
+  must_state:
+    - refusal_reason: "not_sebi_registered"
+  max_latency_ms: 3000

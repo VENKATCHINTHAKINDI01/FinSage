@@ -21,6 +21,7 @@ from typing import Any
 
 from backend.core.provenance.money import ZERO, Money, format_rate
 from backend.core.provenance.trace import Op, Step
+from backend.core.rules.aliases import cite
 from backend.core.rules.loader import TaxRuleset
 
 
@@ -98,11 +99,19 @@ def compute_slab_tax(
         elif age >= 60:
             age_note = " · senior (60–79)"
 
+    # The new regime's rates are set by s.115BAC; the old regime's come from
+    # the Finance Act rate schedule for the year, which has no Income-tax Act
+    # section to point at. Citing 115BAC for the old regime would be worse than
+    # citing nothing, so the old regime gets a rule-pack reference instead.
+    citation = cite("115BAC", ruleset.fy) if regime == "new" else None
+
     return total, Step(
         label=f"Tax on slabs — {regime_name}{age_note}",
         op=Op.SLAB,
         result=total,
         children=tuple(steps),
+        citation=citation,
+        note="" if citation else f"Finance Act rate schedule, FY {ruleset.fy}",
     )
 
 

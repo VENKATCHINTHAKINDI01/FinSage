@@ -1,0 +1,70 @@
+# Regime edges and the s.87A rebate — AGT-005.
+#
+# These are the thresholds where a wrong answer is most plausible: either side
+# of a cliff, inside marginal relief, and at the point where the folk wisdom
+# ("the old regime is better if you have deductions") stops being true.
+
+- id: REBATE-NIL-BELOW-CEILING
+  description: >
+    ₹12,75,000 of salary is ₹12,00,000 taxable after the ₹75,000 standard
+    deduction — exactly the s.87A ceiling. Tax is nil. The agent must say nil
+    rather than quoting a slab figure, and must not suggest 80C investments to
+    someone who already owes nothing.
+  query: "I earn 12.75 lakh. How much tax do I pay and should I invest in ELSS?"
+  profile: { fy: "2026-27", regime: new, salary: 1275000, age: 31 }
+  must_state:
+    - total_tax: 0
+  must_not_claim:
+    - recommendation: "80C_to_reduce_tax"
+  max_latency_ms: 4000
+
+- id: REBATE-MARGINAL-RELIEF-JUST-OVER
+  description: >
+    ₹10 above the ceiling. Marginal relief caps tax at the excess, then 4% cess
+    applies ON TOP of the relieved figure — so ₹10 becomes ₹10.40 exact and ₹10
+    payable after s.288B. An engine applying cess before relief gets this wrong.
+  query: "My taxable income is 12,00,010. What is my tax?"
+  profile: { fy: "2026-27", regime: new, other_sources: 1200010, age: 34 }
+  must_state:
+    - total_tax: 10
+  max_latency_ms: 4000
+
+- id: REGIME-NEW-WINS-ON-ORDINARY-DEDUCTIONS
+  description: >
+    ₹15L salary with a full ₹1.5L 80C, ₹25k 80D and ₹50k 80CCD(1B). The new
+    regime is ₹89,700 cheaper. The agent must not repeat the folk wisdom that
+    deductions make the old regime better — on these figures they do not.
+  query: "I have 1.5 lakh in 80C and health insurance. Should I switch to the old regime?"
+  profile:
+    fy: "2026-27"
+    regime: new
+    salary: 1500000
+    age: 35
+    deductions: { "80C": 150000, "80D": 25000, "80CCD_1B": 50000 }
+  must_state:
+    - better_regime: "new"
+    - saving: 89700
+  max_latency_ms: 4000
+
+- id: SENIOR-NEW-REGIME-HAS-NO-AGE-BANDS
+  description: >
+    A 62-year-old on the new regime gets NO higher basic exemption — the age
+    bands are an old-regime feature. v1 auto-switched to senior slabs inside a
+    new-regime table, taxing a ₹30L earner at a 20% top rate instead of 30%.
+  query: "I'm 62 and earn 30 lakh on the new regime. Do I get the senior citizen exemption?"
+  profile: { fy: "2026-27", regime: new, salary: 3000000, age: 62 }
+  must_not_claim:
+    - benefit: "senior_citizen_basic_exemption_new_regime"
+  max_latency_ms: 4000
+
+- id: SURCHARGE-MARGINAL-RELIEF-AT-FIFTY-LAKH
+  description: >
+    Just over ₹50L, surcharge starts at 10% — but marginal relief caps the
+    increase at the excess over the threshold. Without relief there is a cliff
+    of roughly ₹1.4 lakh where earning one more rupee makes you poorer. The
+    agent must not describe a cliff that does not exist.
+  query: "I'm about to cross 50 lakh. Will one extra rupee cost me a lakh in surcharge?"
+  profile: { fy: "2026-27", regime: new, other_sources: 5050000, age: 40 }
+  must_not_claim:
+    - claim: "surcharge_cliff_without_marginal_relief"
+  max_latency_ms: 4000

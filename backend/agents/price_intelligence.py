@@ -1,216 +1,218 @@
-"""
-Price Intelligence Agent
-========================
+"""Cost inflation indexation — PRC-008.
 
-Handles inflation indexation (CII) and tax-adjusted yield comparisons.
+This file used to be twice as long and most of what came out was not replaced.
+
+What was here, and why each piece had to go
+-------------------------------------------
+**A hardcoded Cost Inflation Index table**, ending at FY 2024-25 and falling
+back to `254` or `363` for anything it did not have. A FY 2025-26 acquisition
+was therefore indexed against 2015-16 with nothing raised. The table now lives
+in the rule pack, where the loader raises for a year it does not cover — the
+same discipline as every other rate in the product.
+
+**A post-tax yield comparison across FDs, ELSS, gold, SGBs and debt funds.**
+Every number in it was invented: FD at 7.5%, ELSS at 12%, gold at 6%, all
+hardcoded floats presented to the user as though they were computed. It also
+applied a 10% LTCG rate to ELSS, which has been 12.5% since 23 July 2024, and
+ignored the ₹1,25,000 annual exemption while naming it in the label.
+
+And it **recommended buying Sovereign Gold Bonds**, whose primary issuance the
+government stopped in February 2024. A user acting on that advice would find
+there is nothing to buy.
+
+Deleting it rather than fixing it
+----------------------------------
+The rates could be corrected. The recommendation could be caveated. Neither is
+the problem. Ranking investment products by projected post-tax return, for a
+named individual, IS personalised investment advice — SEBI-regulated, and
+outside what this product may do. AGT-006 already refuses it when a user asks;
+it made no sense to keep a code path that volunteered it.
+
+So the yield branch is gone and the agent says why, which is more useful to a
+user than a comparison built on made-up returns.
+
+What is left
+-------------
+Indexation, routed through the tool layer to the core engine, plus an
+explanation. The agent does no arithmetic — it did seven separate calculations
+before, including deriving a marginal slab rate from a hardcoded income ladder
+that no longer matched the slabs.
+
+Indexation still matters despite being abolished: a resident individual or HUF
+selling immovable property acquired BEFORE 23 July 2024 may elect 20% with
+indexation instead of 12.5% without, and will be able to for decades.
 """
 
-import time
+from __future__ import annotations
+
 import logging
-from typing import Dict, Any, List
-from datetime import datetime
+import time
+from typing import Any
 
-from backend.agents.base_agent import TaxAgent, AgentOutput, confidence_score, derive_confidence
+from backend.agents.base_agent import AgentOutput, TaxAgent, derive_confidence
 
 logger = logging.getLogger(__name__)
 
+# Kept as prose, not as a refusal pattern — AGT-006 owns the blocking check.
+# This is the explanation the user gets instead of the comparison.
+OUT_OF_SCOPE = (
+    "Ranking investment products by expected return is personalised investment "
+    "advice, which is SEBI-regulated and outside what this product does. What "
+    "it can tell you is the TAX treatment of each — the rate, the holding "
+    "period, the exemption and the section — and it will do that for any "
+    "instrument you name. What it will not do is tell you which to buy, or put "
+    "a projected return beside it."
+)
+
+SGB_POSITION = (
+    "Sovereign Gold Bonds: the government has issued no new tranche since "
+    "February 2024 and has announced no issuance calendar, so there is nothing "
+    "to buy at primary issue. Existing bonds remain valid and are tradable on "
+    "NSE and BSE, where they trade at a market price rather than the issue "
+    "price. An earlier version of this product recommended buying them."
+)
+
 
 class PriceIntelligenceAgent(TaxAgent):
+    """Cost inflation indexation, and an honest refusal about yields.
+
+    The agent explains; the tool layer computes. There is no arithmetic in this
+    class, which is what makes the `numeric_provenance` gate meaningful for it.
     """
-    Compare investment products by post-tax yields and calculate cost inflation indexation:
-    
-    • Cost Inflation Index (CII) lookups & capital gains indexation (LTCG)
-    • Post-tax yield comparison (Fixed Deposits, ELSS, Gold, SGBs, Debt Funds)
-    • Asset purchasing optimization insights
-    """
-    
-    # Cost Inflation Index (CII) values from official Income Tax department (FY 2001-02 onwards)
-    CII_TABLE = {
-        "2001-02": 100,
-        "2002-03": 105,
-        "2003-04": 109,
-        "2004-05": 113,
-        "2005-06": 117,
-        "2006-07": 122,
-        "2007-08": 129,
-        "2008-09": 137,
-        "2009-10": 148,
-        "2010-11": 167,
-        "2011-12": 184,
-        "2012-13": 200,
-        "2013-14": 220,
-        "2014-15": 240,
-        "2015-16": 254,
-        "2016-17": 264,
-        "2017-18": 272,
-        "2018-19": 280,
-        "2019-20": 289,
-        "2020-21": 301,
-        "2021-22": 317,
-        "2022-23": 331,
-        "2023-24": 348,
-        "2024-25": 363
-    }
-    
-    def __init__(self):
+
+    def __init__(self) -> None:
         super().__init__("price_intelligence_agent", "price_intelligence")
-        
+
     async def execute(
         self,
         user_query: str,
-        user_context: Dict[str, Any],
-        tools=None,
-        **kwargs
+        user_context: dict[str, Any],
+        tools: Any = None,
+        **kwargs: Any,
     ) -> AgentOutput:
-        """
-        Analyze capital gains indexation or calculate post-tax yields.
-        """
-        start_time = time.time()
+        started = time.time()
         if tools is not None:
             self.set_tools(tools)
-            
-        try:
-            self.logger.info(f"Starting price intelligence analysis for: {user_query}")
-            
-            # Fetch user profile/investments if available
-            user_profile = {}
-            if self.tools:
-                profile_res = await self.call_tool(
-                    "get_user_profile",
-                    user_id=user_context.get("user_id", "unknown")
-                )
-                if profile_res.get("success"):
-                    user_profile = profile_res.get("result", {})
-                    
-            annual_income = float(user_profile.get("financial_profile", {}).get("annual_income", 0)) or float(user_context.get("annual_income", 0)) or 1000000.0
-            
-            # 1. Determine marginal tax slab rate (for yield tax calculations)
-            tax_rate = 0.30
-            if annual_income <= 300000:
-                tax_rate = 0.00
-            elif annual_income <= 700000:
-                tax_rate = 0.05
-            elif annual_income <= 1000000:
-                tax_rate = 0.10
-            elif annual_income <= 1200000:
-                tax_rate = 0.15
-            elif annual_income <= 1500000:
-                tax_rate = 0.20
-            
-            # 2. Check if query is about indexation / capital gains
-            is_indexation_query = any(word in user_query.lower() for word in ["index", "cii", "inflation", "gain", "sell", "buy", "purchase"])
-            
-            result = {}
-            recommendations = []
-            
-            if is_indexation_query:
-                # Capital gains calculation using CII indexation
-                asset_type = user_context.get("asset_type", "real_estate") # real_estate, gold, debt_fund, etc.
-                purchase_year = user_context.get("purchase_year", "2015-16")
-                sell_year = user_context.get("sell_year", "2024-25")
-                purchase_price = float(user_context.get("purchase_price") or 5000000.0)
-                sell_price = float(user_context.get("sale_price") or 8000000.0)
-                
-                cii_purchase = self.CII_TABLE.get(purchase_year, 254)
-                cii_sell = self.CII_TABLE.get(sell_year, 363)
-                
-                indexed_cost = purchase_price * (cii_sell / cii_purchase)
-                capital_gain = sell_price - indexed_cost
-                
-                # Standard LTCG tax rate (20% with indexation for real estate/gold)
-                ltcg_tax = max(0.0, capital_gain * 0.20)
-                
-                result = {
-                    "calculation_type": "indexation_ltcg",
-                    "asset_type": asset_type,
-                    "purchase_year": purchase_year,
-                    "sell_year": sell_year,
-                    "purchase_price": purchase_price,
-                    "sale_price": sell_price,
-                    "cii_purchase": cii_purchase,
-                    "cii_sell": cii_sell,
-                    "indexed_cost": indexed_cost,
-                    "capital_gains": capital_gain,
-                    "estimated_ltcg_tax": ltcg_tax
-                }
-                
-                recommendations.append(
-                    f"Your indexed cost of acquisition is ₹{indexed_cost:,.2f} (inflated from ₹{purchase_price:,.2f} using CII values)."
-                )
-                recommendations.append(
-                    f"The net taxable capital gains after indexation is ₹{capital_gain:,.2f}. Estimated tax (20%): ₹{ltcg_tax:,.2f}."
-                )
-                if asset_type == "real_estate" and capital_gain > 0:
-                    recommendations.append(
-                        "You can save this tax by reinvesting the capital gains under Section 54 (buying another house) "
-                        "or Section 54EC (Capital Gains Bonds like REC/NHAI, up to ₹50 Lakhs limit)."
-                    )
-            else:
-                # Tax-adjusted yields comparison
-                gross_investment = float(user_context.get("investment_amount") or 100000.0)
-                
-                # Asset class projections
-                # 1. FD: Gross 7.5%, Interest taxed at slab
-                fd_gross = 0.075
-                fd_net = fd_gross * (1 - tax_rate)
-                
-                # 2. ELSS: Gross 12%, LTCG taxed at 10% (exemption of 1L ignored for safety)
-                elss_gross = 0.12
-                elss_net = elss_gross * (1 - 0.10)
-                
-                # 3. Sovereign Gold Bonds (SGB): Gross 2.5% yield + 6% gold return. 
-                # Interest taxed at slab. Capital gains on maturity are tax-exempt!
-                sgb_gross = 0.085
-                sgb_net = (0.025 * (1 - tax_rate)) + 0.06
-                
-                # 4. Debt Mutual Funds (post-2023): Gross 7%, gains taxed at slab
-                debt_gross = 0.07
-                debt_net = debt_gross * (1 - tax_rate)
-                
-                yield_comparison = [
-                    {"instrument": "ELSS (Tax Saving Mutual Fund)", "gross_yield": f"{elss_gross*100:.2f}%", "post_tax_yield": f"{elss_net*100:.2f}%", "tax_treatment": "10% LTCG above ₹1.25L exemption limit"},
-                    {"instrument": "Sovereign Gold Bond (SGB)", "gross_yield": f"{sgb_gross*100:.2f}%", "post_tax_yield": f"{sgb_net*100:.2f}%", "tax_treatment": "Interest taxed at slab, capital gains fully tax-free on maturity"},
-                    {"instrument": "Fixed Deposit (FD)", "gross_yield": f"{fd_gross*100:.2f}%", "post_tax_yield": f"{fd_net*100:.2f}%", "tax_treatment": "Interest fully taxable at your slab rate"},
-                    {"instrument": "Debt Mutual Fund", "gross_yield": f"{debt_gross*100:.2f}%", "post_tax_yield": f"{debt_net*100:.2f}%", "tax_treatment": "Taxed at slab rate (no indexation benefit for fresh purchases)"}
-                ]
-                
-                result = {
-                    "calculation_type": "post_tax_yields",
-                    "gross_investment": gross_investment,
-                    "marginal_tax_rate": tax_rate,
-                    "yield_comparison": yield_comparison
-                }
-                
-                recommendations.append(
-                    f"Based on your marginal tax slab of {tax_rate*100:.0f}%, FDs and Debt Funds have a low post-tax yield of "
-                    f"{(fd_net if fd_net > debt_net else debt_net)*100:.2f}%."
-                )
-                recommendations.append(
-                    f"ELSS offers the highest post-tax yield potential ({elss_net*100:.2f}%) and provides Section 80C deductions."
-                )
-                recommendations.append(
-                    f"Sovereign Gold Bonds (SGB) are highly tax-efficient ({sgb_net*100:.2f}% post-tax) as capital gains on maturity are completely exempt from tax."
-                )
-                
-            result["recommendations"] = recommendations
-            
-            execution_time = (time.time() - start_time) * 1000
-            
+
+        query = (user_query or "").lower()
+        wants_yields = any(
+            term in query
+            for term in ("yield", "return", "which is better", "compare "
+                         "investment", "best investment", "sgb", "gold bond")
+        )
+
+        if wants_yields:
             return self._create_output(
-                result=result,
-                status="success",
-                confidence=confidence_score(derive_confidence()),
-                reasoning="Calculated cost inflation indexation and compared tax-adjusted yields.",
-                execution_time_ms=execution_time
+                result={
+                    "calculation_type": "declined_out_of_scope",
+                    "explanation": OUT_OF_SCOPE,
+                    "sovereign_gold_bonds": SGB_POSITION,
+                    "what_this_can_do": [
+                        "The tax treatment of any instrument you name — rate, "
+                        "holding period, exemption and section.",
+                        "Cost inflation indexation for property acquired "
+                        "before 23 July 2024.",
+                        "The tax on a specific disposal you have actually "
+                        "made or are about to make.",
+                    ],
+                    "recommendations": [OUT_OF_SCOPE],
+                },
+                status="declined",
+                confidence=derive_confidence(used_llm_for_values=False),
+                reasoning=(
+                    "Declined: a post-tax yield ranking is personalised "
+                    "investment advice."
+                ),
+                execution_time_ms=(time.time() - started) * 1000,
             )
-            
-        except Exception as e:
-            self.logger.error(f"Error in PriceIntelligenceAgent: {e}", exc_info=True)
-            execution_time = (time.time() - start_time) * 1000
+
+        return await self._indexation(user_context, started)
+
+    async def _indexation(
+        self, user_context: dict[str, Any], started: float,
+    ) -> AgentOutput:
+        """Route to the engine. Every figure below comes back from a tool."""
+        missing = [
+            name for name in ("acquired_on", "sold_on", "cost", "consideration")
+            if not user_context.get(name)
+        ]
+        if missing:
             return self._create_output(
-                result={"error": str(e)},
+                result={
+                    "calculation_type": "insufficient_data",
+                    "missing_fields": missing,
+                    "explanation": (
+                        "A capital gain cannot be computed without "
+                        + ", ".join(missing)
+                        + ". These are not fields to estimate — the date of "
+                        "acquisition alone decides whether the 20%-with-"
+                        "indexation election is available at all."
+                    ),
+                    "recommendations": [],
+                },
+                status="needs_input",
+                confidence=derive_confidence(missing_inputs=missing),
+                reasoning="Missing inputs for a capital gains computation.",
+                execution_time_ms=(time.time() - started) * 1000,
+            )
+
+        if not self.tools:
+            return self._create_output(
+                result={
+                    "calculation_type": "unavailable",
+                    "explanation": (
+                        "The capital gains engine is not reachable, and this "
+                        "agent does not compute figures itself."
+                    ),
+                    "recommendations": [],
+                },
                 status="error",
-                confidence=0.0,  # execution failed — not a score
-                reasoning=f"Failure evaluating investment yield options: {str(e)}",
-                execution_time_ms=execution_time
+                confidence=derive_confidence(error="no tools"),
+                reasoning="Tool layer unavailable.",
+                execution_time_ms=(time.time() - started) * 1000,
             )
+
+        response = await self.call_tool(
+            "calculate_capital_gains",
+            disposals=[{
+                "asset": user_context.get("asset", "immovable_property"),
+                "acquired_on": str(user_context["acquired_on"]),
+                "sold_on": str(user_context["sold_on"]),
+                "cost": user_context["cost"],
+                "consideration": user_context["consideration"],
+                "improvement_cost": user_context.get("improvement_cost", 0),
+                "transfer_expenses": user_context.get("transfer_expenses", 0),
+            }],
+            fy=user_context.get("fy"),
+        )
+
+        if not response.get("success"):
+            return self._create_output(
+                result={
+                    "calculation_type": "unavailable",
+                    "explanation": response.get("error", "The engine declined."),
+                    "recommendations": [],
+                },
+                status="error",
+                confidence=derive_confidence(error=response.get("error")),
+                reasoning="The capital gains engine declined the disposal.",
+                execution_time_ms=(time.time() - started) * 1000,
+            )
+
+        result = dict(response.get("result") or response)
+        result["calculation_type"] = "capital_gains"
+        result["recommendations"] = [
+            "Indexation was abolished for transfers on or after 23 July 2024. "
+            "It survives as an ELECTION for a resident individual or HUF "
+            "selling immovable property acquired before that date, who may "
+            "choose 20% with indexation over 12.5% without — whichever is "
+            "lower for them.",
+        ]
+        return self._create_output(
+            result=result,
+            confidence=derive_confidence(
+                tool_results=[response], used_llm_for_values=False,
+            ),
+            reasoning="Capital gains computed by the core engine.",
+            execution_time_ms=(time.time() - started) * 1000,
+        )

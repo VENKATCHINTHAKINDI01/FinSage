@@ -1,0 +1,105 @@
+# FY 2026-27 · capital loss set-off · PLN-003
+#
+# Rates:  other STCG = slab · equity STCG (111A) = 20% · equity LTCG (112A) =
+#         12.5% above ₹1,25,000 · other LTCG (112) = 12.5%
+# Constraints: STCL against STCG or LTCG · LTCL against LTCG only (s.74)
+# Ordering:    constrained loss first, then highest effective rate first
+
+- id: SO26-SCARCE-LOSS-GOES-TO-THE-DEAREST-GAIN
+  gains: { equity_ltcg_112a: 200000, equity_stcg_111a: 100000 }
+  stcl: 50000
+  expect:
+    tax_saved: 10000
+    allocations: 1
+    first_bucket: equity_stcg_111a
+  verified_against: >
+    ₹50,000 into the 20% STCG saves ₹10,000; into the 12.5% LTCG it would save
+    ₹6,250. The ₹3,750 gap is the whole reason the module orders by rate.
+
+- id: SO26-LOSS-STOPS-AT-THE-EXEMPT-FLOOR
+  gains: { equity_ltcg_112a: 200000, equity_stcg_111a: 100000 }
+  stcl: 250000
+  expect:
+    tax_saved: 29375
+    gains_after_ltcg: 125000
+    carried_forward_stcl: 75000
+  verified_against: >
+    ₹1,00,000 clears the STCG at 20% = ₹20,000. The LTCG offers only ₹75,000 of
+    headroom (2,00,000 − 1,25,000 exempt), at 12.5% = ₹9,375. Total ₹29,375.
+    The allocator then STOPS: the remaining ₹1,25,000 of gain is taxed at
+    nothing, so the last ₹75,000 of loss is carried forward instead of being
+    spent to save zero.
+
+- id: SO26-GAIN-WHOLLY-WITHIN-THE-EXEMPTION-IS-LEFT-ALONE
+  gains: { equity_ltcg_112a: 100000 }
+  stcl: 100000
+  expect:
+    tax_saved: 0
+    allocations: 0
+    carried_forward_stcl: 100000
+  verified_against: >
+    The entire ₹1,00,000 gain sits inside the ₹1,25,000 exemption, so there is
+    no tax to save and the loss is preserved in full. A rate-blind allocator
+    reports ₹12,500 of saving here that does not exist.
+
+- id: SO26-LONG-TERM-LOSS-CANNOT-REACH-A-SHORT-TERM-GAIN
+  gains: { equity_stcg_111a: 100000 }
+  ltcl: 100000
+  expect:
+    tax_saved: 0
+    allocations: 0
+    carried_forward_ltcl: 100000
+  verified_against: >
+    s.74(1)(b). The ₹20,000 saving is unavailable however much the taxpayer
+    would like it, and the engine must leave the gain standing rather than
+    take it.
+
+- id: SO26-CONSTRAINED-LOSS-IS-SPENT-FIRST
+  gains: { other_ltcg_112: 100000, equity_stcg_111a: 100000 }
+  stcl: 100000
+  ltcl: 100000
+  expect:
+    tax_saved: 32500
+    carried_forward_stcl: 0
+    carried_forward_ltcl: 0
+  verified_against: >
+    Both losses could cover the LTCG, but only the STCL can reach the STCG.
+    LTCL → LTCG at 12.5% = ₹12,500; STCL → STCG at 20% = ₹20,000. Total
+    ₹32,500 and nothing stranded. Spending the STCL on the LTCG first would
+    leave the LTCL unusable and save ₹12,500 less.
+
+- id: SO26-CURRENT-YEAR-BEFORE-BROUGHT-FORWARD
+  gains: { equity_stcg_111a: 100000 }
+  stcl: 100000
+  brought_forward_stcl: 100000
+  expect:
+    tax_saved: 20000
+    allocations: 1
+    carried_forward_stcl: 100000
+  verified_against: >
+    ss.70/71 run before s.74. Using the brought-forward loss first would waste
+    the year it has already spent inside its eight-year window; the current-year
+    loss has the full window ahead of it.
+
+- id: SO26-SLAB-GAINS-OUTRANK-AT-THE-TOP-BRACKET
+  gains: { other_stcg_slab: 100000, equity_stcg_111a: 100000 }
+  stcl: 50000
+  slab_rate: "0.30"
+  expect:
+    tax_saved: 15000
+    first_bucket: other_stcg_slab
+  verified_against: >
+    At a 30% marginal rate the slab-taxed gain is dearer than the 20% s.111A
+    gain, so the scarce loss goes there: 50,000 × 30% = ₹15,000.
+
+- id: SO26-BUT-NOT-FOR-A-LOWER-BRACKET-TAXPAYER
+  gains: { other_stcg_slab: 100000, equity_stcg_111a: 100000 }
+  stcl: 50000
+  slab_rate: "0.05"
+  expect:
+    tax_saved: 10000
+    first_bucket: equity_stcg_111a
+  verified_against: >
+    Same facts, 5% marginal rate. Now the 20% s.111A gain is the dearer one.
+    A module that hardcoded 30% would send the loss to the wrong bucket and
+    overstate the saving by ₹7,500.
