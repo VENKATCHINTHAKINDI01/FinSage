@@ -5,6 +5,7 @@ import AuthLayout from '../components/layout/AuthLayout';
 import PasswordStrengthMeter from '../components/ui/PasswordStrengthMeter';
 import { useAuthStore } from '../store/useAuthStore';
 import { checkPasswordStrength } from '../utils/password';
+import { TAX_YEAR } from '../store/useProfileStore';
 
 export default function Signup() {
   const navigate = useNavigate();
@@ -52,7 +53,7 @@ export default function Signup() {
   };
 
   return (
-    <AuthLayout title="Create your account" subtitle="Set up FinSage AI for the FY 2024–25 filing season">
+    <AuthLayout title="Create your account" subtitle={`Set up FinSage AI for the ${TAX_YEAR} filing season`}>
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
         {error && (
           <div className="flex items-start gap-2.5 p-3 rounded-xl2 bg-red-50 border border-danger/20 animate-rise">

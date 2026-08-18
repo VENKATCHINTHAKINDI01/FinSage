@@ -2,6 +2,7 @@ import React from 'react';
 import { IndianRupee, ShieldCheck, Sparkles, TrendingUp } from 'lucide-react';
 import CosmicBackground from '../common/CosmicBackground';
 import ParticleField from '../common/ParticleField';
+import { TAX_YEAR } from '../../store/useProfileStore';
 
 const HIGHLIGHTS = [
   { icon: ShieldCheck, text: 'India-specific compliance & audit-readiness checks' },
@@ -44,7 +45,7 @@ export default function AuthLayout({ title, subtitle, children }: AuthLayoutProp
           </p>
           <p className="text-white/60 text-[14px] max-w-sm mb-10 leading-relaxed">
             One platform for tax optimization, compliance, ITR filing, and financial health —
-            grounded in FY 2024–25 rules.
+            grounded in {TAX_YEAR} rules.
           </p>
 
           <div className="space-y-4 pt-2 stagger">
@@ -60,7 +61,7 @@ export default function AuthLayout({ title, subtitle, children }: AuthLayoutProp
         </div>
 
         <p className="relative text-[11.5px] text-white/40 animate-fade-in">
-          © 2026 FinSage AI · Built for FY 2024–25 · Data Validated & Cross-Checked
+          © 2026 FinSage AI · Built for {TAX_YEAR} · Data Validated & Cross-Checked
         </p>
       </div>
 

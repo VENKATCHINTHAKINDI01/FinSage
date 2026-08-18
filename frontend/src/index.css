@@ -233,14 +233,22 @@
 /* ── Premium Card ────────────────────────────────────────────────── */
 
 .card {
-  background: var(--bg-primary);
+  /* `background-color`, deliberately not the `background` shorthand: the
+     shorthand resets `background-image` to `none` for anything it doesn't
+     specify, which silently deleted every `bg-gradient-to-*` Tailwind
+     utility applied to a Card via className — a "featured" gradient card
+     rendered as a plain flat one, with `text-white` content invisible
+     against it, and nothing in devtools pointing at why. background-color
+     and background-image are independent properties, so this way a
+     gradient utility layers on top with no conflict. */
+  background-color: var(--bg-primary);
   border: 1px solid var(--color-neutral-200);
   border-radius: 16px;
   box-shadow: var(--shadow-sm);
   backdrop-filter: blur(16px) saturate(160%);
   -webkit-backdrop-filter: blur(16px) saturate(160%);
-  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), 
-              box-shadow 0.4s cubic-bezier(0.16, 1, 0.3, 1), 
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.4s cubic-bezier(0.16, 1, 0.3, 1),
               border-color 0.3s ease;
 }
 .card:hover {

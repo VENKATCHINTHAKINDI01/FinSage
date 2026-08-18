@@ -1,6 +1,15 @@
 /**
  * useProfileStore — Complete Financial Profile
  * Persisted to localStorage. Powers all AI context and personalized suggestions.
+ *
+ * `calculateTax()` below is an ESTIMATE, not the source of truth. It exists
+ * so a form can show instant feedback while someone is typing, before a
+ * round trip to POST /api/v1/compliance/calculator completes. Once that
+ * response is back, it is what gets shown as the user's actual figure —
+ * backend.core is the only place a filing-grade number comes from, the same
+ * rule this product applies everywhere else. Any UI displaying a value from
+ * this function should label it "estimate" and defer to the API result
+ * where one exists.
  */
 
 import { create } from 'zustand';
@@ -159,19 +168,30 @@ const DEFAULT_PROFILE: FinancialProfile = {
   superSeniorParents: false,
 };
 
-// ── Tax constants FY 2025-26 ─────────────────────────────────────────────────
+// ── Tax constants, FY 2026-27 ────────────────────────────────────────────────
+//
+// This is a client-side ESTIMATE only — see the module docstring below.
+// Every figure a user relies on to file comes from POST /api/v1/compliance/
+// calculator (backend.core, versioned rule packs, golden-tested). These
+// constants exist so a form can show instant feedback while someone is
+// typing, before that round trip completes.
 
-export const TAX_YEAR = 'FY 2025–26';
-export const ASSESSMENT_YEAR = 'AY 2026–27';
-export const ITR_DEADLINE = '31 Jul 2026';
+export const TAX_YEAR = 'FY 2026–27';
+export const ASSESSMENT_YEAR = 'AY 2027–28';
+export const ITR_DEADLINE = '31 Jul 2027';
+// ISO form for date arithmetic — the display string above is not reliably
+// parseable by `new Date(...)` across engines.
+export const ITR_DEADLINE_ISO = '2027-07-31';
+export const FY_END_DATE = '31 March 2027';
 
 export const NEW_REGIME_SLABS = [
-  { min: 0, max: 300000, rate: 0 },
-  { min: 300000, max: 700000, rate: 0.05 },
-  { min: 700000, max: 1000000, rate: 0.10 },
-  { min: 1000000, max: 1200000, rate: 0.15 },
-  { min: 1200000, max: 1500000, rate: 0.20 },
-  { min: 1500000, max: Infinity, rate: 0.30 },
+  { min: 0, max: 400000, rate: 0 },
+  { min: 400000, max: 800000, rate: 0.05 },
+  { min: 800000, max: 1200000, rate: 0.10 },
+  { min: 1200000, max: 1600000, rate: 0.15 },
+  { min: 1600000, max: 2000000, rate: 0.20 },
+  { min: 2000000, max: 2400000, rate: 0.25 },
+  { min: 2400000, max: Infinity, rate: 0.30 },
 ];
 
 export const OLD_REGIME_SLABS = [
@@ -184,6 +204,8 @@ export const OLD_REGIME_SLABS = [
 export const STD_DEDUCTION_NEW = 75000;
 export const STD_DEDUCTION_OLD = 50000;
 export const CESS_RATE = 0.04;
+export const REBATE_87A_THRESHOLD_NEW = 1200000;
+export const REBATE_87A_THRESHOLD_OLD = 500000;
 export const SECTION_80C_LIMIT = 150000;
 export const SECTION_80D_SELF_LIMIT = 25000;
 export const SECTION_80D_PARENTS_LIMIT = 25000;
@@ -202,6 +224,23 @@ function calcSlabTax(taxable: number, slabs: typeof NEW_REGIME_SLABS): number {
     tax += (Math.min(taxable, max) - min) * rate;
   }
   return tax;
+}
+
+/**
+ * The slab rate that applies to the NEXT rupee of income — real marginal
+ * benefit of a deduction depends on this, not a flat assumed bracket.
+ * Still an approximation: it does not account for crossing the 87A rebate
+ * or surcharge boundary, where the true marginal rate briefly spikes far
+ * above any slab rate (see `calculateTax`'s marginal-relief note). Good
+ * enough for an instant "roughly this much" while a form is being filled;
+ * never the number a filing decision should rest on.
+ */
+export function marginalRateAt(taxable: number, regime: TaxRegime): number {
+  const slabs = regime === 'new' ? NEW_REGIME_SLABS : OLD_REGIME_SLABS;
+  for (let i = slabs.length - 1; i >= 0; i--) {
+    if (taxable > slabs[i].min) return slabs[i].rate;
+  }
+  return 0;
 }
 
 export function calculateTax(profile: FinancialProfile): {
@@ -267,21 +306,33 @@ export function calculateTax(profile: FinancialProfile): {
   const slabs = profile.taxRegime === 'new' ? NEW_REGIME_SLABS : OLD_REGIME_SLABS;
   let incomeTax = calcSlabTax(taxable, slabs);
 
-  // 87A rebate
-  if (profile.taxRegime === 'new' && taxable <= 700000) incomeTax = 0;
-  if (profile.taxRegime === 'old' && taxable <= 500000) incomeTax = 0;
+  // s.87A rebate, WITH marginal relief. A flat threshold ("nil below ₹12L,
+  // full slab tax from ₹12,00,001") is a cliff bug: it would tax someone
+  // earning ten rupees more than the threshold ₹60,001.50, not ₹10. Marginal
+  // relief caps the tax at the excess income over the threshold, so it rises
+  // by at most the rupee that crossed the line.
+  const rebateThreshold = profile.taxRegime === 'new' ? REBATE_87A_THRESHOLD_NEW : REBATE_87A_THRESHOLD_OLD;
+  if (taxable <= rebateThreshold) {
+    incomeTax = 0;
+  } else {
+    incomeTax = Math.min(incomeTax, taxable - rebateThreshold);
+  }
 
   const cess = incomeTax * CESS_RATE;
   const total = incomeTax + cess;
   const effectiveRate = gross > 0 ? (total / gross) * 100 : 0;
 
-  // Potential savings = gap between used deductions and available limits (old regime)
+  // Potential savings = unused deduction headroom valued at the REAL marginal
+  // rate at this income, not a flat assumed bracket — the flat-rate version
+  // of this overstated savings for anyone below the top slab and understated
+  // it for anyone in it.
+  const marginalRate = marginalRateAt(taxable, profile.taxRegime);
   const maxPossible80C = SECTION_80C_LIMIT;
   const maxPossible80D = SECTION_80D_SELF_LIMIT + (profile.seniorParents ? SECTION_80D_SENIOR_PARENTS_LIMIT : SECTION_80D_PARENTS_LIMIT);
   const unusedSavings = Math.max(0,
-    (maxPossible80C - sec80C) * 0.30 +
-    (maxPossible80D - sec80D) * 0.30 +
-    (SECTION_80CCD_1B_LIMIT - sec80CCD1B) * 0.30
+    (maxPossible80C - sec80C) * marginalRate +
+    (maxPossible80D - sec80D) * marginalRate +
+    (SECTION_80CCD_1B_LIMIT - sec80CCD1B) * marginalRate
   );
 
   return {

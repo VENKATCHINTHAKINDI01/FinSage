@@ -1,5 +1,12 @@
 interface ScoreGaugeProps {
-  score: number;
+  // Optional and nullable: callers commonly pass a value straight from an
+  // API response that has not resolved yet (undefined while loading, or a
+  // field the response genuinely omits). `score / 100` on either produces
+  // NaN, which React forwards straight into the `strokeDashoffset` SVG
+  // attribute — an invisible bug that only shows up as a console warning,
+  // not a caught error, so it is worth being deliberate about here rather
+  // than trusting every call site to guard it.
+  score: number | null | undefined;
   size?: number;
 }
 
@@ -9,7 +16,8 @@ export default function ScoreGauge({ score, size = 144 }: ScoreGaugeProps) {
   const radius = size / 2 - strokeWidth - 5;
   const center = size / 2;
   const circumference = 2 * Math.PI * radius;
-  const strokeDashoffset = circumference - (score / 100) * circumference;
+  const safeScore = typeof score === 'number' && !Number.isNaN(score) ? score : 0;
+  const strokeDashoffset = circumference - (safeScore / 100) * circumference;
 
   // Determine color based on score
   const getColor = (val: number) => {
@@ -35,7 +43,7 @@ export default function ScoreGauge({ score, size = 144 }: ScoreGaugeProps) {
           cx={center}
           cy={center}
           r={radius}
-          stroke={getColor(score)}
+          stroke={getColor(safeScore)}
           strokeWidth={strokeWidth}
           fill="transparent"
           strokeDasharray={circumference}
@@ -47,7 +55,7 @@ export default function ScoreGauge({ score, size = 144 }: ScoreGaugeProps) {
       {/* Centered text */}
       <div className="absolute flex flex-col items-center justify-center">
         <span className="text-3xl font-black text-slate-900 dark:text-white font-display leading-none">
-          {score}
+          {safeScore}
         </span>
         <span className="text-[10px] uppercase tracking-wider font-bold text-slate-400 dark:text-slate-500 mt-1">
           / 100

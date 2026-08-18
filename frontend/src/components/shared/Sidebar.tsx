@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useUIStore } from '../../store/useUIStore';
-import { useProfileStore } from '../../store/useProfileStore';
+import { useProfileStore, TAX_YEAR, ITR_DEADLINE, ITR_DEADLINE_ISO } from '../../store/useProfileStore';
 import clsx from 'clsx';
 
 interface NavItem {
@@ -32,9 +32,13 @@ export default function Sidebar() {
   const collapsed = useUIStore((s) => s.sidebarCollapsed);
   const { completeness } = useProfileStore();
 
-  // Days to ITR deadline (31 Jul 2026)
+  // Days to the ITR deadline. Was hardcoded to 2026-07-31 — a date already
+  // in the past by the time this ships for FY 2026-27 — which silently
+  // clamped to "0d left" via the Math.max(0, ...) below rather than
+  // reflecting the actual next deadline. Sourced from ITR_DEADLINE_ISO so
+  // the two never drift apart again.
   const daysLeft = Math.max(0, Math.ceil(
-    (new Date('2026-07-31').getTime() - Date.now()) / 86400000
+    (new Date(ITR_DEADLINE_ISO).getTime() - Date.now()) / 86400000
   ));
   const deadlinePct = Math.min(100, Math.max(0, 100 - (daysLeft / 120) * 100));
 
@@ -60,7 +64,7 @@ export default function Sidebar() {
         {!collapsed && (
           <div className="leading-tight overflow-hidden">
             <p className="font-display font-bold text-[15px] tracking-tight whitespace-nowrap text-white">FinSage AI</p>
-            <p className="text-[10px] text-white/40 tracking-wide whitespace-nowrap">FY 2025–26 · India</p>
+            <p className="text-[10px] text-white/40 tracking-wide whitespace-nowrap">{TAX_YEAR} · India</p>
           </div>
         )}
       </div>
@@ -134,7 +138,7 @@ export default function Sidebar() {
               {daysLeft}d left
             </span>
           </div>
-          <p className="text-[13px] font-bold ledger-num text-white mb-2">31 Jul 2026</p>
+          <p className="text-[13px] font-bold ledger-num text-white mb-2">{ITR_DEADLINE}</p>
           <div className="h-1 rounded-full bg-white/10 overflow-hidden">
             <div
               className="h-full rounded-full bg-gradient-to-r from-teal to-saffron"
