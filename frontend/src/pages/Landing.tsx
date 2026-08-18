@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import InteractiveCanvas from '../components/common/InteractiveCanvas';
 import ParticleField from '../components/common/ParticleField';
 import ThemeToggle from '../components/common/ThemeToggle';
-import { Shield, FileText, Calculator, ArrowRight, CheckCircle, TrendingUp, Users, Sparkles } from 'lucide-react';
+import { Shield, FileText, Calculator, ArrowRight, CheckCircle, TrendingUp, Sparkles } from 'lucide-react';
 
 /* ── Animated Counter Hook ────────────────────────────────────────── */
 function useCountUp(target: number, duration = 2000, startOnView = true) {
@@ -62,31 +62,57 @@ function useScrollReveal() {
   return ref;
 }
 
-/* ── Stats Data ───────────────────────────────────────────────────── */
+/* ── What's actually true ─────────────────────────────────────────────
+ * Real, verifiable facts about the engine — not usage metrics. FinSage has
+ * no users yet to report a count for, and the honest version of this
+ * section is a stronger sell for a tax product than an invented one: this
+ * is the same "no fabricated figure" rule the product itself enforces,
+ * applied to its own marketing page. */
 const STATS = [
-  { label: 'Tax Savings Identified', value: 250, prefix: '₹', suffix: 'Cr+', icon: TrendingUp, glow: 'stat-glow-cyan' },
-  { label: 'Users Served', value: 10000, prefix: '', suffix: '+', icon: Users, glow: 'stat-glow-violet' },
-  { label: 'Accuracy Rate', value: 99, prefix: '', suffix: '%', icon: CheckCircle, glow: 'stat-glow-emerald' },
-  { label: 'Tax Rules Indexed', value: 5000, prefix: '', suffix: '+', icon: Sparkles, glow: 'stat-glow-amber' },
+  { label: 'Financial Years Covered', value: 3, prefix: '', suffix: '', icon: Sparkles, glow: 'stat-glow-cyan', detail: 'FY 2024–25 through FY 2026–27' },
+  { label: 'Engine Test Cases', value: 950, prefix: '', suffix: '+', icon: CheckCircle, glow: 'stat-glow-emerald', detail: 'Golden + property-based, 100% passing' },
+  { label: 'LLM-Computed Figures', value: 0, prefix: '', suffix: '', icon: Shield, glow: 'stat-glow-violet', detail: 'Every number traced to a deterministic tool result' },
+  { label: 'Rule Source', value: 1, prefix: '', suffix: '', icon: TrendingUp, glow: 'stat-glow-amber', detail: 'One versioned rule pack per year, not a model’s guess' },
 ];
 
-/* ── Testimonials ─────────────────────────────────────────────────── */
-const TESTIMONIALS = [
-  { name: 'Rajesh K.', role: 'Freelance Developer', text: 'FinSage found ₹2.3L in deductions I would have missed. The compliance auditor caught a TDS mismatch before filing.', avatar: 'RK' },
-  { name: 'Priya M.', role: 'Startup Founder', text: 'The ITR guidance was incredibly detailed — it told me exactly which form to use and walked me through every schedule.', avatar: 'PM' },
-  { name: 'Arun S.', role: 'Senior Manager', text: 'Switching from the old to new tax regime saved me ₹85K. The regime comparison tool made the decision instant.', avatar: 'AS' },
+/* ── What makes this different ────────────────────────────────────────
+ * Real product principles, not invented customer quotes. Pre-launch, so
+ * there are no testimonials to show — and a fabricated one is the exact
+ * failure mode this product exists to eliminate, applied to itself. */
+const PRINCIPLES = [
+  { name: 'The governing rule', role: 'Applies to every number on this site and in the app', text: 'No rupee figure shown to a user may originate from a language model. Every figure is computed by deterministic code from a versioned rule pack, and carries a citation back to its section and source.', avatar: '§' },
+  { name: 'Closed windows, stated', role: 'Not hidden', text: 'A benefit that has expired is shown as expired, with the date it closed — not silently omitted and not offered as if it were still open.', avatar: '✓' },
+  { name: 'Evidence, not a black box', role: 'Every computation', text: 'Every result comes with a worksheet you can hand to a CA: the inputs, the section cited, the rule-pack version, and the date it was last verified against an official source.', avatar: '📄' },
 ];
+
+/* One stat tile per component instance — `useCountUp` must be called at a
+ * hook's own top level, not inside the .map() callback that used to hold it
+ * (that "worked" only because STATS has a fixed length; the rule exists for
+ * when it doesn't). */
+function StatTile({ stat }: { stat: (typeof STATS)[number] }) {
+  const { count, ref } = useCountUp(stat.value);
+  return (
+    <div ref={ref} className={`card-cosmic p-6 text-center ${stat.glow}`}>
+      <stat.icon className="w-8 h-8 mx-auto mb-3 text-cosmic-cyan dark:text-cosmic-cyan" />
+      <div className="text-3xl md:text-4xl font-black text-slate-900 dark:text-white font-heading animate-counter">
+        {stat.prefix}{count.toLocaleString()}{stat.suffix}
+      </div>
+      <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 font-medium">{stat.label}</p>
+      <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">{stat.detail}</p>
+    </div>
+  );
+}
 
 export const Landing: React.FC = () => {
   const sectionReveal1 = useScrollReveal();
   const sectionReveal2 = useScrollReveal();
   const sectionReveal3 = useScrollReveal();
-  const [activeTestimonial, setActiveTestimonial] = useState(0);
+  const [activePrinciple, setActivePrinciple] = useState(0);
 
-  // Auto-rotate testimonials
+  // Auto-rotate principles
   useEffect(() => {
     const timer = setInterval(() => {
-      setActiveTestimonial(prev => (prev + 1) % TESTIMONIALS.length);
+      setActivePrinciple(prev => (prev + 1) % PRINCIPLES.length);
     }, 5000);
     return () => clearInterval(timer);
   }, []);
@@ -189,48 +215,40 @@ export const Landing: React.FC = () => {
           ))}
         </div>
 
-        {/* ── Stats Section ────────────────────────────────────────── */}
+        {/* ── Stats Section — real facts about the engine, not usage
+             metrics no one has collected yet ─────────────────────────── */}
         <div ref={sectionReveal2} className="reveal-on-scroll w-full pt-20">
-          <h2 className="text-3xl md:text-4xl font-black text-center mb-12 bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-400">
-            Trusted by Thousands
+          <h2 className="text-3xl md:text-4xl font-black text-center mb-3 bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-400">
+            Built to be checked, not trusted blindly
           </h2>
+          <p className="text-center text-slate-500 dark:text-slate-400 max-w-xl mx-auto mb-12 text-sm">
+            No usage numbers here — FinSage is pre-launch. These are facts about the engine itself.
+          </p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            {STATS.map((stat) => {
-              const { count, ref } = useCountUp(stat.value);
-              return (
-                <div
-                  key={stat.label}
-                  ref={ref}
-                  className={`card-cosmic p-6 text-center ${stat.glow}`}
-                >
-                  <stat.icon className="w-8 h-8 mx-auto mb-3 text-cosmic-cyan dark:text-cosmic-cyan" />
-                  <div className="text-3xl md:text-4xl font-black text-slate-900 dark:text-white font-heading animate-counter">
-                    {stat.prefix}{count.toLocaleString()}{stat.suffix}
-                  </div>
-                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 font-medium">{stat.label}</p>
-                </div>
-              );
-            })}
+            {STATS.map((stat) => (
+              <StatTile key={stat.label} stat={stat} />
+            ))}
           </div>
         </div>
 
-        {/* ── Testimonials ─────────────────────────────────────────── */}
+        {/* ── Principles — what makes this different, in the product's
+             own words, not an invented customer quote ─────────────────── */}
         <div ref={sectionReveal3} className="reveal-on-scroll w-full pt-20 pb-10 max-w-3xl mx-auto">
           <h2 className="text-3xl md:text-4xl font-black text-center mb-12 bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-400">
-            What Users Say
+            What makes this different
           </h2>
           <div className="relative">
-            {TESTIMONIALS.map((t, i) => (
+            {PRINCIPLES.map((t, i) => (
               <div
                 key={t.name}
                 className={`card-cosmic p-8 transition-all duration-500 ${
-                  i === activeTestimonial
+                  i === activePrinciple
                     ? 'opacity-100 scale-100 translate-y-0'
                     : 'opacity-0 scale-95 translate-y-4 absolute inset-0 pointer-events-none'
                 }`}
               >
-                <p className="text-lg text-slate-700 dark:text-slate-300 leading-relaxed italic mb-6">
-                  "{t.text}"
+                <p className="text-lg text-slate-700 dark:text-slate-300 leading-relaxed mb-6">
+                  {t.text}
                 </p>
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 rounded-full bg-gradient-to-br from-cosmic-cyan to-cosmic-violet flex items-center justify-center text-white font-bold text-sm">
@@ -245,12 +263,12 @@ export const Landing: React.FC = () => {
             ))}
             {/* Dots indicator */}
             <div className="flex justify-center gap-2 mt-6">
-              {TESTIMONIALS.map((_, i) => (
+              {PRINCIPLES.map((_, i) => (
                 <button
                   key={i}
-                  onClick={() => setActiveTestimonial(i)}
+                  onClick={() => setActivePrinciple(i)}
                   className={`w-2.5 h-2.5 rounded-full transition-all duration-300 ${
-                    i === activeTestimonial
+                    i === activePrinciple
                       ? 'bg-cosmic-cyan w-7'
                       : 'bg-slate-300 dark:bg-slate-700 hover:bg-slate-400'
                   }`}
