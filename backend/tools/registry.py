@@ -703,13 +703,18 @@ class ToolExecutor:
         self,
         investments: dict[str, float] = None,
         deductions: dict[str, float] = None,
+        current_taxable_income: float = 0.0,
+        fy: str | None = None,
+        age: int = 0,
         **kwargs
     ) -> dict[str, Any]:
         """Generate tax saving alerts."""
         try:
             res = self.alert_engine.generate_tax_saving_alerts(
                 investments=investments or {},
-                deductions=deductions or {}
+                deductions=deductions or {},
+                current_taxable_income=current_taxable_income,
+                fy=fy, age=age,
             )
             return {"success": True, "tool": "generate_tax_saving_alerts", "result": res}
         except Exception as e:

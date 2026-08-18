@@ -105,26 +105,51 @@ class DeductionHunterAgent(TaxAgent):
                     )
                     if hra_calc.get("success"):
                         hra_data = hra_calc.get("result", {})
-                        if hra_data.get("exempt_hra", 0) > 0:
+                        # Pre-existing bug: exempt_hra/taxable_hra are decimal
+                        # STRINGS (Money.to_json()), not floats. `> 0` on a str
+                        # raises TypeError, and so does the :,.0f format below
+                        # — this whole branch crashed with a real (non-mocked)
+                        # calculate_hra_exemption result on every path,
+                        # whenever a user actually had rent_paid > 0.
+                        exempt_hra = float(hra_data.get("exempt_hra", 0) or 0)
+                        taxable_hra = float(hra_data.get("taxable_hra", 0) or 0)
+                        if exempt_hra > 0:
                             deductions.append({
                                 "category": "HRA Exemption",
                                 "scheme_code": "10(13A)",
-                                "amount": hra_data["exempt_hra"],
+                                "amount": exempt_hra,
                                 "confidence": "high",
-                                "description": f"Exempt HRA under Section 10(13A). Taxable HRA is ₹{hra_data['taxable_hra']:,.0f}.",
-                                "tax_savings": hra_data["exempt_hra"] * 0.20
+                                "description": f"Exempt HRA under Section 10(13A). Taxable HRA is ₹{taxable_hra:,.0f}.",
+                                # AGT-001 bugfix: this carried a flat *0.20 guess
+                                # here, immediately overwritten by the real
+                                # calculate_deduction_impact call below on every
+                                # path — dead, misleading arithmetic rather than
+                                # a live bug, but exactly the pattern this pass
+                                # is removing wherever found. tax_savings is set
+                                # once, below, from the deterministic tool.
                             })
 
-            # For each deduction, calculate impact using tool
+            # For each deduction, calculate impact using tool. A deduction
+            # with no stated amount (amount_known is False — see
+            # _identify_deductions) gets no tax_savings figure at all rather
+            # than one computed from an LLM-guessed amount.
             total_savings = 0
             for deduction in deductions:
+                if deduction.get("amount_known") is False:
+                    deduction["tax_savings"] = None
+                    continue
                 if self.tools:
                     impact = await self.call_tool(
                         "calculate_deduction_impact",
                         deduction_amount=float(deduction.get("amount", 0)),
                         current_taxable_income=float(user_financial_data.get("annual_income", 0) or user_context.get("annual_income", 0))
                     )
-                    deduction["tax_savings"] = impact.get("result", {}).get("tax_savings", 0)
+                    # Pre-existing bug, unrelated to amount_known: tax_savings
+                    # is a decimal STRING (Money.to_json()), so the += below
+                    # raised TypeError the first time this path actually ran
+                    # end to end. Never caught because nothing exercised it
+                    # with self.tools set.
+                    deduction["tax_savings"] = float(impact.get("result", {}).get("tax_savings", 0))
                     total_savings += deduction["tax_savings"]
                 else:
                     deduction["tax_savings"] = 0
@@ -146,7 +171,7 @@ class DeductionHunterAgent(TaxAgent):
                 total_tax_impact = await self.call_tool(
                     "calculate_tax_liability",
                     total_income=float(user_financial_data.get("annual_income", 0) or user_context.get("annual_income", 0)),
-                    deductions=sum(float(d.get("amount", 0)) for d in deductions)
+                    deductions=sum(float(d.get("amount") or 0) for d in deductions)
                 )
                 if total_tax_impact.get("success"):
                     total_tax_liability = total_tax_impact.get("result", {}).get("total_tax_liability", 0)
@@ -166,9 +191,12 @@ class DeductionHunterAgent(TaxAgent):
             result = {
                 "deductions": deductions,
                 "deductions_found": deductions,
-                "total_deduction_amount": sum(d.get("amount", 0) for d in deductions),
+                "total_deduction_amount": sum(d.get("amount") or 0 for d in deductions if d.get("amount_known") is not False),
                 "total_tax_savings": total_savings,
                 "total_tax_liability": total_tax_liability,
+                "amount_needed_from_user": [
+                    d.get("category", "deduction") for d in deductions if d.get("amount_known") is False
+                ],
                 "report": report_data,
                 "filing_recommendations": await self._get_filing_recommendations(deductions),
                 "documentation_needed": await self._get_documentation_requirements(deductions)
@@ -178,7 +206,7 @@ class DeductionHunterAgent(TaxAgent):
 
             execution_time = (time.time() - start_time) * 1000
 
-            logger.info(f"Found {len(deductions)} potential deductions, total ₹{sum(float(d.get('amount', 0)) for d in deductions):,.0f}")
+            logger.info(f"Found {len(deductions)} potential deductions, total ₹{sum(float(d.get('amount') or 0) for d in deductions):,.0f}")
 
             return self._create_output(
                 result=result,
@@ -224,7 +252,11 @@ Reference material on deductions:
 For each deduction, provide:
 1. Category (Home Office, Equipment, Professional Fees, etc.)
 2. Description of the expense
-3. Estimated deductible amount (in INR)
+3. Amount (in INR) — ONLY if the user's statement gives you a real figure to
+   work from (an amount they mentioned, or a fixed statutory limit like
+   80C's ₹1,50,000). If neither is present, set "amount" to null and
+   "amount_known" to false — do NOT estimate a plausible-sounding figure.
+   A guess presented as a number is worse than admitting you don't know it.
 4. Deductibility confidence (high/medium/low)
 5. Filing requirements
 6. Scheme code (e.g. 80C, 80D, 80E, 80TTA, 80TTB, 80CCD, or null if none)
@@ -233,10 +265,21 @@ Respond in JSON format:
 {{
   "deductions": [
     {{
-      "category": "Home Office",
-      "description": "30% of home rent for dedicated office space",
-      "amount": 180000,
+      "category": "Section 80C investments",
+      "description": "ELSS, PPF, life insurance premiums etc., up to the statutory limit",
+      "amount": 150000,
+      "amount_known": true,
       "confidence": "high",
+      "filing_requirement": "Schedule VI-A",
+      "documentation": "Investment receipts",
+      "scheme_code": "80C"
+    }},
+    {{
+      "category": "Home Office",
+      "description": "A share of home rent/utilities for a dedicated office space — the user did not state how much they spend",
+      "amount": null,
+      "amount_known": false,
+      "confidence": "medium",
       "filing_requirement": "Schedule Business income",
       "documentation": "Rental agreement, utility bills",
       "scheme_code": null
@@ -304,7 +347,7 @@ Important: Only include deductions applicable to the user's situation. Respond O
             )
 
         # Documentation warning
-        total_deductions = sum(d.get("amount", 0) for d in deductions)
+        total_deductions = sum(d.get("amount") or 0 for d in deductions)
         if total_deductions > 500000:
             recommendations.append(
                 "With ₹5+ lakh in deductions, maintain detailed documentation"

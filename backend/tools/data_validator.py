@@ -432,6 +432,16 @@ class LLMResponseValidator:
                 report.add_warning("Deduction missing 'category' field")
                 deduction["category"] = "Uncategorized"
 
+            # AGT-001: amount_known=false is a deliberate "the model was not
+            # given a real figure to work from" signal (see the prompt in
+            # deduction_hunter.py), not malformed data — leave it as-is
+            # rather than logging it alongside genuinely invalid input and
+            # coercing it to a misleading 0.
+            if deduction.get("amount_known") is False:
+                deduction["amount"] = None
+                validated.append(deduction)
+                continue
+
             # Amount validation
             amount = deduction.get("amount", 0)
             try:

@@ -82,7 +82,11 @@ class TaxOptimizerAgent(TaxAgent):
                 alerts_res = await self.call_tool(
                     "generate_tax_saving_alerts",
                     investments=user_financial_data.get("investments", {}),
-                    deductions=user_financial_data.get("deductions", {})
+                    deductions=user_financial_data.get("deductions", {}),
+                    current_taxable_income=float(
+                        user_financial_data.get("annual_income", 0) or user_context.get("annual_income", 0)
+                    ),
+                    age=int(user_context.get("age", 0) or 0),
                 )
                 if alerts_res.get("success"):
                     alerts = alerts_res.get("result", {}).get("alerts", [])
@@ -124,34 +128,60 @@ class TaxOptimizerAgent(TaxAgent):
                     is_eligible = eligibility.get("success") and eligibility.get("result", {}).get("eligible", True)
 
                 if is_eligible:
-                    # Get scheme details
+                    # AGT-001 bugfix. This used to feed `calculate_deduction_impact`
+                    # (a genuinely deterministic tool — it recomputes tax before/after
+                    # via backend.core rather than a marginal-rate guess) with
+                    # `strategy.get("estimated_savings")`: a number the LLM had
+                    # invented three steps earlier in `_generate_strategies`. A real
+                    # tool call downstream of a fabricated input is still a
+                    # fabricated result — it just looks computed. The only honest
+                    # amount to test is the scheme's actual statutory limit, read
+                    # from `get_scheme_details`, never from what the model guessed.
+                    scheme_limit: float | None = None
                     if self.tools and strategy.get("scheme_code"):
                         details = await self.call_tool(
                             "get_scheme_details",
                             scheme_code=strategy.get("scheme_code")
                         )
                         if details.get("success"):
-                            strategy["details"] = details.get("result", {}).get("details", {})
+                            scheme_details = details.get("result", {}).get("details", {})
+                            strategy["details"] = scheme_details
+                            limit = scheme_details.get("limit")
+                            if isinstance(limit, (int, float)):
+                                scheme_limit = float(limit)
 
-                    # Calculate potential savings
-                    if self.tools:
+                    if self.tools and scheme_limit is not None:
                         savings = await self.call_tool(
                             "calculate_deduction_impact",
-                            deduction_amount=float(strategy.get("estimated_savings", 0) or strategy.get("estimated_amount", 0)),
+                            deduction_amount=scheme_limit,
                             current_taxable_income=float(user_financial_data.get("annual_income", 0) or user_context.get("annual_income", 0))
                         )
                         if savings.get("success"):
-                            strategy["savings"] = savings.get("result", {}).get("tax_savings", 0)
+                            # tax_savings is a decimal STRING (Money.to_json()),
+                            # never a JSON number — see benefits_discovery.py's
+                            # identical note.
+                            strategy["savings"] = float(savings.get("result", {}).get("tax_savings", 0))
+                            strategy["savings_basis"] = f"full statutory limit for {strategy.get('scheme_code')}"
                         else:
-                            strategy["savings"] = 0
+                            strategy["savings"] = None
                     else:
-                        strategy["savings"] = 0
+                        # No scheme_code, or the scheme has no fixed statutory
+                        # limit to test against (e.g. a home-office deduction,
+                        # which scales with actual expenses nobody has stated
+                        # yet). Left unset rather than defaulted to 0, which
+                        # would read as "no benefit" instead of "not yet known".
+                        strategy["savings"] = None
 
                     strategy["eligible"] = True
                     validated_strategies.append(strategy)
 
-            # Calculate potential impact from validated strategies
-            potential_savings = sum(s.get("savings", 0) for s in validated_strategies)
+            # Sum only strategies with a real, tool-computed figure. A
+            # strategy with savings=None contributed nothing here before too
+            # (`s.get("savings", 0)` silently treated a missing figure as
+            # zero) — now that gap is visible instead of silently averaged in.
+            computed_strategies = [s for s in validated_strategies if s.get("savings") is not None]
+            uncomputed_strategies = [s for s in validated_strategies if s.get("savings") is None]
+            potential_savings = sum(s["savings"] for s in computed_strategies)
 
             # Create reminders
             if self.tools:
@@ -171,6 +201,9 @@ class TaxOptimizerAgent(TaxAgent):
                 "validated_strategies": validated_strategies,
                 "total_estimated_savings": potential_savings,
                 "estimated_annual_savings": potential_savings,
+                "savings_not_yet_determinable": [
+                    s.get("name", s.get("strategy_name", "strategy")) for s in uncomputed_strategies
+                ],
                 "implementation_timeline": await self._get_timeline(validated_strategies),
                 "upcoming_tax_deadlines": upcoming_deadlines,
                 "risks_and_considerations": await self._get_considerations(validated_strategies),
@@ -233,29 +266,30 @@ User question: "{user_query}"
 Suggest specific, actionable tax strategies. For each, provide:
 1. Strategy name
 2. Description (what to do)
-3. Estimated annual savings (₹)
-4. Implementation difficulty (Easy/Medium/Hard)
-5. Risk level (Low/Medium/High)
-6. Timeline (When to implement)
-7. Scheme code (e.g. 80C, 80D, 80E, 80TTA, 80TTB, 80CCD, or null if none)
+3. Implementation difficulty (Easy/Medium/Hard)
+4. Risk level (Low/Medium/High)
+5. Timeline (When to implement)
+6. Scheme code (e.g. 80C, 80D, 80E, 80TTA, 80TTB, 80CCD, or null if none)
+
+Do NOT estimate a rupee savings figure. That is computed separately from your
+description, from the actual statutory limit of the scheme you cite — not
+from anything you calculate. Any savings number you include will be discarded.
 
 Respond in JSON format:
 {{
   "strategies": [
     {{
       "name": "Section 80C investments",
-      "description": "Invest in ELSS, PPF, life insurance to claim 80C deduction (max ₹150,000)",
-      "estimated_savings": 30000,
+      "description": "Invest in ELSS, PPF, life insurance to claim 80C deduction",
       "difficulty": "Easy",
       "risk": "Low",
       "timeline": "Before year-end",
-      "action": "Open ELSS account and invest ₹150,000",
+      "action": "Open ELSS account and invest up to the 80C limit",
       "scheme_code": "80C"
     }},
     {{
       "name": "Home office deduction",
-      "description": "Claim 30% of home rent/mortgage as business expense (for self-employed)",
-      "estimated_savings": 60000,
+      "description": "Claim a share of home rent/mortgage as business expense (for self-employed)",
       "difficulty": "Medium",
       "risk": "Low",
       "timeline": "From next tax year",
@@ -278,28 +312,21 @@ Important: Only suggest legal, compliant strategies. Respond ONLY with valid JSO
             import json
             response_data = json.loads(response_text)
 
-            return response_data.get("strategies", [])
+            strategies = response_data.get("strategies", [])
+            # Belt and braces: the prompt says not to, but nothing stops a
+            # model from doing it anyway. Any rupee figure the model attaches
+            # is discarded here, unconditionally, before it can reach a user
+            # — the real amount is computed later from the scheme's actual
+            # statutory limit, never from what the model guessed.
+            for strategy in strategies:
+                strategy.pop("estimated_savings", None)
+                strategy.pop("estimated_amount", None)
+
+            return strategies
 
         except Exception as e:
             logger.error(f"Error generating strategies: {e}")
             return []
-
-    async def _calculate_impact(
-        self,
-        strategies: list[dict[str, Any]],
-        user_context: dict[str, Any]
-    ) -> float:
-        """Calculate total potential tax savings from all strategies."""
-
-        total_savings = sum(s.get("estimated_savings", 0) for s in strategies)
-
-        # Adjust for risk level
-        for strategy in strategies:
-            if strategy.get("risk") == "High":
-                # Reduce savings estimate by 30% for high-risk strategies
-                total_savings -= (strategy.get("estimated_savings", 0) * 0.3)
-
-        return max(0, total_savings)
 
     async def _get_timeline(
         self,

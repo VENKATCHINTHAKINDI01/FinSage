@@ -18,12 +18,39 @@ class TaxAlertEngine:
     @staticmethod
     def generate_tax_saving_alerts(
         investments: dict[str, float],
-        deductions: dict[str, float]
+        deductions: dict[str, float],
+        current_taxable_income: float = 0.0,
+        fy: str | None = None,
+        age: int = 0,
     ) -> dict[str, Any]:
         """
         Generate optimization suggestions and alerts if limits are under-utilized.
+
+        AGT-001 bugfix. `potential_saving` used to be `gap * 0.30` or
+        `limit * 0.20` — a flat assumed marginal rate applied regardless of
+        the user's actual income. That is wrong wherever the deduction
+        crosses a rebate or surcharge boundary (exactly where it matters
+        most — see `calculate_deduction_benefit`'s own docstring for the
+        ₹2.1L NPS case where a flat-rate guess is off by ₹47,400), and for a
+        user with no taxable income above the basic exemption it overstates
+        a real benefit of ₹0 as tens of thousands of rupees. Every alert now
+        carries the true benefit from `TaxCalculationEngine.calculate_deduction_benefit`
+        (recomputes tax before/after via backend.core), or none at all if
+        `current_taxable_income` was not supplied — never a guess.
         """
         try:
+            from backend.tools.calculation import TaxCalculationEngine
+
+            def real_benefit(gap: float) -> float | None:
+                if current_taxable_income <= 0 or gap <= 0:
+                    return None
+                benefit = TaxCalculationEngine.calculate_deduction_benefit(
+                    deduction_amount=gap,
+                    current_taxable_income=current_taxable_income,
+                    fy=fy, regime="old", age=age,
+                )
+                return float(benefit["tax_savings"])
+
             alerts = []
 
             # 80C Check (Limit: 1,50,000)
@@ -40,8 +67,8 @@ class TaxAlertEngine:
                     "section": "80C",
                     "title": "Section 80C Limit Underutilized",
                     "severity": "medium" if gap < 50000 else "high",
-                    "message": f"You have utilized ₹{total_80c:,.0f} out of ₹{limit_80c:,.0f} under Section 80C. You can invest an additional ₹{gap:,.0f} in ELSS or PPF to maximize your tax savings.",
-                    "potential_saving": gap * 0.30  # estimated at max tax rate
+                    "message": f"You have utilized ₹{total_80c:,.0f} out of ₹{limit_80c:,.0f} under Section 80C. You can invest an additional ₹{gap:,.0f} in ELSS or PPF.",
+                    "potential_saving": real_benefit(gap)
                 })
 
             # 80D Check (Health Insurance Premium, limit depends on parents etc., let's mock 25000/50000)
@@ -53,7 +80,7 @@ class TaxAlertEngine:
                     "title": "No Section 80D Claims Found",
                     "severity": "low",
                     "message": "You haven't claimed any tax benefits for health insurance premium under Section 80D. Premium paid for self, spouse, or children is deductible up to ₹25,000.",
-                    "potential_saving": limit_80d * 0.20
+                    "potential_saving": real_benefit(limit_80d)
                 })
 
             # NPS Check (80CCD(1B) additional limit of 50000)
@@ -66,7 +93,7 @@ class TaxAlertEngine:
                     "title": "Section 80CCD(1B) NPS Contribution Option",
                     "severity": "low",
                     "message": f"You can claim an additional deduction up to ₹{limit_nps:,.0f} for National Pension Scheme (NPS) contributions. You currently claim ₹{nps_contrib:,.0f}.",
-                    "potential_saving": gap * 0.30
+                    "potential_saving": real_benefit(gap)
                 })
 
             return {

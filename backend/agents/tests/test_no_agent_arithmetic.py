@@ -48,6 +48,13 @@ THIN_AGENTS = {
     # AGT-001: bridge from intent detection to the pipeline. All computation
     # is delegated to backend.core through TaxCalculationEngine.
     "intent_bridge.py",
+    # AGT-001 (2026-08-18): _generate_strategies' LLM prompt no longer asks
+    # for a rupee estimated_savings — every figure now comes from
+    # calculate_deduction_impact against a scheme's real statutory limit
+    # (get_scheme_details), never from the model's guess or a flat-rate
+    # multiplier. Strategies with no fixed limit to test against (no
+    # scheme_code) carry savings=None rather than a fabricated number.
+    "tax_optimizer.py",
 }
 
 # v1 modules awaiting the AGT-001 rewrite, with today's count. RATCHET: these
@@ -62,7 +69,6 @@ LEGACY_BUDGET = {
     "deduction_hunter.py": 2,
     "cross_border_tax.py": 1,
     "tax_agent.py": 1,
-    "tax_optimizer.py": 1,
 }
 
 MONEY_WORDS = (

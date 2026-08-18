@@ -151,7 +151,8 @@ class AdvancedCalculatorAgent(TaxAgent):
                 total_deductions,
                 total_tax_liability,
                 user_context,
-                tax_data
+                tax_data,
+                taxable_income,
             )
 
             # STEP 12: Calculate TDS & refund/balance
@@ -231,7 +232,7 @@ class AdvancedCalculatorAgent(TaxAgent):
                 },
 
                 "optimization_suggestions": optimization,
-                "potential_savings": sum(s.get("savings", 0) for s in optimization),
+                "potential_savings": sum(s.get("savings") or 0 for s in optimization),
 
                 "summary": {
                     "total_income": await india_tax_data.format_currency(gross_income),
@@ -499,9 +500,40 @@ class AdvancedCalculatorAgent(TaxAgent):
         current_deductions: float,
         tax_liability: float,
         user_context: dict[str, Any],
-        tax_data: dict[str, Any]
+        tax_data: dict[str, Any],
+        taxable_income: float = 0.0,
     ) -> list[dict[str, Any]]:
-        """Suggest tax optimization strategies (India-specific)."""
+        """Suggest tax optimization strategies (India-specific).
+
+        AGT-001 bugfix. Every suggestion here used to carry a fabricated
+        figure: a flat `headroom * 0.20` (wrong wherever a rebate or
+        surcharge boundary is crossed — the exact case
+        `calculate_deduction_benefit`'s docstring names), or a flat-out
+        hardcoded guess (80D was "₹30,000 savings, ₹150,000 max limit" —
+        150,000 is 80C's limit, not 80D's, which is ₹25,000). Every figure
+        below is now `TaxCalculationEngine.calculate_deduction_benefit`'s
+        real before/after recomputation. This agent's own base tax
+        calculation is a separate, older duplicate of `backend.core` fixed
+        at FY 2024-25 data (`IndiaTaxDataFetcher`) — a larger, separate
+        finding, not fixed here; the fy it reports is passed through as-is
+        so this at least stays internally consistent with whatever FY the
+        rest of the calculation already assumed, rather than adding a
+        second, different assumption on top.
+        """
+        from backend.tools.calculation import TaxCalculationEngine
+
+        fy = tax_data.get("financial_year")
+        base_income = taxable_income
+
+        def benefit(amount: float) -> float:
+            if amount <= 0 or base_income <= 0:
+                return 0.0
+            result = TaxCalculationEngine.calculate_deduction_benefit(
+                deduction_amount=amount, current_taxable_income=base_income,
+                fy=fy, regime="old",
+            )
+            return float(result["tax_savings"])
+
         suggestions = []
         deduction_limits = tax_data["deduction_limits"]
 
@@ -509,7 +541,7 @@ class AdvancedCalculatorAgent(TaxAgent):
         deduction_80c_limit = deduction_limits["80C"]["limit"]
         if current_deductions < deduction_80c_limit:
             headroom = deduction_80c_limit - current_deductions
-            tax_savings = headroom * 0.20
+            tax_savings = benefit(headroom)
             suggestions.append({
                 "strategy": "Maximize 80C (Life Insurance, ELSS, PPF, NSC)",
                 "headroom": headroom,
@@ -521,41 +553,66 @@ class AdvancedCalculatorAgent(TaxAgent):
 
         # Suggestion 2: Health Insurance (80D)
         if not user_context.get("has_health_insurance") and not user_context.get("health_insurance"):
+            # Not read from deduction_limits: IndiaTaxDataFetcher's own
+            # dataset has "80D": {"limit": 150000} — that is 80C's limit,
+            # copy-pasted. ₹25,000 (₹50,000 for a senior-citizen premium) is
+            # the actual s.80D general limit; hardcoded here as a stopgap,
+            # not read from core/rules — a separate, larger finding
+            # (IndiaTaxDataFetcher needs replacing with a real rule-pack
+            # reader per docs/IMPLEMENTATION_PLAN.md's RuleSetProvider).
+            limit_80d = 25000
+            tax_savings = benefit(limit_80d)
             suggestions.append({
                 "strategy": "Get health insurance (80D deduction)",
-                "potential_savings": 30000,
-                "savings": 30000,
+                "potential_savings": tax_savings,
+                "savings": tax_savings,
                 "difficulty": "Easy",
-                "action": "Buy health insurance policy (₹150,000 max limit)"
+                "action": f"Buy health insurance policy (₹{limit_80d:,.0f} max limit)"
             })
 
-        # Suggestion 3: NPS Contribution (80CCD)
+        # Suggestion 3: NPS Contribution (80CCD(1B))
         if gross_income > 500000:
+            # Same issue: IndiaTaxDataFetcher's "80CCD": {"limit": 150000} is
+            # wrong for the additional voluntary contribution this suggestion
+            # means — ₹50,000 is the real s.80CCD(1B) limit.
+            limit_nps = 50000
+            tax_savings = benefit(limit_nps)
             suggestions.append({
                 "strategy": "Contribute to NPS (Additional 80CCD)",
-                "potential_savings": 50000,
-                "savings": 50000,
+                "potential_savings": tax_savings,
+                "savings": tax_savings,
                 "difficulty": "Medium",
-                "action": "Open NPS account and invest ₹150,000"
+                "action": f"Open NPS account and invest ₹{limit_nps:,.0f}"
             })
 
-        # Suggestion 4: Education Loan (80E)
-        if user_context.get("education_loan", 0) > 0:
+        # Suggestion 4: Education Loan (80E) — no statutory cap, the real
+        # interest paid is itself the deduction amount, so this one number
+        # (unlike the others) was already a real user-stated figure. Only the
+        # *0.20 conversion to a savings estimate was fabricated.
+        education_loan_interest = user_context.get("education_loan", 0)
+        if education_loan_interest > 0:
+            tax_savings = benefit(education_loan_interest)
             suggestions.append({
                 "strategy": "Claim education loan interest (80E)",
-                "potential_savings": user_context.get("education_loan", 0) * 0.20,
-                "savings": user_context.get("education_loan", 0) * 0.20,
+                "potential_savings": tax_savings,
+                "savings": tax_savings,
                 "difficulty": "Easy",
                 "action": "Claim interest paid on education loan"
             })
 
-        # Suggestion 5: Loss Carry Forward
+        # Suggestion 5: Loss Carry Forward. Losses reduce taxable capital
+        # gains/business income directly; they are not a Chapter VI-A
+        # deduction against total income, so `calculate_deduction_benefit`
+        # (which models exactly that) does not apply here, and neither did
+        # the *0.20 it replaces. No rupee figure is asserted — advising a
+        # user to route this to a CA is the honest answer, not a guess in
+        # either direction.
         losses = user_context.get("losses", {})
         if losses.get("capital", 0) > 0 or losses.get("business", 0) > 0:
             suggestions.append({
                 "strategy": "Use loss carry forward wisely",
-                "potential_savings": sum(losses.values()) * 0.20,
-                "savings": sum(losses.values()) * 0.20,
+                "potential_savings": None,
+                "savings": None,
                 "difficulty": "Hard",
                 "action": "Consult CA for optimal loss set-off strategy"
             })

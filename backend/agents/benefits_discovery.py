@@ -122,8 +122,46 @@ class BenefitsDiscoveryAgent(TaxAgent):
             # STEP 3: Categorize schemes
             categories = self._categorize_schemes(scheme_details)
 
-            # STEP 4: Calculate potential savings
-            total_potential = sum(s.get("limit", 0) * 0.2 for s in scheme_details if s.get("limit"))
+            # STEP 4: Calculate potential savings.
+            #
+            # AGT-001 bugfix. This was `limit * 0.2` applied to every scheme's
+            # limit regardless of what kind of scheme it was — for a Chapter
+            # VI-A deduction (80C, 80D, ...) that is a flat-rate guess with the
+            # same problem `calculate_deduction_impact` exists to avoid (wrong
+            # wherever a rebate or surcharge boundary is crossed); for a loan
+            # or insurance scheme, "limit" is not a deduction amount at all —
+            # e.g. a home-loan scheme's limit is the loan ceiling, and ×0.2
+            # of a ₹35,00,000 ceiling produced a nonsensical "₹7,00,000
+            # potential savings". Only Chapter VI-A schemes (code starts with
+            # "80") get a real, tool-computed savings figure; everything else
+            # gets none rather than a wrong one.
+            annual_income = float(
+                financial_profile.get("annual_income", 0) or user_context.get("annual_income", 0)
+            )
+            total_potential = 0.0
+            if self.tools and annual_income > 0:
+                for scheme in scheme_details:
+                    limit = scheme.get("limit")
+                    code = str(scheme.get("code", ""))
+                    if not (code.startswith("80") and isinstance(limit, (int, float)) and limit > 0):
+                        scheme["potential_savings"] = None
+                        continue
+                    impact = await self.call_tool(
+                        "calculate_deduction_impact",
+                        deduction_amount=float(limit),
+                        current_taxable_income=annual_income,
+                    )
+                    # calculate_deduction_impact returns tax_savings as a decimal
+                    # STRING (Money.to_json() — deliberately never a JSON number,
+                    # to avoid float round-tripping through IEEE754), not a float.
+                    raw_savings = impact.get("result", {}).get("tax_savings") if impact.get("success") else None
+                    savings = float(raw_savings) if raw_savings is not None else None
+                    scheme["potential_savings"] = savings
+                    if savings:
+                        total_potential += savings
+            else:
+                for scheme in scheme_details:
+                    scheme["potential_savings"] = None
 
             result = {
                 "schemes_found": len(scheme_details),

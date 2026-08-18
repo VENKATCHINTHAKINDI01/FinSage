@@ -80,6 +80,18 @@ class MockToolExecutor:
                     "reasons": reasons
                 }
             }
+        elif name == "calculate_deduction_impact":
+            # Real deterministic behaviour, matching
+            # TaxCalculationEngine.calculate_deduction_benefit — recompute
+            # tax before/after rather than a flat-rate guess, so this mock
+            # cannot hide a return to the *0.2 bug it replaced.
+            from backend.tools.calculation import TaxCalculationEngine
+            result = TaxCalculationEngine.calculate_deduction_benefit(
+                deduction_amount=float(kwargs.get("deduction_amount", 0)),
+                current_taxable_income=float(kwargs.get("current_taxable_income", 0)),
+                regime="old",
+            )
+            return {"success": True, "result": result}
         return {"success": False, "error": f"Tool {name} not found"}
 
 
