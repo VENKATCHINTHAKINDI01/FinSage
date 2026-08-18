@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import InteractiveCanvas from '../components/common/InteractiveCanvas';
 import ParticleField from '../components/common/ParticleField';
 import ThemeToggle from '../components/common/ThemeToggle';
+import HeroOrb from '../components/three/HeroOrb';
 import { Shield, FileText, Calculator, ArrowRight, CheckCircle, TrendingUp, Sparkles } from 'lucide-react';
 
 /* ── Animated Counter Hook ────────────────────────────────────────── */
@@ -157,7 +158,14 @@ export const Landing: React.FC = () => {
 
       {/* ── Hero Section ───────────────────────────────────────────── */}
       <main className="relative z-10 flex-1 flex flex-col items-center max-w-7xl w-full mx-auto px-6 py-12 text-center">
-        <div className="max-w-4xl space-y-6 animate-gravity-up">
+        {/* The one selective 3D accent — desktop only, decorative, behind
+            the text (z-0 vs the text's z-10), and self-disables via
+            HeroOrb's capability checks. */}
+        <div className="hidden lg:block absolute right-[2%] top-[4%] w-[380px] h-[380px] opacity-70 dark:opacity-90 z-0">
+          <HeroOrb />
+        </div>
+
+        <div className="relative z-10 max-w-4xl space-y-6 animate-gravity-up">
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-slate-200/50 dark:bg-slate-900/60 border border-slate-300/40 dark:border-slate-800 text-secondary dark:text-cosmic-cyan text-xs font-semibold uppercase tracking-wider mb-2 backdrop-blur-md aurora-border">
             ✨ India's Advanced Agentic Tax & Revenue Optimization Platform
           </div>
