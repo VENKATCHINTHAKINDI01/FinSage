@@ -115,7 +115,7 @@ export default function Dashboard() {
 
   const displayTax = apiTaxReady ? t.tax_calculation?.total_tax_liability : (hasProfile ? profileTax.totalTax : undefined);
   const displayGross = apiTaxReady ? t.gross_income : (hasProfile ? profileTax.grossIncome : undefined);
-  const displayDeductions = apiTaxReady ? t.deductions?.total_claimed : (hasProfile ? profileTax.totalDeductions : undefined);
+  const displayDeductions = apiTaxReady ? t.total_deductions : (hasProfile ? profileTax.totalDeductions : undefined);
   const displayRate: number | undefined = apiTaxReady ? t.effective_tax_rate : (hasProfile ? profileTax.effectiveRate : undefined);
   const displayTaxable = apiTaxReady ? t.taxable_income : (hasProfile ? profileTax.taxableIncome : undefined);
 

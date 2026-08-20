@@ -20,6 +20,7 @@ except ImportError:
     from backend.db.orm_models import TaxCalculation
 from backend.agents.base_agent import AgentOutput, TaxAgent, confidence_score, derive_confidence
 from backend.services.india_tax_data_fetcher import india_tax_data
+from backend.tools.calculation import TaxCalculationEngine, current_fy
 
 logger = logging.getLogger(__name__)
 
@@ -76,8 +77,14 @@ class AdvancedCalculatorAgent(TaxAgent):
 
             user_id = user_context.get("user_id")
 
-            # Get India tax data
+            # STEP 0: FY, regime, age — from the real rule-pack loader, not
+            # IndiaTaxDataFetcher (stale, DEM-006). Still used below for
+            # `deduction_limits` in _suggest_optimizations and for GST, which
+            # this pass does not touch.
             tax_data = await india_tax_data.get_current_tax_data()
+            fy = current_fy()
+            regime = user_context.get("tax_regime", "new")
+            age = int(user_context.get("age", 0) or 0)
 
             # STEP 1: Gather income data
             if self.tools:
@@ -98,16 +105,18 @@ class AdvancedCalculatorAgent(TaxAgent):
             stcg = float(user_context.get("short_term_gains", 0) or incomes.get("short_term_gains", 0) or 0)
             other_income = float(incomes.get("other_income", 0))
 
-            # STEP 2: Calculate tax on each income type
-            tax_components = self._calculate_tax_components(
-                salary, business, rental, ltcg, stcg, other_income,
-                user_context, tax_data
-            )
+            # s.24(a): flat 30% standard deduction against rental (house
+            # property) income — statutory, not elective, and separate from
+            # the s.24(b) home loan interest deduction claimed below. The
+            # previous 20% figure had no statutory basis.
+            rental_after_std_deduction = max(0.0, rental * 0.70)
 
-            # STEP 3: Calculate gross income
             gross_income = salary + business + rental + ltcg + stcg + other_income
 
-            # STEP 4: Get deductions
+            # STEP 2: Get deductions, mapped to real section codes and
+            # capped to real per-section limits (fixed in get_user_deductions
+            # — it used to return raw uncapped sums under labels like "NPS"
+            # and "Sec24b" that this engine does not recognise).
             if self.tools:
                 deductions_data = await self.call_tool(
                     "get_user_deductions",
@@ -117,52 +126,84 @@ class AdvancedCalculatorAgent(TaxAgent):
             else:
                 deductions_dict = user_context.get("deductions", {})
 
-            total_deductions = self._calculate_total_deductions(deductions_dict)
+            deductions_for_engine = self._deductions_for_engine(deductions_dict)
+            total_claimed_deductions = sum(deductions_for_engine.values())
 
-            # STEP 5: Apply loss set-off rules
-            losses = user_context.get("losses", {})
-            loss_setoff = self._apply_loss_setoff(losses, tax_components)
+            # STEP 3: Capital gains at special (non-slab) rates. Only
+            # aggregate STCG/LTCG totals are available here — no per-asset
+            # acquisition data — so this assumes equity (111A/112A), the
+            # common case, rather than running the disposal-based engine
+            # `CapitalGainsTaxCalculator` needs and can't be fed from this
+            # agent's inputs.
+            cg_rates = TaxCalculationEngine.equity_capital_gains_rates(fy)
+            ltcg_exemption = float(cg_rates["ltcg_annual_exemption"])
+            ltcg_rate = float(cg_rates["ltcg_rate"])
+            stcg_rate = float(cg_rates["stcg_rate"])
+            ltcg_taxable = max(0.0, ltcg - ltcg_exemption)
+            ltcg_tax = ltcg_taxable * ltcg_rate
+            stcg_tax = stcg * stcg_rate
+            special_rate_income = ltcg_taxable + stcg
+            special_rate_tax = ltcg_tax + stcg_tax
 
-            # STEP 6: Calculate taxable income
-            taxable_income = max(0, gross_income - total_deductions)
-
-            # STEP 7: Calculate final tax liability
-            final_tax = self._calculate_final_tax(
-                taxable_income,
-                user_context,
-                tax_data
+            # STEP 4: The real computation — one combined progressive
+            # calculation across all income heads, with real deductions,
+            # the real FY's slabs, and the s.87A marginal-relief rebate.
+            # This replaces per-component slab tax summed afterward, which
+            # is wrong for progressive brackets (each component re-used the
+            # 0%/5% bands from ₹0 rather than the whole being taxed once).
+            tax_result = TaxCalculationEngine.calculate_tax_full(
+                salary=salary,
+                house_property=rental_after_std_deduction,
+                business=business,
+                other_sources=other_income,
+                deductions=deductions_for_engine,
+                fy=fy,
+                regime=regime,
+                age=age,
+                special_rate_income=special_rate_income,
+                special_rate_tax=special_rate_tax,
             )
 
-            # STEP 8: Calculate tax components breakdown
-            surcharge = self._calculate_surcharge(final_tax, gross_income, tax_data)
-            cess = self._calculate_cess(final_tax, surcharge)
+            taxable_income = float(tax_result["taxable_income"])
+            final_tax = float(tax_result["income_tax"]) + special_rate_tax
+            surcharge = float(tax_result["surcharge"])
+            cess = float(tax_result["cess"])
+            total_tax_liability = float(tax_result["total_tax_liability"])
+            effective_rate = float(tax_result["effective_rate"].rstrip("%")) if isinstance(tax_result["effective_rate"], str) else float(tax_result["effective_rate"])
 
-            total_tax_liability = final_tax + surcharge + cess
+            # STEP 5: Apply loss set-off rules, against the actual gain/
+            # income amounts — not, as before, against the TAX on them.
+            losses = user_context.get("losses", {})
+            loss_setoff = self._apply_loss_setoff(
+                losses,
+                {
+                    "capital_gains": ltcg + stcg,
+                    "other_income": salary + rental,
+                },
+            )
 
-            # STEP 9: Calculate GST impact (if applicable)
+            # STEP 6: Calculate GST impact (if applicable)
             gst_impact = self._calculate_gst_impact(user_context, business)
 
-            # STEP 10: Calculate effective tax rate
-            effective_rate = (total_tax_liability / gross_income * 100) if gross_income > 0 else 0
-
-            # STEP 11: Optimization suggestions
+            # STEP 7: Optimization suggestions
             optimization = self._suggest_optimizations(
                 gross_income,
-                total_deductions,
+                deductions_for_engine.get("80C", 0.0),
                 total_tax_liability,
                 user_context,
                 tax_data,
                 taxable_income,
+                fy=fy,
             )
 
-            # STEP 12: Calculate TDS & refund/balance
+            # STEP 8: Calculate TDS & refund/balance
             tds_paid = float(user_context.get("tds_paid", 0))
             refund = max(0, tds_paid - total_tax_liability)
             balance_due = max(0, total_tax_liability - tds_paid)
 
             result = {
-                "financial_year": tax_data["financial_year"],
-                "assessment_year": tax_data["assessment_year"],
+                "financial_year": fy,
+                "assessment_year": tax_data.get("assessment_year"),
 
                 "gross_income": gross_income,
                 "income_breakdown": {
@@ -175,19 +216,14 @@ class AdvancedCalculatorAgent(TaxAgent):
                 },
 
                 "deductions": {
-                    "total_claimed": total_deductions,
-                    "claimed": total_deductions,  # For backward compatibility with existing tests
+                    "total_claimed": total_claimed_deductions,
+                    "claimed": total_claimed_deductions,  # For backward compatibility with existing tests
                     "details": self._format_deductions(deductions_dict)
                 },
 
                 "taxable_income": taxable_income,
 
                 "tax_calculation": {
-                    "salary_tax": tax_components.get("salary_tax", 0),
-                    "business_tax": tax_components.get("business_tax", 0),
-                    "rental_tax": tax_components.get("rental_tax", 0),
-                    "ltcg_tax": tax_components.get("ltcg_tax", 0),
-                    "stcg_tax": tax_components.get("stcg_tax", 0),
                     "income_tax": final_tax,
                     "surcharge": surcharge,
                     "cess": cess,
@@ -202,9 +238,9 @@ class AdvancedCalculatorAgent(TaxAgent):
                 "total_tax_liability": total_tax_liability,  # For backward compatibility with existing tests
 
                 "tax_rates": {
-                    "income_tax_rate": self._get_applicable_rate(taxable_income, user_context, tax_data),
-                    "surcharge_rate": self._get_surcharge_rate(gross_income, tax_data),
-                    "cess_rate": f"{tax_data['cess_rate'] * 100:.0f}%"
+                    "income_tax_rate": tax_result["marginal_rate"],
+                    "surcharge_rate": f"{(surcharge / final_tax * 100):.0f}%" if final_tax > 0 else "0%",
+                    "cess_rate": "4%"
                 },
 
                 "effective_tax_rate": round(effective_rate, 2),
@@ -236,7 +272,7 @@ class AdvancedCalculatorAgent(TaxAgent):
 
                 "summary": {
                     "total_income": await india_tax_data.format_currency(gross_income),
-                    "total_deductions": await india_tax_data.format_currency(total_deductions),
+                    "total_deductions": await india_tax_data.format_currency(total_claimed_deductions),
                     "taxable_income": await india_tax_data.format_currency(taxable_income),
                     "total_tax": await india_tax_data.format_currency(total_tax_liability),
                     "effective_rate": f"{effective_rate:.2f}%"
@@ -277,96 +313,54 @@ class AdvancedCalculatorAgent(TaxAgent):
                 execution_time_ms=execution_time
             )
 
-    def _calculate_tax_components(
-        self,
-        salary: float,
-        business: float,
-        rental: float,
-        ltcg: float,
-        stcg: float,
-        other_income: float,
-        user_context: dict[str, Any],
-        tax_data: dict[str, Any]
-    ) -> dict[str, float]:
-        """Calculate tax on each income component."""
+    def _deductions_for_engine(self, deductions_dict: dict[str, Any]) -> dict[str, float]:
+        """Flatten `get_user_deductions`'s per-section shape into the plain
+        {code: amount} dict `TaxCalculationEngine.calculate_tax_full` needs.
 
-        # Get applicable tax brackets
-        is_senior = user_context.get("age", 0) >= 60
-        brackets = tax_data["senior_citizen_brackets"] if is_senior else tax_data["tax_brackets"]
+        Section codes come from the caller already capped to their real
+        statutory limits (see `get_user_deductions`) — this does no capping
+        of its own, only extraction, so it stays correct if a caller's caps
+        change rather than silently re-applying a second, possibly stale set.
+        """
+        if not deductions_dict or not isinstance(deductions_dict, dict):
+            return {}
 
-        components = {}
-
-        # Salary tax (taxed as per slab)
-        components["salary_tax"] = self._apply_tax_slab(salary, brackets)
-
-        # Business income (taxed as per slab)
-        components["business_tax"] = self._apply_tax_slab(business, brackets)
-
-        # Rental income (taxed as per slab, but can claim deductions)
-        rental_after_deductions = max(0, rental * 0.8)  # Assume 20% standard deductions
-        components["rental_tax"] = self._apply_tax_slab(rental_after_deductions, brackets)
-
-        # Long-term capital gains (20% flat + 4% cess)
-        components["ltcg_tax"] = ltcg * 0.20 * 1.04
-
-        # Short-term capital gains (taxed as per slab)
-        components["stcg_tax"] = self._apply_tax_slab(stcg, brackets)
-
-        # Other income (taxed as per slab)
-        components["other_tax"] = self._apply_tax_slab(other_income, brackets)
-
-        return components
-
-    def _apply_tax_slab(self, income: float, brackets: list[dict]) -> float:
-        """Apply tax slab rates to income."""
-        if income <= 0:
-            return 0
-
-        tax = 0
-        for bracket in brackets:
-            if income > bracket["min"]:
-                taxable_in_bracket = min(income, bracket["max"]) - bracket["min"]
-                tax += taxable_in_bracket * bracket["rate"]
-
-        return tax
-
-    def _calculate_total_deductions(self, deductions_dict: dict[str, Any]) -> float:
-        """Calculate total deductions from dict."""
-        if not deductions_dict:
-            return 0
-
-        total = 0
-        if isinstance(deductions_dict, dict):
-            for deduction in deductions_dict.values():
-                if isinstance(deduction, dict):
-                    total += deduction.get("amount", deduction.get("claimed", 0))
-                else:
-                    total += float(deduction)
-
-        return min(total, 1500000)  # Cap at standard limit
+        flat: dict[str, float] = {}
+        for code, deduction in deductions_dict.items():
+            if isinstance(deduction, dict):
+                flat[code] = float(deduction.get("claimed", deduction.get("amount", 0)) or 0)
+            else:
+                flat[code] = float(deduction or 0)
+        return flat
 
     def _apply_loss_setoff(
         self,
         losses: dict[str, float],
-        tax_components: dict[str, float]
+        income_amounts: dict[str, float]
     ) -> dict[str, Any]:
         """
         Apply loss set-off rules (India-specific).
-        
+
         Rules:
         • Business loss can offset any income
         • Capital loss can only offset capital gains
+
+        `income_amounts` carries the actual gain/income figures being offset
+        against (`capital_gains`, `other_income`) — previously this was
+        fed the TAX on those amounts instead of the amounts themselves,
+        which set losses off against a number roughly 1/5th to 1/3rd the
+        size of what the law actually allows.
         """
         business_loss = losses.get("business", 0)
         capital_loss = losses.get("capital", 0)
 
         # Capital loss set-off (only against capital gains)
-        capital_gains = tax_components.get("ltcg_tax", 0) + tax_components.get("stcg_tax", 0)
+        capital_gains = income_amounts.get("capital_gains", 0)
         capital_loss_utilized = min(capital_loss, capital_gains)
         capital_loss_carried = max(0, capital_loss - capital_gains)
 
         # Business loss set-off
-        other_income = tax_components.get("salary_tax", 0) + tax_components.get("rental_tax", 0)
+        other_income = income_amounts.get("other_income", 0)
         business_loss_utilized = min(business_loss, other_income)
         business_loss_carried = max(0, business_loss - other_income)
 
@@ -378,39 +372,6 @@ class AdvancedCalculatorAgent(TaxAgent):
             "carryforward_limit": "Business: 8 years | Capital: Indefinite",
             "note": "Can carry forward unused losses to next year"
         }
-
-    def _calculate_final_tax(
-        self,
-        taxable_income: float,
-        user_context: dict[str, Any],
-        tax_data: dict[str, Any]
-    ) -> float:
-        """Calculate final income tax on taxable income."""
-        is_senior = user_context.get("age", 0) >= 60
-        brackets = tax_data["senior_citizen_brackets"] if is_senior else tax_data["tax_brackets"]
-
-        return self._apply_tax_slab(taxable_income, brackets)
-
-    def _calculate_surcharge(
-        self,
-        income_tax: float,
-        gross_income: float,
-        tax_data: dict[str, Any]
-    ) -> float:
-        """Calculate surcharge on income tax (India-specific)."""
-        surcharge_slabs = tax_data["surcharge_slabs"]
-
-        surcharge = 0
-        for slab in surcharge_slabs:
-            if gross_income > slab["min"]:
-                surcharge = income_tax * slab["rate"]
-                break
-
-        return surcharge
-
-    def _calculate_cess(self, income_tax: float, surcharge: float) -> float:
-        """Calculate 4% health & education cess."""
-        return (income_tax + surcharge) * 0.04
 
     def _calculate_gst_impact(
         self,
@@ -445,32 +406,6 @@ class AdvancedCalculatorAgent(TaxAgent):
 
         return gst_data
 
-    def _get_applicable_rate(
-        self,
-        taxable_income: float,
-        user_context: dict[str, Any],
-        tax_data: dict[str, Any]
-    ) -> str:
-        """Get applicable tax rate."""
-        is_senior = user_context.get("age", 0) >= 60
-        brackets = tax_data["senior_citizen_brackets"] if is_senior else tax_data["tax_brackets"]
-
-        for bracket in brackets:
-            if taxable_income >= bracket["min"] and taxable_income < bracket["max"]:
-                return f"{bracket['rate'] * 100:.0f}%"
-
-        return "30%"  # Default highest rate
-
-    def _get_surcharge_rate(self, gross_income: float, tax_data: dict[str, Any]) -> str:
-        """Get applicable surcharge rate."""
-        surcharge_slabs = tax_data["surcharge_slabs"]
-
-        for slab in surcharge_slabs:
-            if gross_income >= slab["min"] and gross_income < slab["max"]:
-                return f"{slab['rate'] * 100:.0f}%"
-
-        return "25%"  # Highest surcharge
-
     def _format_deductions(self, deductions_dict: dict[str, Any]) -> list[dict[str, Any]]:
         """Format deductions for display."""
         deduction_list = []
@@ -502,6 +437,7 @@ class AdvancedCalculatorAgent(TaxAgent):
         user_context: dict[str, Any],
         tax_data: dict[str, Any],
         taxable_income: float = 0.0,
+        fy: str | None = None,
     ) -> list[dict[str, Any]]:
         """Suggest tax optimization strategies (India-specific).
 
@@ -512,17 +448,16 @@ class AdvancedCalculatorAgent(TaxAgent):
         hardcoded guess (80D was "₹30,000 savings, ₹150,000 max limit" —
         150,000 is 80C's limit, not 80D's, which is ₹25,000). Every figure
         below is now `TaxCalculationEngine.calculate_deduction_benefit`'s
-        real before/after recomputation. This agent's own base tax
-        calculation is a separate, older duplicate of `backend.core` fixed
-        at FY 2024-25 data (`IndiaTaxDataFetcher`) — a larger, separate
-        finding, not fixed here; the fy it reports is passed through as-is
-        so this at least stays internally consistent with whatever FY the
-        rest of the calculation already assumed, rather than adding a
-        second, different assumption on top.
+        real before/after recomputation. `fy` is now the real current FY
+        from `backend.core.rules` (the caller's base calculation was fixed
+        alongside this to stop using `IndiaTaxDataFetcher`'s stale data) —
+        `deduction_limits` below still comes from `tax_data`
+        (IndiaTaxDataFetcher) for the 80C headroom figure, which is the one
+        limit in that source that hasn't actually changed across recent FYs;
+        the 80D limit next to it is intentionally NOT read from the same
+        source, for the reason noted there.
         """
-        from backend.tools.calculation import TaxCalculationEngine
-
-        fy = tax_data.get("financial_year")
+        fy = fy or current_fy()
         base_income = taxable_income
 
         def benefit(amount: float) -> float:
@@ -537,7 +472,11 @@ class AdvancedCalculatorAgent(TaxAgent):
         suggestions = []
         deduction_limits = tax_data["deduction_limits"]
 
-        # Suggestion 1: Maximize 80C
+        # Suggestion 1: Maximize 80C. `current_deductions` is specifically
+        # the 80C claim (see the `_deductions_for_engine(...).get("80C")`
+        # call site) — it used to be the grand total across ALL sections,
+        # which meant maxing out 80D/24b/80E alone (with zero 80C) could
+        # read as "80C already maxed" and suppress this suggestion entirely.
         deduction_80c_limit = deduction_limits["80C"]["limit"]
         if current_deductions < deduction_80c_limit:
             headroom = deduction_80c_limit - current_deductions

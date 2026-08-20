@@ -168,6 +168,92 @@ class TaxCalculationEngine:
         }
 
     @staticmethod
+    def calculate_tax_full(
+        salary: float = 0,
+        house_property: float = 0,
+        business: float = 0,
+        other_sources: float = 0,
+        deductions: dict[str, float] | None = None,
+        fy: str | None = None,
+        regime: str = "new",
+        age: int = 0,
+        special_rate_income: float = 0,
+        special_rate_tax: float = 0,
+        taxes_paid: float = 0,
+        **_ignored: Any,
+    ) -> dict[str, Any]:
+        """Full breakdown across all four income heads, with deductions and
+        pre-computed special-rate (capital gains) income/tax folded in.
+
+        `calculate_income_tax` gives the breakdown but not deductions;
+        `calculate_tax_with_deductions` gives deductions but collapses to
+        one income head and not the breakdown. advanced_calculator_agent
+        needs both — multiple income heads, real deductions, and the
+        rebate/surcharge/cess split — in one call, so this exists rather
+        than composing the other two (which would silently drop the
+        multi-head distinction that determines whether the standard
+        deduction even applies).
+        """
+        fy = fy or current_fy()
+        result = compute_tax(
+            TaxInput(
+                fy=fy,
+                regime=regime,
+                age=age,
+                salary=_money(salary),
+                house_property=_money(house_property),
+                business=_money(business),
+                other_sources=_money(other_sources),
+                deductions={k: _money(v) for k, v in (deductions or {}).items()},
+                special_rate_income=_money(special_rate_income),
+                special_rate_tax=_money(special_rate_tax),
+                taxes_paid=_money(taxes_paid),
+            )
+        )
+        return {
+            "fy": fy,
+            "regime": regime,
+            "gross_income": result.gross_total_income.to_json(),
+            "total_deductions": result.total_deductions.to_json(),
+            "taxable_income": result.taxable_income.to_json(),
+            "income_tax": result.tax_on_slabs.to_json(),
+            "special_rate_tax": result.special_rate_tax.to_json(),
+            "rebate_87a": result.rebate_87a.to_json(),
+            "surcharge": result.surcharge.to_json(),
+            "cess": result.cess.to_json(),
+            "total_tax_liability": result.total_tax.to_json(),
+            "balance_payable": result.balance_payable.to_json(),
+            "refund_due": result.refund_due.to_json(),
+            "effective_rate": result.effective_rate,
+            "marginal_rate": result.marginal_rate,
+            "worksheet": result.trace.render(),
+            "trace": result.trace.to_dict(),
+            "confidence": result.confidence.to_dict(),
+        }
+
+    @staticmethod
+    def equity_capital_gains_rates(fy: str | None = None) -> dict[str, Any]:
+        """Flat equity LTCG/STCG rates and the LTCG annual exemption, for a
+        caller that only has aggregate gain totals rather than per-disposal
+        acquisition data.
+
+        `CapitalGainsTaxCalculator.calculate` is the real computation and
+        should be preferred wherever disposal-level data (acquisition date,
+        cost, consideration) exists — it handles indexation elections,
+        grandfathering and non-equity assets that this shortcut does not.
+        This exists for callers, like the multi-income-source calculator,
+        that only ever see an aggregate STCG/LTCG figure.
+        """
+        rs = load_ruleset(fy or current_fy())
+        cg = rs.capital_gains
+        return {
+            "fy": rs.fy,
+            "ltcg_rate": str(cg["equity_ltcg"]["rate"]),
+            "ltcg_annual_exemption": cg["equity_ltcg"]["annual_exemption"],
+            "stcg_rate": str(cg["equity_stcg"]["rate"]),
+        }
+
+    @staticmethod
     def compare_regimes(
         gross_income: float,
         deductions: dict[str, float] | None = None,

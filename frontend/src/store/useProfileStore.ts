@@ -243,6 +243,30 @@ export function marginalRateAt(taxable: number, regime: TaxRegime): number {
   return 0;
 }
 
+/**
+ * Slab tax + cess for an already-known taxable income, sharing the same
+ * marginal-relief 87A logic as `calculateTax` below — so a what-if tool
+ * that only has (taxable, regime), not a full profile, still gets a
+ * result consistent with the real one rather than reimplementing (and
+ * risking drifting from) the rebate cliff/threshold logic.
+ */
+export function taxFromTaxable(taxable: number, regime: TaxRegime): {
+  incomeTax: number;
+  cess: number;
+  totalTax: number;
+} {
+  const slabs = regime === 'new' ? NEW_REGIME_SLABS : OLD_REGIME_SLABS;
+  let incomeTax = calcSlabTax(taxable, slabs);
+  const rebateThreshold = regime === 'new' ? REBATE_87A_THRESHOLD_NEW : REBATE_87A_THRESHOLD_OLD;
+  if (taxable <= rebateThreshold) {
+    incomeTax = 0;
+  } else {
+    incomeTax = Math.min(incomeTax, taxable - rebateThreshold);
+  }
+  const cess = incomeTax * CESS_RATE;
+  return { incomeTax, cess, totalTax: incomeTax + cess };
+}
+
 export function calculateTax(profile: FinancialProfile): {
   grossIncome: number;
   totalDeductions: number;
@@ -303,23 +327,12 @@ export function calculateTax(profile: FinancialProfile): {
   const totalDed = profile.taxRegime === 'old' ? totalDeductionsOld : totalDeductionsNew;
   const taxable = Math.max(0, gross - totalDed);
 
-  const slabs = profile.taxRegime === 'new' ? NEW_REGIME_SLABS : OLD_REGIME_SLABS;
-  let incomeTax = calcSlabTax(taxable, slabs);
-
   // s.87A rebate, WITH marginal relief. A flat threshold ("nil below ₹12L,
   // full slab tax from ₹12,00,001") is a cliff bug: it would tax someone
   // earning ten rupees more than the threshold ₹60,001.50, not ₹10. Marginal
   // relief caps the tax at the excess income over the threshold, so it rises
   // by at most the rupee that crossed the line.
-  const rebateThreshold = profile.taxRegime === 'new' ? REBATE_87A_THRESHOLD_NEW : REBATE_87A_THRESHOLD_OLD;
-  if (taxable <= rebateThreshold) {
-    incomeTax = 0;
-  } else {
-    incomeTax = Math.min(incomeTax, taxable - rebateThreshold);
-  }
-
-  const cess = incomeTax * CESS_RATE;
-  const total = incomeTax + cess;
+  const { incomeTax, cess, totalTax: total } = taxFromTaxable(taxable, profile.taxRegime);
   const effectiveRate = gross > 0 ? (total / gross) * 100 : 0;
 
   // Potential savings = unused deduction headroom valued at the REAL marginal

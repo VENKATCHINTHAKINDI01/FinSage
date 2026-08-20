@@ -131,53 +131,74 @@ class UserFinancialDataTool:
         self,
         user_id: str,
         years: int = 3
-    ) -> dict[str, list[dict[str, Any]]]:
+    ) -> dict[str, Any] | None:
         """
-        Get user's income history for multiple years.
-        
-        Args:
-            user_id: User ID
-            years: Number of years to retrieve
-            
-        Returns:
-            {
-                "financial_years": [
-                    {"fy": "2024-25", "income": {...}},
-                    {"fy": "2023-24", "income": {...}}
-                ]
-            }
+        Get the user's stated income for the current year from their saved
+        financial profile.
+
+        This used to return a hardcoded placeholder (literal salary_income:
+        500000) for every user regardless of their actual profile — every
+        downstream tax figure computed from it was therefore fake, not just
+        the slab math applied to it. There is no historical-year storage yet
+        (`years` beyond the current one), so only one real entry is returned;
+        a user with no saved profile gets an empty history rather than an
+        invented number.
         """
         try:
-            # Placeholder
+            from sqlalchemy import select
+
+            from backend.core.rules import fy_for_date
+            from backend.db.orm_models import FinancialProfile
+
+            stmt = select(FinancialProfile).where(FinancialProfile.user_id == user_id)
+            res = await self.db.execute(stmt)
+            profile_rec = res.scalar_one_or_none()
+
+            if not profile_rec or not profile_rec.profile_data:
+                return {"user_id": user_id, "income_history": []}
+
+            profile_data = profile_rec.profile_data
+            profession = profile_data.get("profession", "")
+            salary = float(profile_data.get("salaryCtc", 0.0)) if profession == "salaried" else 0.0
+            business = float(profile_data.get("businessIncome", 0.0)) + float(profile_data.get("freelanceIncome", 0.0))
+            rental = float(profile_data.get("rentalIncome", 0.0))
+            other = float(profile_data.get("otherIncome", 0.0)) + float(profile_data.get("dividendIncome", 0.0))
+            total = (
+                salary + business + rental + other
+                + float(profile_data.get("capitalGainsStcg", 0.0))
+                + float(profile_data.get("capitalGainsLtcg", 0.0))
+            )
+
             return {
                 "user_id": user_id,
                 "income_history": [
                     {
-                        "financial_year": "2024-25",
-                        "salary_income": 500000,
-                        "business_income": 0,
-                        "rental_income": 0,
-                        "other_income": 0,
-                        "total_income": 500000,
-                        "tax_paid": 50000
-                    },
-                    {
-                        "financial_year": "2023-24",
-                        "salary_income": 450000,
-                        "business_income": 0,
-                        "rental_income": 0,
-                        "other_income": 0,
-                        "total_income": 450000,
-                        "tax_paid": 40000
+                        "financial_year": fy_for_date(datetime.now(timezone.utc).date()),
+                        "salary_income": salary,
+                        "business_income": business,
+                        "rental_income": rental,
+                        "other_income": other,
+                        "total_income": total,
+                        "tax_paid": float(profile_data.get("tds_paid", 0.0)),
                     }
-                ]
+                ],
             }
         except Exception as e:
             self.logger.error(f"Error fetching income history: {e}")
             return None
 
-    async def get_user_deductions(self, user_id: str) -> dict[str, Any]:
-        """Get user's claimed deductions."""
+    async def get_user_deductions(self, user_id: str) -> dict[str, Any] | None:
+        """Get user's claimed deductions, capped to real statutory limits.
+
+        Previously returned raw uncapped sums under section labels ("NPS",
+        "Sec24b") that don't match the section codes `backend.core`'s
+        ruleset actually recognises, with a wrong 80D limit (75,000 — that's
+        80C's limit, copy-pasted) and NPS employee+employer lumped into one
+        claim despite being different sections (80CCD(1B) vs 80CCD(2)) with
+        different caps. Every cap below matches the ones already applied in
+        `useProfileStore.calculateTax` on the frontend, so a user sees the
+        same capped figure in both places rather than two different guesses.
+        """
         try:
             from sqlalchemy import select
 
@@ -189,69 +210,150 @@ class UserFinancialDataTool:
 
             profile_data = profile_rec.profile_data if (profile_rec and profile_rec.profile_data) else {}
 
-            c_80c = float(profile_data.get("ppf", 0)) + float(profile_data.get("elss", 0)) + float(profile_data.get("lic", 0)) + float(profile_data.get("ulip", 0)) + float(profile_data.get("fd5yr", 0)) + float(profile_data.get("nsc", 0)) + float(profile_data.get("sukanyaSamriddhi", 0)) + float(profile_data.get("homeLoanPrincipal", 0))
-            c_80d = float(profile_data.get("healthInsuranceSelf", 0)) + float(profile_data.get("healthInsuranceParents", 0))
-            c_nps = float(profile_data.get("npsEmployee", 0)) + float(profile_data.get("npsEmployer", 0))
+            raw_80c = (
+                float(profile_data.get("ppf", 0)) + float(profile_data.get("elss", 0))
+                + float(profile_data.get("lic", 0)) + float(profile_data.get("ulip", 0))
+                + float(profile_data.get("fd5yr", 0)) + float(profile_data.get("nsc", 0))
+                + float(profile_data.get("sukanyaSamriddhi", 0)) + float(profile_data.get("homeLoanPrincipal", 0))
+            )
+            c_80c = min(150000.0, raw_80c)
 
+            self_premium = float(profile_data.get("healthInsuranceSelf", 0))
+            parents_premium = float(profile_data.get("healthInsuranceParents", 0))
+            parents_limit = 50000.0 if (profile_data.get("seniorParents") or profile_data.get("superSeniorParents")) else 25000.0
+            c_80d = min(25000.0, self_premium) + min(parents_limit, parents_premium)
+
+            nps_employee = float(profile_data.get("npsEmployee", 0))
+            c_80ccd_1b = min(50000.0, nps_employee)
+
+            nps_employer = float(profile_data.get("npsEmployer", 0))
+            salary_ctc = float(profile_data.get("salaryCtc", 0))
+            # 80CCD(2): employer NPS contribution, capped as a % of salary
+            # rather than a flat rupee limit. 10% is the private-sector rate;
+            # government employees get 14%, which this does not distinguish —
+            # a conservative (lower) figure rather than an unclaimable one.
+            c_80ccd_2 = min(salary_ctc * 0.10, nps_employer) if salary_ctc > 0 else 0.0
+
+            home_loan_interest = float(profile_data.get("homeLoanInterest", 0))
+            c_24b = min(200000.0, home_loan_interest)
+
+            edu_loan_interest = float(profile_data.get("eduLoanInterest", 0))
+
+            ev_loan_interest = float(profile_data.get("evLoanInterest", 0))
+            c_80eeb = min(150000.0, ev_loan_interest)
+
+            savings_interest = float(profile_data.get("savingsBankInterest", 0))
+            c_80tta = min(10000.0, savings_interest)
+
+            donations = float(profile_data.get("donationsU80G", 0))
+            hra = float(profile_data.get("hra", 0))
+            lta = float(profile_data.get("lta", 0))
+
+            total_deductions = (
+                c_80c + c_80d + c_80ccd_1b + c_80ccd_2 + c_24b
+                + edu_loan_interest + c_80eeb + c_80tta + donations + hra + lta
+            )
+
+            # Flat — no {"success", "result"} envelope. `get_user_income_history`
+            # and `get_user_investments` return flat like this too, but a
+            # previous version of this method wrapped its own return in one,
+            # and `tools/registry.py`'s dispatcher ALSO wraps every tool
+            # result in {"success", "result"} — stacking a second one meant
+            # every caller's `.get("result", {}).get("deductions", ...)` was
+            # reading a level too shallow and silently got `{}`/`[]` back.
+            # Confirmed live in advanced_calculator.py, but tax_strategy.py
+            # and compliance_checker.py have the same single-unwrap pattern
+            # and were affected identically.
             return {
-                "success": True,
-                "result": {
-                    "user_id": user_id,
-                    "deductions": {
-                        "80C": {
-                            "claimed": c_80c,
-                            "limit": 150000,
-                            "items": [
-                                {"type": "PPF", "amount": float(profile_data.get("ppf", 0))},
-                                {"type": "ELSS", "amount": float(profile_data.get("elss", 0))},
-                                {"type": "LIC Premium", "amount": float(profile_data.get("lic", 0))},
-                                {"type": "ULIP", "amount": float(profile_data.get("ulip", 0))},
-                                {"type": "5-Year FD", "amount": float(profile_data.get("fd5yr", 0))},
-                                {"type": "NSC", "amount": float(profile_data.get("nsc", 0))},
-                                {"type": "Sukanya Samriddhi", "amount": float(profile_data.get("sukanyaSamriddhi", 0))},
-                                {"type": "Home Loan Principal", "amount": float(profile_data.get("homeLoanPrincipal", 0))}
-                            ]
-                        },
-                        "80D": {
-                            "claimed": c_80d,
-                            "limit": 75000,
-                            "items": [
-                                {"type": "Health Insurance (Self)", "amount": float(profile_data.get("healthInsuranceSelf", 0))},
-                                {"type": "Health Insurance (Parents)", "amount": float(profile_data.get("healthInsuranceParents", 0))}
-                            ]
-                        },
-                        "NPS": {
-                            "claimed": c_nps,
-                            "limit": 200000,
-                            "items": [
-                                {"type": "NPS Employee Contribution", "amount": float(profile_data.get("npsEmployee", 0))},
-                                {"type": "NPS Employer Contribution", "amount": float(profile_data.get("npsEmployer", 0))}
-                            ]
-                        },
-                        "Sec24b": {
-                            "claimed": float(profile_data.get("homeLoanInterest", 0)),
-                            "limit": 200000,
-                            "items": [
-                                {"type": "Home Loan Interest", "amount": float(profile_data.get("homeLoanInterest", 0))}
-                            ]
-                        },
-                        "80E": {
-                            "claimed": float(profile_data.get("eduLoanInterest", 0)),
-                            "limit": None,
-                            "items": [
-                                {"type": "Education Loan Interest", "amount": float(profile_data.get("eduLoanInterest", 0))}
-                            ]
-                        },
-                        "80EEB": {
-                            "claimed": float(profile_data.get("evLoanInterest", 0)),
-                            "limit": 150000,
-                            "items": [
-                                {"type": "EV Loan Interest", "amount": float(profile_data.get("evLoanInterest", 0))}
-                            ]
-                        }
+                "user_id": user_id,
+                "deductions": {
+                    "80C": {
+                        "claimed": c_80c,
+                        "limit": 150000,
+                        "items": [
+                            {"type": "PPF", "amount": float(profile_data.get("ppf", 0))},
+                            {"type": "ELSS", "amount": float(profile_data.get("elss", 0))},
+                            {"type": "LIC Premium", "amount": float(profile_data.get("lic", 0))},
+                            {"type": "ULIP", "amount": float(profile_data.get("ulip", 0))},
+                            {"type": "5-Year FD", "amount": float(profile_data.get("fd5yr", 0))},
+                            {"type": "NSC", "amount": float(profile_data.get("nsc", 0))},
+                            {"type": "Sukanya Samriddhi", "amount": float(profile_data.get("sukanyaSamriddhi", 0))},
+                            {"type": "Home Loan Principal", "amount": float(profile_data.get("homeLoanPrincipal", 0))}
+                        ]
                     },
-                    "total_deductions": c_80c + c_80d + c_nps + float(profile_data.get("homeLoanInterest", 0)) + float(profile_data.get("eduLoanInterest", 0)) + float(profile_data.get("evLoanInterest", 0))
-                }
+                    "80D": {
+                        "claimed": c_80d,
+                        "limit": 25000 + parents_limit,
+                        "items": [
+                            {"type": "Health Insurance (Self)", "amount": self_premium},
+                            {"type": "Health Insurance (Parents)", "amount": parents_premium}
+                        ]
+                    },
+                    "80CCD_1B": {
+                        "claimed": c_80ccd_1b,
+                        "limit": 50000,
+                        "items": [
+                            {"type": "NPS Employee Contribution (additional)", "amount": nps_employee}
+                        ]
+                    },
+                    "80CCD_2": {
+                        "claimed": c_80ccd_2,
+                        "limit": "10% of salary (private sector)",
+                        "items": [
+                            {"type": "NPS Employer Contribution", "amount": nps_employer}
+                        ]
+                    },
+                    "24b": {
+                        "claimed": c_24b,
+                        "limit": 200000,
+                        "items": [
+                            {"type": "Home Loan Interest", "amount": home_loan_interest}
+                        ]
+                    },
+                    "80E": {
+                        "claimed": edu_loan_interest,
+                        "limit": None,
+                        "items": [
+                            {"type": "Education Loan Interest", "amount": edu_loan_interest}
+                        ]
+                    },
+                    "80EEB": {
+                        "claimed": c_80eeb,
+                        "limit": 150000,
+                        "items": [
+                            {"type": "EV Loan Interest", "amount": ev_loan_interest}
+                        ]
+                    },
+                    "80TTA": {
+                        "claimed": c_80tta,
+                        "limit": 10000,
+                        "items": [
+                            {"type": "Savings Account Interest", "amount": savings_interest}
+                        ]
+                    },
+                    "80G": {
+                        "claimed": donations,
+                        "limit": None,
+                        "items": [
+                            {"type": "Donations", "amount": donations}
+                        ]
+                    },
+                    "10_13A": {
+                        "claimed": hra,
+                        "limit": None,
+                        "items": [
+                            {"type": "HRA Exemption (as declared)", "amount": hra}
+                        ]
+                    },
+                    "LTA": {
+                        "claimed": lta,
+                        "limit": None,
+                        "items": [
+                            {"type": "Leave Travel Allowance", "amount": lta}
+                        ]
+                    }
+                },
+                "total_deductions": total_deductions
             }
         except Exception as e:
             self.logger.error(f"Error fetching deductions: {e}")

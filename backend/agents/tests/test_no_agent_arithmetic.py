@@ -60,7 +60,15 @@ THIN_AGENTS = {
 # v1 modules awaiting the AGT-001 rewrite, with today's count. RATCHET: these
 # may only go down. Lower a number when you fix a module; never raise one.
 LEGACY_BUDGET = {
-    "advanced_calculator.py": 24,
+    # AGT-001 (2026-08-19): 24 -> 18. The slab/rebate/surcharge/cess
+    # computation itself now goes through TaxCalculationEngine.calculate_tax_full
+    # (backend.core) instead of a duplicate hardcoded slab table with no 87A
+    # rebate at all. What remains is raw income summation, refund/balance
+    # subtraction, and the equity capital-gains flat-rate multiplication
+    # (whose RATE is sourced from TaxCalculationEngine.equity_capital_gains_rates,
+    # but the multiplication itself still trips the arithmetic scanner) —
+    # not tax knowledge invented in the agent.
+    "advanced_calculator.py": 18,
     "tools.py": 13,
     "compliance_checker.py": 6,
     "income_classifier.py": 6,
@@ -158,18 +166,10 @@ def test_every_agent_module_is_accounted_for() -> None:
     )
 
 
-def test_the_hardcoded_cess_rate_is_recorded_as_the_worst_offender() -> None:
-    """`advanced_calculator` multiplies by a literal 0.04.
-
-    Documented here because it is the single clearest example of why AGT-001
-    matters: the cess rate lives in the rule pack, is 4% today, and an agent
-    carrying its own copy is exactly how v1's seven disagreeing tax tables
-    happened.
-    """
-    path = AGENTS / "advanced_calculator.py"
-    if not path.exists():
-        pytest.skip("advanced_calculator.py has been removed — AGT-001 progressed")
-    assert "0.04" in path.read_text(encoding="utf-8"), (
-        "the hardcoded cess has gone — update or delete this test and lower "
-        "the LEGACY_BUDGET entry"
-    )
+# `test_the_hardcoded_cess_rate_is_recorded_as_the_worst_offender` — removed
+# 2026-08-19. It asserted `advanced_calculator.py` still carried its own
+# literal `0.04` cess multiplier, as the clearest example of why AGT-001
+# matters. AGT-001 fixed exactly that: cess now comes from
+# `TaxCalculationEngine.calculate_tax_full` (backend.core), alongside the
+# rest of that module's slab/rebate/surcharge computation. The
+# LEGACY_BUDGET entry above was lowered in the same change.

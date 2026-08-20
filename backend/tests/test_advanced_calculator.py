@@ -72,6 +72,11 @@ async def test_advanced_calculator_agent_normal_run():
     
     user_context = {
         "user_id": "user-123",
+        # 80C (the deduction this test claims) is not an allowed deduction
+        # under the new regime at all — old regime is what actually lets it
+        # reduce taxable income, which is the behaviour this test means to
+        # exercise.
+        "tax_regime": "old",
         "long_term_gains": 50000,
         "short_term_gains": 20000,
         "losses": {
@@ -80,24 +85,29 @@ async def test_advanced_calculator_agent_normal_run():
         },
         "tds_paid": 50000
     }
-    
+
     output = await agent.execute(
         user_query="Calculate my total tax liability with capital gains",
         user_context=user_context,
         tools=mock_tools
     )
-    
+
     assert output.status == "success"
     assert output.agent_name == "advanced_calculator_agent"
-    
+
     res = output.result
     # gross_income = salary (600k) + business (100k) + rental (30k) + stcg (20k) + ltcg (50k) = 800,000
     assert res["gross_income"] == 800000
     assert res["income_breakdown"]["salary"] == 600000
     assert res["income_breakdown"]["capital_gains_ltcg"] == 50000
     assert res["deductions"]["claimed"] == 150000
-    # taxable_income = 800k - 150k = 650k
-    assert res["taxable_income"] == 650000
+    # taxable_income is NOT a flat gross - claimed_deductions (that was the
+    # bug: it ignored the standard deduction entirely and taxed rental
+    # income gross instead of net of the statutory 30% s.24(a) deduction).
+    # Real taxable income = salary (600k) + rental net of 30% NAV deduction
+    # (30k * 0.7 = 21k) + business (100k) - standard deduction (old regime,
+    # 50k) - 80C claimed (150k) = 521,000.
+    assert res["taxable_income"] == 521000
     assert "total_tax_liability" in res
     assert res["effective_tax_rate"] > 0
     assert "loss_setoff_details" in res
