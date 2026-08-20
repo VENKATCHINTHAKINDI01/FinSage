@@ -16,6 +16,8 @@ interface ITRStep {
 
 export default function ITRGuide() {
   const state = useApiData<any>(getITRGuidance, []);
+  const [completed, setCompleted] = useState<number[]>([]);
+
   if (state.loading) return <AppLayout title="ITR Guide"><LoadingState /></AppLayout>;
   if (state.error)
     return (
@@ -25,7 +27,6 @@ export default function ITRGuide() {
     );
   const guide: any = state.data ?? {};
   const steps = (guide.step_by_step_guide ?? []) as ITRStep[];
-  const [completed, setCompleted] = useState<number[]>([]);
 
   const toggle = (step: number) =>
     setCompleted((c) => (c.includes(step) ? c.filter((s) => s !== step) : [...c, step]));

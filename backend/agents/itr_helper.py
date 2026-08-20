@@ -99,6 +99,15 @@ class ITRHelperAgent(TaxAgent):
             tax_data = await india_tax_data.get_current_tax_data()
             itr_forms = tax_data["itr_forms"]
 
+            # The real current FY/AY — india_tax_data (IndiaTaxDataFetcher) is
+            # hardcoded to a fixed FY regardless of the actual date (a larger,
+            # separate finding), so its financial_year/assessment_year fields
+            # are not trusted here even though the rest of tax_data still is.
+            from backend.core.rules import fy_for_date
+            current_fy = fy_for_date(date.today())
+            fy_start, fy_end = current_fy.split("-")
+            current_ay = f"{int(fy_start) + 1}-{str(int(fy_end) + 1).zfill(2)}"
+
             # Determine applicable ITR form
             applicable_form = await india_tax_data.validate_itr_form(merged_context)
             form_details = itr_forms.get(applicable_form, {})
@@ -111,7 +120,7 @@ class ITRHelperAgent(TaxAgent):
             )
 
             # STEP 3: Get step-by-step filing guide
-            filing_steps = self._get_itr_filing_steps(applicable_form)
+            filing_steps = self._get_itr_filing_steps(applicable_form, current_fy, current_ay)
 
             # STEP 4: Get common mistakes (India-specific)
             common_mistakes = tax_data.get("common_itr_mistakes", [])
@@ -131,8 +140,8 @@ class ITRHelperAgent(TaxAgent):
                     "complexity": self._get_complexity(applicable_form),
                     "income_types": [x.capitalize() for x in form_details.get("income_types", [])]
                 },
-                "financial_year": tax_data["financial_year"],
-                "assessment_year": tax_data["assessment_year"],
+                "financial_year": current_fy,
+                "assessment_year": current_ay,
 
                 "filing_requirements": requirements,
                 "step_by_step_guide": filing_steps,
@@ -283,7 +292,7 @@ class ITRHelperAgent(TaxAgent):
             "verification_needed": "YES - Critical!"
         }
 
-    def _get_itr_filing_steps(self, itr_form: str) -> list[dict[str, Any]]:
+    def _get_itr_filing_steps(self, itr_form: str, fy: str, assessment_year: str) -> list[dict[str, Any]]:
         """Get step-by-step ITR filing guide for India."""
 
         base_steps = [
@@ -302,7 +311,7 @@ class ITRHelperAgent(TaxAgent):
             {
                 "step": 3,
                 "action": "Select Assessment Year",
-                "details": "Select 2025-26 for FY 2024-25",
+                "details": f"Select {assessment_year} for FY {fy}",
                 "time_min": 1
             },
             {
@@ -486,11 +495,21 @@ class ITRHelperAgent(TaxAgent):
 
         return docs.get(itr_form, [])
 
+    def _itr_deadline(self) -> date:
+        """31 July of the assessment year for the CURRENT financial year
+        (non-audit individual taxpayers) — was a hardcoded date(2025, 7, 31),
+        already in the past and silently clamped to 0 days remaining
+        regardless of what year it actually was (same bug, same fix, as
+        compliance_checker.py's identical hardcoded deadline)."""
+        from backend.core.rules import fy_for_date
+
+        fy = fy_for_date(date.today())
+        assessment_year_start = int(fy.split("-")[0]) + 1
+        return date(assessment_year_start, 7, 31)
+
     def _days_to_deadline(self) -> int:
         """Days remaining until ITR filing deadline."""
-        deadline = date(2025, 7, 31)
-        today = date.today()
-        days = (deadline - today).days
+        days = (self._itr_deadline() - date.today()).days
         return max(0, days)
 
     async def _save_to_database(
