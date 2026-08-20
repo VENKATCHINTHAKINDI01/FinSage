@@ -1,7 +1,7 @@
 import React from 'react';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
-import CosmicBackground from '../common/CosmicBackground';
+import AppBackdrop from '../common/AppBackdrop';
 import { useUIStore } from '../../store/useUIStore';
 import clsx from 'clsx';
 
@@ -17,8 +17,7 @@ export default function AppLayout({ title, subtitle, children }: AppLayoutProps)
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 relative overflow-hidden transition-colors duration-300">
-      {/* Twinkling star constellations background */}
-      <CosmicBackground mode="space" />
+      <AppBackdrop />
 
       {/* Dimmed backdrop overlay when sidebar is open on mobile */}
       {!collapsed && (

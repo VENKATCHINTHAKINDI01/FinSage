@@ -1,5 +1,4 @@
 import { IndianRupee, Percent, ShieldCheck, Wallet, Sparkles, ArrowRight, Zap, UserCircle, AlertTriangle, CheckCircle2 } from 'lucide-react';
-import ParticleField from '../components/common/ParticleField';
 import AppLayout from '../components/shared/AppLayout';
 import StatCard from '../components/ui/StatCard';
 import ScoreGauge from '../components/ui/ScoreGauge';
@@ -136,11 +135,6 @@ export default function Dashboard() {
 
   return (
     <AppLayout title="Dashboard" subtitle={`Your complete financial picture · ${TAX_YEAR} / ${ASSESSMENT_YEAR}`}>
-      {/* Cosmic particle background */}
-      <div className="fixed inset-0 pointer-events-none z-0 hidden dark:block">
-        <ParticleField theme="cosmic" count={30} />
-      </div>
-
       {/* Data Quality Indicator */}
       <div className="flex items-center gap-2 mb-4 animate-gravity-up">
         {apiTaxReady ? (

@@ -1,7 +1,6 @@
 import React from 'react';
 import { IndianRupee, ShieldCheck, Sparkles, TrendingUp } from 'lucide-react';
-import CosmicBackground from '../common/CosmicBackground';
-import ParticleField from '../common/ParticleField';
+import AppBackdrop from '../common/AppBackdrop';
 import { TAX_YEAR } from '../../store/useProfileStore';
 
 const HIGHLIGHTS = [
@@ -19,11 +18,7 @@ interface AuthLayoutProps {
 export default function AuthLayout({ title, subtitle, children }: AuthLayoutProps) {
   return (
     <div className="min-h-screen w-full grid grid-cols-1 lg:grid-cols-2 bg-slate-50 dark:bg-slate-950 relative overflow-hidden transition-colors duration-300">
-      {/* Interactive cosmic + particle background */}
-      <CosmicBackground mode="ocean" />
-      <div className="hidden dark:block">
-        <ParticleField theme="cosmic" count={35} />
-      </div>
+      <AppBackdrop />
 
       {/* Brand panel — deep ocean gradient */}
       <div className="hidden lg:flex flex-col justify-between bg-gradient-to-br from-navy/90 via-deep-ocean/95 to-navy-deep/95 text-white p-12 relative overflow-hidden backdrop-blur-md border-r border-white/5 z-10">
