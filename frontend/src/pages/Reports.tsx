@@ -5,7 +5,7 @@ import { useApiData } from '../hooks/useApiData';
 import { ErrorState, LoadingState } from '../components/shared/DataState';
 import { getReportsList, generateReport } from '../api/services';
 import { formatDate } from '../utils/format';
-import { FileStack, Download, ShieldCheck, Activity, Calculator, Loader2 } from 'lucide-react';
+import { FileStack, Download, ShieldCheck, Activity, Calculator, Loader2, AlertTriangle } from 'lucide-react';
 
 const REPORT_TYPES = [
   { type: 'compliance', label: 'Compliance Report', desc: 'Audit readiness, red flags, and recommendations', icon: ShieldCheck, accent: 'primary' },
@@ -35,6 +35,34 @@ interface ReportItem {
 
 export default function Reports() {
   const state = useApiData<any>(getReportsList, []);
+  const [generating, setGenerating] = useState<string | null>(null);
+  const [genError, setGenError] = useState<string | null>(null);
+
+  const handleGenerate = async (type: string) => {
+    setGenerating(type);
+    setGenError(null);
+    try {
+      const res = await generateReport(type);
+      // The API returns HTTP 200 even when generation failed server-side
+      // (e.g. "boto3 is not installed, so the document vault is
+      // unavailable") — api/client.ts only throws on a non-2xx status, so
+      // a failed generation looks exactly like a successful one unless the
+      // body's own success flag is checked here too.
+      if (res?.success === false) {
+        throw new Error('Report generation failed on the server. Please try again later.');
+      }
+      state.refetch();
+    } catch (err) {
+      // Was silently swallowed here and treated as success ("demo mode — no
+      // backend; simulate delay") — a real failure (e.g. the document vault
+      // being unavailable) looked identical to a completed report. No
+      // fabricated success state now: a real error surfaces as one.
+      setGenError(err instanceof Error ? err.message : 'Could not generate this report. Please try again.');
+    } finally {
+      setGenerating(null);
+    }
+  };
+
   if (state.loading) return <AppLayout title="Reports"><LoadingState /></AppLayout>;
   if (state.error)
     return (
@@ -43,22 +71,16 @@ export default function Reports() {
       </AppLayout>
     );
   const reports = ((state.data as any)?.reports ?? []) as ReportItem[];
-  const [generating, setGenerating] = useState<string | null>(null);
-
-  const handleGenerate = async (type: string) => {
-    setGenerating(type);
-    try {
-      await generateReport(type);
-    } catch (_) {
-      // demo mode — no backend; simulate delay
-      await new Promise((r) => setTimeout(r, 900));
-    } finally {
-      setGenerating(null);
-    }
-  };
 
   return (
     <AppLayout title="Reports" subtitle="Generate and download PDF reports of your financial position">
+
+      {genError && (
+        <div className="flex items-start gap-3 p-4 mb-5 rounded-xl bg-danger/10 border border-danger/25">
+          <AlertTriangle size={16} className="text-danger mt-0.5 shrink-0" />
+          <p className="text-[13px] text-ink">{genError}</p>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-6 stagger">
         {REPORT_TYPES.map(({ type, label, desc, icon: Icon, accent }) => (
@@ -104,7 +126,15 @@ export default function Reports() {
                     </div>
                     <span className="text-[12.5px] text-ink-soft ledger-num whitespace-nowrap">{formatDate(r.generated)}</span>
                     <span className="text-[12.5px] text-ink-soft ledger-num whitespace-nowrap">{bytesToSize(r.size)}</span>
-                    <button className="justify-self-end flex items-center gap-1.5 text-[12.5px] font-medium text-primary hover:text-primary-dark cursor-pointer">
+                    {/* No download route exists on the backend yet (report_generator.py
+                        constructs a file_url pointing at /api/v1/reports/download/{id},
+                        but that route was never registered) — disabled rather than a
+                        button that looks live and 404s or does nothing on click. */}
+                    <button
+                      disabled
+                      title="Downloads aren't available yet"
+                      className="justify-self-end flex items-center gap-1.5 text-[12.5px] font-medium text-ink-soft opacity-50 cursor-not-allowed"
+                    >
                       <Download size={14} /> Download
                     </button>
                   </div>
