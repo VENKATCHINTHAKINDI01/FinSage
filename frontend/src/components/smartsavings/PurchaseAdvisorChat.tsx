@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { Send, Sparkles, CheckCircle, AlertTriangle, XCircle, RefreshCw, ShoppingBag } from 'lucide-react';
-import { useProfileStore, buildAIContext, calculateTax, profileCompleteness } from '../../store/useProfileStore';
+import { useProfileStore, buildAIContext, calculateTax, marginalRateAt, profileCompleteness, TAX_YEAR } from '../../store/useProfileStore';
 import type { FinancialProfile } from '../../store/useProfileStore';
 import { sendChatQuery } from '../../api/services';
 import { formatINR } from '../../utils/format';
@@ -123,12 +123,14 @@ function buildOfflineVerdict(
   if (affordabilityRatio > 0.5) verdict = 'red';
   else if (affordabilityRatio > 0.3 || budgetMax > income * 1.5) verdict = 'yellow';
 
-  // Tax savings calc
+  // Tax savings calc — valued at the real marginal rate for this profile's
+  // regime and taxable income, not a flat 30% regardless of actual bracket.
+  const marginalRate = marginalRateAt(tax.taxableIncome, profile.taxRegime);
   let taxSavings = 0;
-  if (isEV) taxSavings += 150000 * 0.30;
-  if (category === 'property' && isFirstProperty && isLoan) taxSavings += 350000 * 0.30;
-  if (isBusinessUse && category === 'vehicle') taxSavings += budgetMax * 0.15 * 0.30;
-  if (isBusinessUse && category === 'electronics') taxSavings += budgetMax * 0.30;
+  if (isEV) taxSavings += 150000 * marginalRate;
+  if (category === 'property' && isFirstProperty && isLoan) taxSavings += 350000 * marginalRate;
+  if (isBusinessUse && category === 'vehicle') taxSavings += budgetMax * 0.15 * marginalRate;
+  if (isBusinessUse && category === 'electronics') taxSavings += budgetMax * marginalRate;
 
   const verdictMap = {
     green: {
@@ -344,7 +346,7 @@ Keep your response concise, structured, and specific to my numbers.
           </div>
           <div>
             <p className="text-[13.5px] font-bold text-white">Smart Purchase Advisor</p>
-            <p className="text-[10.5px] text-white/45">AI-powered · Profile-aware · FY 2025-26</p>
+            <p className="text-[10.5px] text-white/45">AI-powered · Profile-aware · {TAX_YEAR}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">

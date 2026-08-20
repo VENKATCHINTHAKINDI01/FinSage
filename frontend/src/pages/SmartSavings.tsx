@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import AppLayout from '../components/shared/AppLayout';
 import { Card } from '../components/ui/Primitives';
-import { useProfileStore, calculateTax, TAX_YEAR } from '../store/useProfileStore';
+import { useProfileStore, calculateTax, marginalRateAt, TAX_YEAR, FY_END_DATE } from '../store/useProfileStore';
 import { formatINR } from '../utils/format';
 import {
   Zap, Car, Home, ShoppingBag, Wallet,
@@ -16,7 +16,11 @@ interface Strategy {
   id: string;
   title: string;
   section: string;
-  saving: number;
+  // null where there's no principled way to price the strategy from profile
+  // data alone (e.g. GST ITC eligibility, HUF formation) — showing a number
+  // there would be a guess dressed up as a calculation, which is exactly
+  // the fabrication pattern this app's tax figures are held to never do.
+  saving: number | null;
   difficulty: 'easy' | 'medium' | 'advanced';
   description: string;
   action: string;
@@ -61,8 +65,14 @@ function StrategyCard({ s, index }: { s: Strategy; index: number }) {
           <p className="text-[11.5px] text-ink-soft">{s.section}</p>
         </div>
         <div className="text-right shrink-0">
-          <p className="ledger-num text-[14px] font-bold text-teal">{formatINR(s.saving)}</p>
-          <p className="text-[10.5px] text-ink-soft">potential saving</p>
+          {s.saving != null ? (
+            <>
+              <p className="ledger-num text-[14px] font-bold text-teal">{formatINR(s.saving)}</p>
+              <p className="text-[10.5px] text-ink-soft">potential saving</p>
+            </>
+          ) : (
+            <p className="text-[11.5px] font-semibold text-ink-soft">Depends on your situation</p>
+          )}
         </div>
         <ChevronRight size={14} className={`text-ink-soft transition-transform shrink-0 ${open ? 'rotate-90' : ''}`} />
       </button>
@@ -125,7 +135,11 @@ export default function SmartSavings() {
   const isSalaried = profile.profession === 'salaried';
   const isBusiness = profile.profession === 'business_owner' || profile.profession === 'professional' || profile.profession === 'freelancer';
   const hasIncome = tax.grossIncome > 0;
-  const marginalRate = tax.taxableIncome > 1500000 ? 0.30 : tax.taxableIncome > 1200000 ? 0.20 : tax.taxableIncome > 1000000 ? 0.15 : tax.taxableIncome > 700000 ? 0.10 : 0.05;
+  // Real per-regime slab lookup (was a hardcoded 5-tier table using stale
+  // thresholds and ignoring regime entirely — old and new regime slabs
+  // differ substantially, so the same table couldn't have been right for
+  // both).
+  const marginalRate = marginalRateAt(tax.taxableIncome, profile.taxRegime);
 
   // ── Vehicle strategies ────────────────────────────────────────────────────
   const vehicleStrategies: Strategy[] = [
@@ -154,7 +168,11 @@ export default function SmartSavings() {
       id: 'commercial-registration',
       title: 'Register Vehicle as Commercial',
       section: 'GST ITC + Income Tax Deduction',
-      saving: profile.vehiclePurchaseValue * 0.18 * 0.5,
+      // No principled way to price this from profile data alone — actual
+      // ITC recovery depends on the real business-use fraction, which isn't
+      // captured here. The previous vehicleValue * 18% * 50% was a guess at
+      // that fraction, not a computation.
+      saving: null,
       difficulty: 'advanced',
       applicable: profile.hasVehicle && profile.vehicleUsage === 'personal' && isBusiness,
       description: 'If your vehicle is used substantially for business purposes, registering/using it commercially allows you to claim GST Input Tax Credit (ITC) on the purchase and operating costs. Personal-use vehicles are blocked from ITC under CGST rules, but business-use vehicles are not.',
@@ -182,7 +200,7 @@ export default function SmartSavings() {
       difficulty: 'easy',
       applicable: profile.hasProperty && profile.propertyLoanOutstanding > 0 && profile.homeLoanInterest < 200000,
       description: 'Home loan interest on self-occupied property is deductible up to ₹2,00,000 under Section 24b in the old tax regime. For rented property, full interest is deductible with no limit.',
-      action: `You have ₹${formatINR(Math.max(0, 200000 - profile.homeLoanInterest))} unused limit. Get an interest certificate from your bank for FY 2025-26 and claim it in Schedule HP of ITR.`,
+      action: `You have ₹${formatINR(Math.max(0, 200000 - profile.homeLoanInterest))} unused limit. Get an interest certificate from your bank for ${TAX_YEAR} and claim it in Schedule HP of ITR.`,
     },
     {
       id: 'home-loan-80EEA',
@@ -208,17 +226,26 @@ export default function SmartSavings() {
       id: 'ltcg-reinvestment',
       title: 'LTCG Reinvestment to Avoid Capital Gains Tax',
       section: 'Section 54 / 54EC — save up to 100% of LTCG tax',
-      saving: profile.capitalGainsLtcg * 0.20,
+      // 12.5% flat — the real FY 2026-27 rate for property LTCG (s.112, no
+      // indexation for post-23-Jul-2024 acquisitions). The previous 20% was
+      // the pre-reform rate. No annual exemption here — the ₹1,25,000
+      // exemption is specific to equity/listed-asset LTCG (s.112A), not
+      // property, so it isn't applied to this (property-only) strategy.
+      saving: profile.capitalGainsLtcg * 0.125,
       difficulty: 'medium',
       applicable: profile.capitalGainsLtcg > 0,
       description: 'Long-term capital gains from property sale can be fully exempted by reinvesting in a new residential property (Section 54) within 2 years, or in NHAI/REC bonds (Section 54EC) within 6 months up to ₹50 lakh.',
-      action: `You have LTCG of ₹${formatINR(profile.capitalGainsLtcg)}. Reinvest in a new property within 2 years or invest up to ₹50L in 54EC bonds within 6 months of the sale to avoid the 20% LTCG tax (plus indexation benefit).`,
+      action: `You have LTCG of ₹${formatINR(profile.capitalGainsLtcg)}. Reinvest in a new property within 2 years or invest up to ₹50L in 54EC bonds within 6 months of the sale to avoid the 12.5% LTCG tax.`,
     },
     {
       id: 'huf-property',
       title: 'Transfer Property to HUF',
       section: 'HUF Tax Benefits — separate tax slab',
-      saving: tax.grossIncome * 0.05,
+      // The actual saving depends on what income the HUF would earn and
+      // its own slab position — a full second tax computation this app
+      // doesn't have inputs for. The previous grossIncome * 5% was not
+      // derived from any of that.
+      saving: null,
       difficulty: 'advanced',
       applicable: hasIncome && !profile.isHUF && (profile.maritalStatus === 'married'),
       description: 'A Hindu Undivided Family (HUF) is a separate legal entity with its own PAN and full tax slabs. Income-generating assets transferred to an HUF are taxed in the HUF\'s hands, potentially at lower rates.',
@@ -242,7 +269,10 @@ export default function SmartSavings() {
       id: 'gst-itc',
       title: 'Claim GST Input Tax Credit',
       section: 'CGST Act Section 16 — recover 18% GST on B2B purchases',
-      saving: tax.grossIncome * 0.03,
+      // ITC recovered depends on actual GST-bearing business spend, which
+      // isn't tracked in this profile — grossIncome * 3% (the previous
+      // figure) has no relationship to that.
+      saving: null,
       difficulty: 'medium',
       applicable: isBusiness,
       description: 'GST-registered businesses can claim Input Tax Credit (ITC) on all business purchases — office supplies, equipment, software subscriptions, professional services. ITC is a rupee-for-rupee reduction in your GST liability, not just a deduction.',
@@ -255,14 +285,19 @@ export default function SmartSavings() {
       saving: 50000 * marginalRate,
       difficulty: 'easy',
       applicable: isBusiness,
-      description: 'Assets purchased before March 31 (end of financial year) are eligible for full-year depreciation in FY 2025-26. Assets purchased after March 31 would only get half the depreciation in the first year.',
-      action: 'Review any planned equipment or asset purchases. If budget-ready, buy before March 31, 2026 to claim full depreciation this year. This applies to machinery, computers, office furniture, and commercial vehicles.',
+      description: `Assets purchased before March 31 (end of financial year) are eligible for full-year depreciation in ${TAX_YEAR}. Assets purchased after March 31 would only get half the depreciation in the first year.`,
+      action: `Review any planned equipment or asset purchases. If budget-ready, buy before ${FY_END_DATE} to claim full depreciation this year. This applies to machinery, computers, office furniture, and commercial vehicles.`,
     },
     {
       id: 'presumptive-taxation',
       title: 'Switch to Presumptive Taxation (44AD)',
       section: 'Section 44AD — 8% or 6% of turnover as deemed profit',
-      saving: profile.businessIncome > 0 ? (profile.businessIncome * 0.92 - profile.businessIncome * 0.3) * marginalRate : 0,
+      // Only saves money if actual margin exceeds the 8%/6% deemed rate —
+      // this profile doesn't record actual margin, so there's no honest
+      // number to show. The previous formula assumed a specific 30% actual
+      // margin, which is exactly the kind of unstated assumption a real
+      // calculation can't make on the user's behalf.
+      saving: null,
       difficulty: 'medium',
       applicable: isBusiness && profile.businessIncome > 0 && profile.businessIncome <= 20000000,
       description: 'Under Section 44AD, small businesses with turnover up to ₹2 crore can declare 8% of turnover (6% for digital payments) as profit without maintaining detailed books. This simplifies compliance and often reduces effective tax if actual margins are higher.',
@@ -303,7 +338,11 @@ export default function SmartSavings() {
       id: 'nps-employer',
       title: 'Maximize NPS Employer Contribution',
       section: 'Section 80CCD(2) — 10% of basic, OUTSIDE 80C limit',
-      saving: profile.salaryCtc * 0.10 * 0.30,
+      // Was always the full 10% of CTC regardless of what's already
+      // contributed (double-counting anyone partway there), at a hardcoded
+      // 30% rate regardless of actual bracket — now unused headroom at the
+      // real marginal rate, matching every other headroom-based strategy.
+      saving: Math.max(0, profile.salaryCtc * 0.10 - profile.npsEmployer) * marginalRate,
       difficulty: 'medium',
       applicable: isSalaried && profile.salaryCtc > 0 && profile.npsEmployer < profile.salaryCtc * 0.10,
       description: 'Employer contribution to NPS (up to 10% of basic salary) is deductible under 80CCD(2) — this is COMPLETELY SEPARATE from the ₹1.5L Section 80C limit and the ₹50K Section 80CCD(1B) limit. This is one of the most underutilised tax deductions for salaried employees.',
@@ -313,7 +352,10 @@ export default function SmartSavings() {
       id: 'salary-restructure',
       title: 'Salary Restructuring — Add Tax-Free Components',
       section: 'Multiple exemptions — HRA, LTA, food coupons, car allowance',
-      saving: profile.salaryCtc * 0.05,
+      // Depends on how much of the CTC the employer is willing to move into
+      // exempt components, which varies by employer — salaryCtc * 5% (the
+      // previous figure) was not derived from any actual exemption amount.
+      saving: null,
       difficulty: 'medium',
       applicable: isSalaried && profile.salaryCtc > 0 && (profile.hra < profile.salaryCtc * 0.20),
       description: 'Optimally restructuring your salary can save 5-10% in taxes by replacing taxable salary with tax-exempt allowances: HRA (up to 50% of basic in metros), LTA (₹20-50K), food coupons (₹26,400/year), internet reimbursement, car allowance for official use.',
@@ -323,7 +365,11 @@ export default function SmartSavings() {
       id: 'advance-tax',
       title: 'Pay Advance Tax — Avoid 234B/234C Interest',
       section: 'Section 234B/234C — save 12% p.a. interest',
-      saving: tax.totalTax * 0.06,
+      // Real 234B/234C interest depends on which instalments are missed and
+      // by how many months — a flat 6% of total tax (the previous figure)
+      // doesn't reflect any specific payment timeline. The instalment
+      // schedule below is real; only the headline saving was a guess.
+      saving: null,
       difficulty: 'easy',
       applicable: hasIncome && tax.totalTax > 10000,
       description: 'If your total tax liability exceeds ₹10,000, you must pay Advance Tax in 4 instalments (Jun 15: 15%, Sep 15: 45%, Dec 15: 75%, Mar 15: 100%). Missing these attracts 1% per month (12% p.a.) interest under 234B/234C.',
@@ -337,7 +383,7 @@ export default function SmartSavings() {
       difficulty: 'easy',
       applicable: (profile.healthInsuranceSelf < 25000 || profile.healthInsuranceParents < (profile.seniorParents ? 50000 : 25000)),
       description: 'Section 80D allows deduction for health insurance premiums: ₹25,000 for self/spouse/children, and ₹25,000 (or ₹50,000 if parents are senior citizens 60+) for parents. Prevention health check-ups up to ₹5,000 are also included within this limit.',
-      action: `You have unused 80D limit of ₹${formatINR(Math.max(0, 25000 - profile.healthInsuranceSelf))} (self) + ₹${formatINR(Math.max(0, (profile.seniorParents ? 50000 : 25000) - profile.healthInsuranceParents))} (parents). Buy/upgrade health insurance before March 31, 2026. Prefer annual policies for full-year coverage and maximum deduction.`,
+      action: `You have unused 80D limit of ₹${formatINR(Math.max(0, 25000 - profile.healthInsuranceSelf))} (self) + ₹${formatINR(Math.max(0, (profile.seniorParents ? 50000 : 25000) - profile.healthInsuranceParents))} (parents). Buy/upgrade health insurance before ${FY_END_DATE}. Prefer annual policies for full-year coverage and maximum deduction.`,
     },
     {
       id: '80ccd-nps',
@@ -347,14 +393,14 @@ export default function SmartSavings() {
       difficulty: 'easy',
       applicable: profile.npsEmployee < 50000 && hasIncome,
       description: 'NPS Tier-I investment up to ₹50,000 is deductible under Section 80CCD(1B), which is completely outside the ₹1.5L Section 80C limit. This gives an additional ₹50K deduction on top of your 80C investments, potentially saving up to ₹15,600 in taxes at the 30% bracket.',
-      action: `You have ₹${formatINR(Math.max(0, 50000 - profile.npsEmployee))} unused NPS limit. Open NPS Tier-I account at any bank or NSDL website. Invest before March 31, 2026. Note: 60% is tax-free on maturity (60 years), remaining 40% must be used to buy annuity.`,
+      action: `You have ₹${formatINR(Math.max(0, 50000 - profile.npsEmployee))} unused NPS limit. Open NPS Tier-I account at any bank or NSDL website. Invest before ${FY_END_DATE}. Note: 60% is tax-free on maturity (60 years), remaining 40% must be used to buy annuity.`,
     },
   ];
 
-  const totalVehicleSavings = vehicleStrategies.filter((s) => s.applicable).reduce((a, s) => a + s.saving, 0);
-  const totalPropertySavings = propertyStrategies.filter((s) => s.applicable).reduce((a, s) => a + s.saving, 0);
-  const totalPurchaseSavings = purchaseStrategies.filter((s) => s.applicable).reduce((a, s) => a + s.saving, 0);
-  const totalGeneralSavings = generalStrategies.filter((s) => s.applicable).reduce((a, s) => a + s.saving, 0);
+  const totalVehicleSavings = vehicleStrategies.filter((s) => s.applicable).reduce((a, s) => a + (s.saving ?? 0), 0);
+  const totalPropertySavings = propertyStrategies.filter((s) => s.applicable).reduce((a, s) => a + (s.saving ?? 0), 0);
+  const totalPurchaseSavings = purchaseStrategies.filter((s) => s.applicable).reduce((a, s) => a + (s.saving ?? 0), 0);
+  const totalGeneralSavings = generalStrategies.filter((s) => s.applicable).reduce((a, s) => a + (s.saving ?? 0), 0);
   const grandTotal = totalVehicleSavings + totalPropertySavings + totalPurchaseSavings + totalGeneralSavings;
 
   const [activeTab, setActiveTab] = useState<'strategies' | 'advisor'>('strategies');
@@ -503,7 +549,7 @@ export default function SmartSavings() {
       <div className="flex items-start gap-2 p-3 rounded-xl bg-paper border border-line mt-5">
         <Info size={13} className="text-ink-soft mt-0.5 shrink-0" />
         <p className="text-[11px] text-ink-soft leading-relaxed">
-          Savings estimates are illustrative and based on your profile data + FY 2025-26 tax rules. Actual results may vary. Always consult a Chartered Accountant before making financial decisions.
+          Savings estimates are illustrative and based on your profile data + {TAX_YEAR} tax rules. Strategies marked "Depends on your situation" have no reliable rupee estimate from profile data alone. Actual results may vary. Always consult a Chartered Accountant before making financial decisions.
         </p>
       </div>
       </>}

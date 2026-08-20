@@ -705,7 +705,7 @@ export default function Profile() {
           >
             <div className="grid grid-cols-1 gap-4">
               <div>
-                <p className="text-[12px] font-medium text-ink-soft mb-2">Tax Regime (FY 2025-26)</p>
+                <p className="text-[12px] font-medium text-ink-soft mb-2">Tax Regime ({TAX_YEAR})</p>
                 <div className="grid grid-cols-2 gap-3">
                   {(['new', 'old'] as const).map((r) => (
                     <button
