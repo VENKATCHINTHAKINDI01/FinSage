@@ -109,11 +109,18 @@ export default function Topbar({ title, subtitle }: TopbarProps) {
           <kbd className="text-[10px] px-1.5 py-0.5 rounded-md bg-paper border border-line font-mono">⌘K</kbd>
         </button>
 
-        {/* Notification bell */}
-        <button className="relative w-9 h-9 rounded-xl flex items-center justify-center text-ink-soft hover:bg-white/80 dark:hover:bg-slate-800/50 hover:shadow-md transition-all cursor-pointer group">
+        {/* Notification bell — was a dead button (no onClick) with an
+            unconditional "unread" dot shown regardless of whether there
+            was any actual unread activity. Now links to the real
+            notifications page; the dot is gone rather than faked, since
+            this component has no real unread-count data to back it. */}
+        <Link
+          to="/settings"
+          className="relative w-9 h-9 rounded-xl flex items-center justify-center text-ink-soft hover:bg-white/80 dark:hover:bg-slate-800/50 hover:shadow-md transition-all cursor-pointer group"
+          aria-label="Notifications"
+        >
           <Bell size={18} className="group-hover:text-primary transition-colors" />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-saffron notif-dot" />
-        </button>
+        </Link>
 
         {/* User avatar */}
         <Link
