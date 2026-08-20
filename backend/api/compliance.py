@@ -182,6 +182,7 @@ async def get_compliance_report(
             "red_flags": res_data.get("red_flags"),
             "red_flag_count": res_data.get("red_flag_count"),
             "missing_documents": res_data.get("missing_documents"),
+            "document_completeness": (res_data.get("document_status") or {}).get("completeness"),
             "risk_level": res_data.get("risk_level"),
             "recommendations": res_data.get("recommendations"),
             "itr_deadline": res_data.get("itr_deadline"),

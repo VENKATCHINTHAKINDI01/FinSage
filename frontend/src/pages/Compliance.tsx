@@ -105,7 +105,7 @@ export default function Compliance() {
 
           <div className="mt-5 pt-5 border-t border-line">
             <p className="text-[11px] font-semibold tracking-wide uppercase text-ink-soft mb-2">Document completeness</p>
-            <ProgressBar value={100 - (c.missing_documents?.length || 0) * 12} tone="teal" />
+            <ProgressBar value={c.document_completeness ?? 0} tone="teal" />
           </div>
         </Card>
       </div>

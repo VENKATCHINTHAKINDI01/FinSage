@@ -125,7 +125,7 @@ class ComplianceCheckerAgent(TaxAgent):
                 "recommendations": recommendations,
                 "next_steps": self._get_next_steps(compliance_score),
                 "risk_level": self._assess_risk(compliance_score),
-                "itr_deadline": "July 31, 2025",
+                "itr_deadline": self._itr_deadline().strftime("%B %d, %Y"),
                 "days_to_deadline": self._days_to_deadline()
             }
 
@@ -391,7 +391,7 @@ class ComplianceCheckerAgent(TaxAgent):
             return [
                 "1. Review ITR form selection (ITR-1/2/4/5)",
                 "2. Verify all income sources in ITR",
-                "3. File ITR before July 31, 2025",
+                f"3. File ITR before {self._itr_deadline().strftime('%B %d, %Y')}",
                 "4. Verify within 30 days"
             ]
         elif score >= 60:
@@ -418,12 +418,23 @@ class ComplianceCheckerAgent(TaxAgent):
         else:
             return "🔴 High Risk - Audit likely"
 
-    def _days_to_deadline(self) -> int:
-        """Days remaining to ITR filing deadline."""
+    def _itr_deadline(self):
+        """31 July of the assessment year for the CURRENT financial year
+        (non-audit individual taxpayers) — was a hardcoded date(2025, 7, 31),
+        already in the past and silently clamped to 0 days remaining
+        regardless of what year it actually was."""
         from datetime import date
-        deadline = date(2025, 7, 31)
-        today = date.today()
-        days = (deadline - today).days
+
+        from backend.core.rules import fy_for_date
+
+        fy = fy_for_date(date.today())
+        assessment_year_start = int(fy.split("-")[0]) + 1
+        return date(assessment_year_start, 7, 31)
+
+    def _days_to_deadline(self) -> int:
+        """Days remaining to the ITR filing deadline."""
+        from datetime import date
+        days = (self._itr_deadline() - date.today()).days
         return max(0, days)
 
     async def _save_to_database(self, user_id: str, result: dict[str, Any], db_session):
