@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import AppLayout from '../components/shared/AppLayout';
-import { Card, SectionHeading, Badge } from '../components/ui/Primitives';
+import { Card, SectionHeading, Badge, EmptyState } from '../components/ui/Primitives';
 import { useApiData } from '../hooks/useApiData';
 import { ErrorState, LoadingState } from '../components/shared/DataState';
 import { getNotificationPreferences, setNotificationPreferences, getNotificationHistory } from '../api/services';
-import { Mail, Send, Bell, Check } from 'lucide-react';
+import { Mail, Send, Bell, Check, AlertTriangle } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -45,13 +45,20 @@ function ChannelCard({ channelKey, icon: Icon, title, description, initial }: Ch
   const [enabled, setEnabled] = useState(initial?.enabled ?? false);
   const [frequency, setFrequency] = useState(initial?.frequency || 'weekly');
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState(false);
 
   const save = async () => {
+    setSaveError(false);
     try {
       await setNotificationPreferences({ channel: channelKey, enabled, frequency });
-    } catch (_) { /* demo mode */ }
-    setSaved(true);
-    setTimeout(() => setSaved(false), 1800);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1800);
+    } catch {
+      // Was swallowed here ("demo mode") and unconditionally showed "Saved"
+      // regardless of whether the preference was actually persisted.
+      setSaveError(true);
+      setTimeout(() => setSaveError(false), 2500);
+    }
   };
 
   return (
@@ -89,9 +96,12 @@ function ChannelCard({ channelKey, icon: Icon, title, description, initial }: Ch
 
       <button
         onClick={save}
-        className="w-full h-9 rounded-lg bg-primary hover:bg-primary-dark text-white text-[13px] font-medium flex items-center justify-center gap-2 transition-colors cursor-pointer"
+        className={clsx(
+          'w-full h-9 rounded-lg text-white text-[13px] font-medium flex items-center justify-center gap-2 transition-colors cursor-pointer',
+          saveError ? 'bg-danger hover:bg-danger' : 'bg-primary hover:bg-primary-dark'
+        )}
       >
-        {saved ? <><Check size={14} /> Saved</> : 'Save preference'}
+        {saved ? <><Check size={14} /> Saved</> : saveError ? <><AlertTriangle size={14} /> Couldn't save — try again</> : 'Save preference'}
       </button>
     </Card>
   );
@@ -105,6 +115,8 @@ interface NotificationItem {
 
 export default function Settings() {
   const state = useApiData<any>(getNotificationPreferences, []);
+  const { data: history } = useApiData<any>(getNotificationHistory, []);
+
   if (state.loading) return <AppLayout title="Settings"><LoadingState /></AppLayout>;
   if (state.error)
     return (
@@ -113,7 +125,6 @@ export default function Settings() {
       </AppLayout>
     );
   const p: any = (state.data as any)?.preferences ?? {};
-  const { data: history } = useApiData<any>(getNotificationHistory, []);
   const notifications = (history?.notifications || []) as NotificationItem[];
 
   return (
@@ -125,7 +136,7 @@ export default function Settings() {
       </div>
 
       <Card className="p-6">
-        <SectionHeading eyebrow="Recent Activity" title="Notification history" action={<Badge tone="neutral">{(notifications.length || 5) + ' sent'}</Badge>} />
+        <SectionHeading eyebrow="Recent Activity" title="Notification history" action={<Badge tone="neutral">{notifications.length + ' sent'}</Badge>} />
         {notifications.length ? (
           <div className="space-y-2.5 stagger">
             {notifications.map((n, i) => (
@@ -137,21 +148,11 @@ export default function Settings() {
             ))}
           </div>
         ) : (
-          <div className="space-y-2.5 stagger">
-            {[
-              '⏰ 30 Days to ITR Filing Deadline!',
-              '📊 Your Monthly Financial Health Report',
-              '💡 Weekly Tax Tip: Maximize 80C before March 31',
-              '⏰ Advance Tax Q4 due March 15',
-              '📊 Compliance report ready for review',
-            ].map((s, i) => (
-              <div key={i} className="flex items-center gap-3 py-2.5 border-b border-line last:border-0">
-                <Bell size={15} className="text-primary shrink-0" />
-                <span className="text-[13px] text-ink flex-1">{s}</span>
-                <span className="text-[11.5px] text-ink-soft ledger-num">{i + 1}w ago</span>
-              </div>
-            ))}
-          </div>
+          // Was 5 hardcoded fake notifications with fabricated "1w ago"-style
+          // timestamps, shown as if they were real history — and the badge
+          // above showed "5 sent" (`notifications.length || 5`) even with
+          // zero real notifications.
+          <EmptyState icon={Bell} title="No notifications yet" message="Activity will appear here once FinSage AI sends you a reminder, tip, or report." />
         )}
       </Card>
     </AppLayout>
