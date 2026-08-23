@@ -261,6 +261,42 @@ from backend.middleware.asgi_ratelimit import RateLimitMiddleware
 
 app.add_middleware(RateLimitMiddleware)
 
+# PRD-004: request metrics and the scrape endpoint. Added AFTER the rate
+# limiter so it ends up OUTSIDE it — a request refused with 429 is still a
+# request, and a limiter that starts rejecting everything must show up as
+# traffic rather than as silence.
+from backend.middleware.metrics import install as install_metrics
+from backend.observability import metrics as _metrics
+
+
+def _rules_version() -> str:
+    """Which rule pack this process is serving.
+
+    On the build_info gauge rather than in a log line, so that a dashboard
+    showing a change in withheld answers can be correlated with the rule pack
+    that changed underneath it — the question "did our numbers move because
+    the law moved?" is otherwise unanswerable after the fact.
+    """
+    try:
+        from datetime import date
+
+        from backend.core.rules import fy_for_date, load_ruleset
+
+        return load_ruleset(fy_for_date(date.today())).version
+    except Exception:  # noqa: BLE001 — never block startup for a label
+        return "unknown"
+
+
+install_metrics(
+    app,
+    token=settings.metrics.token,
+    is_production=settings.is_production,
+)
+_metrics.set_build_info(
+    version=settings.api_version,
+    rules_version=_rules_version(),
+)
+
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,

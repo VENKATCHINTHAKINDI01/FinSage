@@ -165,6 +165,25 @@ class S3Settings(BaseSettings):
     )
 
 
+class MetricsSettings(BaseSettings):
+    """PRD-004. The scrape endpoint's bearer token.
+
+    Empty by default and NOT given a placeholder: in production an empty token
+    means `/metrics` returns 404 rather than serving request volumes, error
+    rates and withheld-answer counts to anyone who asks. In development it is
+    served openly, because a token on a local Prometheus is friction people
+    route around rather than accept.
+    """
+
+    token: str = Field(default="")
+
+    model_config = SettingsConfigDict(
+        env_prefix="METRICS__",
+        env_file=ENV_FILE_PATH,
+        extra="ignore",
+    )
+
+
 class AppSettings(BaseSettings):
     """Main application configuration"""
     environment: str = Field(default="development")
@@ -185,6 +204,7 @@ class AppSettings(BaseSettings):
     telegram: TelegramSettings = Field(default_factory=TelegramSettings)
     email: EmailSettings = Field(default_factory=EmailSettings)
     s3: S3Settings = Field(default_factory=S3Settings)
+    metrics: MetricsSettings = Field(default_factory=MetricsSettings)
 
     model_config = SettingsConfigDict(
         env_file=ENV_FILE_PATH,

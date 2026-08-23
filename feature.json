@@ -2781,8 +2781,8 @@
       "name": "Observability",
       "phase": 7,
       "tier": "P1",
-      "status": "tested",
-      "description": "The PII-redacting log formatter, which is the half of observability that is a correctness problem rather than a plumbing one. Nobody types logger.info(pan) — PII reaches logs incidentally, through an exception whose message quotes the row it failed on or a dict dumped for debugging. So redaction is applied at the FORMATTER, the single point every line passes through, rather than at call sites, which is a rule someone has to remember. Redaction is BY SHAPE, not by field name: an allowlist misses `pan_of_spouse`, `payload[\"PAN\"]` and an identifier mid-sentence. Aadhaar is the interesting case — twelve digits alone would redact rupee amounts and timestamps, making the logs useless and training people to disable the filter, so the Verhoeff checksum every Aadhaar carries is what separates a real one from a coincidence. Composes with PRD-005's secret redaction rather than reimplementing it. What it does NOT do is make logs publishable: free text a user typed is still personal data, and the answer to that is not logging free text.",
+      "status": "verified",
+      "description": "Two halves. The PII-redacting log formatter is the half that is a correctness problem rather than a plumbing one: nobody types logger.info(pan) — PII reaches logs incidentally, through an exception whose message quotes the row it failed on or a dict dumped for debugging. So redaction is applied at the FORMATTER, the single point every line passes through, rather than at call sites, which is a rule someone has to remember. Redaction is BY SHAPE, not by field name: an allowlist misses `pan_of_spouse`, `payload[\"PAN\"]` and an identifier mid-sentence. Aadhaar is the interesting case — twelve digits alone would redact rupee amounts and timestamps, making the logs useless and training people to disable the filter, so the Verhoeff checksum every Aadhaar carries is what separates a real one from a coincidence. Composes with PRD-005's secret redaction rather than reimplementing it. The second half is metrics, and the same argument decides what to measure: request rate, error rate and latency would not have caught a single defect this project has found. A service can serve every request in 200ms with a 200 status and be telling people the wrong tax. So the metrics that lead are the ones watching the safety properties — answers served vs amended vs WITHHELD, and reviewer findings by verdict and category. A rising withheld rate means the analyst has started producing answers the reviewer will not stand behind, and a withheld rate that falls to zero means either the model improved or the reviewer stopped working, which are worth being able to tell apart. What it does NOT do is make logs publishable: free text a user typed is still personal data, and the answer to that is not logging free text.",
       "deterministic": true,
       "llm_involved": false,
       "depends_on": [
@@ -2794,19 +2794,32 @@
         "An exception traceback is redacted — the line nobody wrote",
         "install() wraps existing handlers rather than adding or replacing one",
         "Ordinary log lines are unchanged",
-        "Wired: setup_logging installs the redacting formatter over every handler, asserted end to end. STILL OPEN: OpenTelemetry traces, Prometheus metrics, Sentry, cost dashboards."
+        "setup_logging installs the redacting formatter over every handler, asserted end to end",
+        "finsage_answers_total{outcome} distinguishes served / amended / withheld, recorded inside pipeline.run rather than at call sites — the same argument as redacting at the formatter, because a caller that forgets is a metric that undercounts silently",
+        "Label cardinality is ENFORCED, not documented: `_LABEL_VALUES` declares the permitted values and a sample outside them is dropped and counted rather than recorded. An unbounded label is a memory leak that looks healthy in testing and takes the process down weeks later, which is too easy to introduce by accident to leave to convention. A test asserts every label in use is either declared or on a named exception list.",
+        "HTTP metrics label by ROUTE TEMPLATE (/api/v1/users/{user_id}), never the resolved path; every unmatched path collapses to one series so a scanner probing random URLs cannot inflate the metrics store",
+        "/metrics requires a bearer token in production and returns 404 — not 401 — without one, so an unauthenticated caller learns nothing about whether it exists. Open in development, because a token on a local Prometheus is friction people route around.",
+        "Recording never breaks a request: every recorder swallows its own exceptions, logs the first of each kind, and counts the rest in finsage_metrics_errors_total so a permanently broken recorder is visible",
+        "Scrapes are not counted as traffic — otherwise an idle service shows a request rate set by the scrape interval",
+        "build_info carries the rule-pack version, so a change in the withheld rate can be correlated with a change in the law underneath it",
+        "VERIFIED by mutation (2026-08-23): disabling the cardinality guard fails 2 tests; labelling by resolved path fails 2; removing the token check fails 1; letting a recorder raise fails 1; counting the scrape fails 1; deleting the record_pipeline_result call from the pipeline fails all 4 wiring tests.",
+        "STILL OPEN: OpenTelemetry traces, Sentry, and a dashboard definition. Metrics answer 'is it happening'; traces answer 'where did the 8 seconds go', which is DEM-005's question and needs the p95 measurement first."
       ],
       "files": [
-        "backend/observability/logging.py"
+        "backend/middleware/metrics.py",
+        "backend/observability/logging.py",
+        "backend/observability/metrics.py"
       ],
       "tests": {
         "golden": [],
         "unit": [
-          "test_logging"
+          "test_logging",
+          "test_metrics",
+          "test_pipeline_metrics"
         ],
         "eval": []
       },
-      "risk": "Medium",
+      "risk": "Medium. The metrics layer cannot break a request by construction and is tested for it. The residual risk is operational rather than functional: under gunicorn with several workers each worker keeps its own registry, so counters appear to move backwards unless PROMETHEUS_MULTIPROC_DIR is set to a writable, empty directory that is cleared on restart. That requirement is stated by `multiprocess_mode_note()` in code rather than only in a runbook, so the two cannot drift apart — but nothing enforces it, and a multi-worker deployment that misses it will produce confusing graphs rather than an error.",
       "last_verified": "2026-08-23"
     },
     {

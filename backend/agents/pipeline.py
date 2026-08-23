@@ -144,6 +144,15 @@ async def run(
         logger.info("draft blocked, redrafting once: %s", revision_note)
 
     result.total_latency_ms = (time.perf_counter() - started) * 1000
+
+    # PRD-004. Recorded here, at the one place every answer passes through,
+    # rather than at each call site — the same argument as redacting at the
+    # log formatter. A caller that forgets is a metric that undercounts
+    # silently, and an undercounted withheld rate is worse than none.
+    from backend.observability import metrics
+
+    metrics.record_pipeline_result(result)
+
     return result
 
 

@@ -83,7 +83,11 @@ PyYAML~=6.0
 # typer removed: no CLI exists.
 # requests removed: sync HTTP has no place in an async service; the one caller
 # (india_tax_data_fetcher) imported it and never used it.
-# prometheus-client returns with PRD-004 (observability), not before.
+# PRD-004. Returned when observability was actually built, not before.
+# Pinned to a major: prometheus-client has changed exposition formats across
+# majors before, and a scrape body that silently changes shape breaks the
+# dashboards rather than the build.
+prometheus-client~=0.26
 
 # The encrypted document vault (DOC-004) refuses to fall back to local disk
 # without it, so a deployment missing boto3 has a vault that cannot store

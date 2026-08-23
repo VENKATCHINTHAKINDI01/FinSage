@@ -5,7 +5,7 @@
 
 **Generated** 2026-08-23 · **Plan** [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) · **Review** [CODE_REVIEW_2026-08.md](CODE_REVIEW_2026-08.md)
 
-`█████████████████████░░░` **89%** — 68/76 features verified
+`██████████████████████░░` **91%** — 69/76 features verified
 
 P0 (release-blocking): **44/47** verified
 
@@ -23,7 +23,7 @@ P0 (release-blocking): **44/47** verified
 | 4 | **Document intelligence** | `██████████████` 100% | 4/4 | Parsers fail loudly on malformed input; reconciliation zero false negatives on seeded set |
 | 5 | **Planning features** | `█████████████░` 90% | 9/10 | Golden tests per feature; every output line carries a citation |
 | 6 | **Procurement Intelligence** | `██████████████` 100% | 12/12 | EV worked example correct end-to-end; no Tier-3 source in any cost line; all figures dated |
-| 7 | **Production readiness** | `████████░░░░░░` 57% | 4/7 | Security checklist passed; DPDP controls table published; load test at target concurrency |
+| 7 | **Production readiness** | `██████████░░░░` 71% | 5/7 | Security checklist passed; DPDP controls table published; load test at target concurrency |
 
 ## Status
 
@@ -33,8 +33,8 @@ P0 (release-blocking): **44/47** verified
 | ◐ `in_progress` | 2 | | `P1` | 25 |
 | ⊘ `blocked` | 0 | | `P2` | 4 |
 | ◑ `implemented` | 3 | |  |  |
-| ◕ `tested` | 3 | |  |  |
-| ● `verified` | 68 | |  |  |
+| ◕ `tested` | 2 | |  |  |
+| ● `verified` | 69 | |  |  |
 
 ## Features
 
@@ -156,7 +156,7 @@ P0 (release-blocking): **44/47** verified
 | ● | `PRC-008` | Rewrite price_intelligence agent | P1 | CORE-007, PRC-004 | 2026-08-13 |
 | ● | `PRC-009` | SmartSavings and PurchaseAdvisor rebuild | P1 | PRC-003, PRC-004, PRC-005, PRC-006 | 2026-08-13 |
 
-### Phase 7 — Production readiness  ·  4/7
+### Phase 7 — Production readiness  ·  5/7
 
 **Gate:** Security checklist passed; DPDP controls table published; load test at target concurrency
 
@@ -166,7 +166,7 @@ P0 (release-blocking): **44/47** verified
 | ● | `PRD-002` | Auth hardening | P0 | DEM-001 | 2026-08-23 |
 | ● | `PRD-003` | Rate limiting and abuse controls | P0 | PRD-002 | 2026-08-23 |
 | ● | `PRD-005` | Secrets management | P0 | — | 2026-08-13 |
-| ◕ | `PRD-004` | Observability | P1 | AGT-003 | 2026-08-23 |
+| ● | `PRD-004` | Observability | P1 | AGT-003 | 2026-08-23 |
 | ◑ | `PRD-006` | Deployment and operations | P1 | PRD-004, PRD-005 | 2026-08-13 |
 | ◕ | `PRD-007` | Load and resilience testing | P1 | PRD-006 | 2026-08-17 |
 
