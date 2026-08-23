@@ -137,7 +137,11 @@ async def _run_one(
 async def fan_out(
     agents: dict[str, Any],
     *,
-    timeout_s: float = DEFAULT_TIMEOUT_S,
+    # `None`, not `DEFAULT_TIMEOUT_S`. A default argument binds the module
+    # constant at DEFINITION time, so the "configurable" timeout could not be
+    # configured — changing DEFAULT_TIMEOUT_S at runtime, or in a test, did
+    # nothing at all. Resolved at call time instead.
+    timeout_s: float | None = None,
 ) -> FanOutResult:
     """Run independent agents concurrently.
 
@@ -145,6 +149,7 @@ async def fan_out(
     a factory rather than a coroutine, so nothing starts until we gather and
     an unused entry cannot leak a never-awaited warning.
     """
+    timeout_s = DEFAULT_TIMEOUT_S if timeout_s is None else timeout_s
     if not agents:
         return FanOutResult()
 

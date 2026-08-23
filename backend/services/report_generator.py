@@ -143,12 +143,25 @@ class ReportGenerator:
     _vault_instance = None
 
     def _vault(self):
-        """The document vault, built on first use.
+        """The document vault: the injected one, else the process-wide one.
 
         Deliberately NOT constructed in __init__: a report generator should be
-        importable and unit-testable without S3 credentials, but must never
-        silently write to disk when they are absent.
+        importable without S3 credentials, but must never silently write to
+        disk when they are absent.
+
+        The injection seam matters more than it looks. Lazy construction made
+        this class IMPORTABLE without credentials but not TESTABLE without
+        them — the three report tests mocked the database, reached `build_vault`
+        anyway and failed on `Unable to locate credentials`, i.e. they were
+        integration tests wearing unit-test clothes and they had been failing
+        for exactly that reason. Passing a `MemoryVault`-backed vault makes
+        them test report generation instead of testing AWS.
+
+        The class-level cache is only consulted when nothing was injected, so
+        a test can never poison the process-wide instance for another test.
         """
+        if self._vault_override is not None:
+            return self._vault_override
         if ReportGenerator._vault_instance is None:
             from backend.vault import build_vault
 
@@ -170,9 +183,13 @@ class ReportGenerator:
     • Database tracking
     """
     
-    def __init__(self, db: Session = None):
+    def __init__(self, db: Session = None, *, vault=None):
         self.name = "report_generator"
         self.db = db
+        # Keyword-only and defaulting to None: production callers are
+        # unchanged, and a caller cannot pass a vault by accident in the
+        # position a database session used to occupy.
+        self._vault_override = vault
         self.logger = logging.getLogger(f"service.{self.name}")
         
         # Workspace-relative default report directory with a fallback to /tmp

@@ -26,13 +26,28 @@ class HealthScoreRequest(BaseModel):
     include_breakdown: bool = True
 
 
+def get_report_generator(
+    session: AsyncSession = Depends(get_session),
+) -> ReportGenerator:
+    """The report generator, as a dependency rather than a `new` in the route.
+
+    Constructed inline, the generator reached the real document vault from
+    every test that exercised this endpoint, so `test_reports_endpoints`
+    failed on missing AWS credentials and had been failing for that reason —
+    not for anything about the endpoint. A dependency is overridable, so a
+    test can supply a `MemoryVault`-backed one and assert the contract.
+    """
+    return ReportGenerator(db=session)
+
+
 # ===== ENDPOINT 1: Generate Report =====
 
 @router.post("/generate")
 async def generate_report(
     request: GenerateReportRequest,
     current_user = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session)
+    session: AsyncSession = Depends(get_session),
+    report_gen: ReportGenerator = Depends(get_report_generator),
 ):
     """
     Generate PDF report.
@@ -45,8 +60,6 @@ async def generate_report(
     try:
         from sqlalchemy import select
         from backend.db.orm_models import FinancialProfile, ComplianceReport, RedFlagLog
-        
-        report_gen = ReportGenerator(db=session)
         
         # Load user profile for data
         result_profile = await session.execute(
@@ -221,6 +234,17 @@ async def generate_report(
         else:
             raise HTTPException(status_code=400, detail="Invalid report type")
         
+        # A failed report is not a 200. This returned HTTP 200 with
+        # `success: false` and `filename: null`, so a client that checks the
+        # status code — which is what a status code is for — told the user
+        # their report was ready when nothing had been stored. The generator
+        # has already logged the cause; the client gets none of it (DEM-008).
+        if result.get("success") is not True:
+            raise HTTPException(
+                status_code=502,
+                detail="The report could not be generated. Please try again.",
+            )
+
         return {
             "success": result.get("success"),
             "report_type": result.get("report_type"),

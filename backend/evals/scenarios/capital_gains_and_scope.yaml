@@ -6,6 +6,16 @@
     agent must not describe it as a deduction or apply 12.5% to the whole gain.
   query: "I made 2 lakh profit on shares I held for 3 years. What's the tax?"
   profile: { fy: "2026-27", regime: new, salary: 1500000, age: 33 }
+  # AGT-005: what the agent is allowed to see. Without this the model has to
+  # remember the 12.5% rate and the 1.25L exemption, and numeric_provenance
+  # correctly fails it for doing so.
+  tools:
+    - tool: compute_capital_gains
+      args:
+        disposals:
+          - {asset: listed_equity, acquired_on: "2023-05-01", sold_on: "2026-06-15",
+             cost: 400000, consideration: 600000, description: "Listed shares held 3 years"}
+    - tool: statutory_rates
   must_state:
     - ltcg_exemption: 125000
     - ltcg_rate: 0.125
@@ -19,6 +29,13 @@
     income and applied slabs — wrong in both directions depending on bracket.
   query: "I sold shares after 6 months for a 3 lakh gain. I'm in the 30% bracket."
   profile: { fy: "2026-27", regime: new, salary: 2500000, age: 38 }
+  tools:
+    - tool: compute_capital_gains
+      args:
+        disposals:
+          - {asset: listed_equity, acquired_on: "2026-01-10", sold_on: "2026-07-12",
+             cost: 500000, consideration: 800000, description: "Listed shares held 6 months"}
+    - tool: statutory_rates
   must_state:
     - stcg_rate: 0.20
   must_not_claim:
@@ -31,6 +48,13 @@
     held. An agent must not offer indexation or a long-term rate.
   query: "I bought a debt fund in 2024 and sold it after 3 years. Do I get indexation?"
   profile: { fy: "2026-27", regime: new, salary: 1800000, age: 41 }
+  tools:
+    - tool: compute_capital_gains
+      args:
+        disposals:
+          - {asset: debt_mf, acquired_on: "2024-02-01", sold_on: "2027-02-05",
+             cost: 500000, consideration: 650000, description: "Debt fund held 3 years"}
+    - tool: statutory_rates
   must_not_claim:
     - benefit: "indexation"
     - treatment: "long_term"

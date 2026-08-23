@@ -48,7 +48,12 @@ async def close_redis() -> None:
     """Close Redis connection."""
     global _redis_client, _connection_pool
     if _redis_client:
-        await _redis_client.close()
+        # `aclose()`, not `close()`. redis-py deprecated the sync-named
+        # method on the async client in 5.0.1, and under warnings-as-errors
+        # the DeprecationWarning fails the request that triggers shutdown.
+        # `getattr` because the name only exists on newer clients.
+        closer = getattr(_redis_client, "aclose", None) or _redis_client.close
+        await closer()
         _redis_client = None
     if _connection_pool:
         await _connection_pool.disconnect()

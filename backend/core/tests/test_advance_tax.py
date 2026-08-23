@@ -318,14 +318,16 @@ class TestOutput:
         })
         assert "234C" not in {c.legacy_section for c in clean.citations()}
 
-    def test_the_2025_act_mapping_is_offered_as_provisional_not_asserted(self) -> None:
-        """The concordance in aliases_1961_to_2025.yaml is unverified, so
-        `cite()` demotes the new number to a note rather than presenting it as
-        the section. Asserting s.425 here would claim what the engine
-        deliberately declines to claim."""
+    def test_the_2025_act_mapping_is_now_asserted_and_is_425(self) -> None:
+        """234C is s.425, verified against the official CBDT navigator.
+
+        Worth its own test because an earlier version of the alias file had
+        this off by one — 234B at 425 and 234C at 426 — which would have cited
+        the advance-tax deferment interest as the shortfall interest. The
+        navigator: 234A 423, 234B 424, 234C 425.
+        """
         c = next(x for x in _plan().citations() if x.legacy_section == "234C")
-        assert c.section is None
-        assert "provisionally s.425" in c.note
+        assert c.section == "425"
 
     def test_serialises(self) -> None:
         d = _plan().to_dict()

@@ -10,18 +10,28 @@
 # 2026, and decades of habit use the old. So the product renders BOTH, and this
 # file is what makes that possible.
 #
-# HONESTY NOTE
-# ------------
-# Entries marked `confidence: unverified` are the obvious structural
-# correspondence but have NOT yet been checked line by line against the
-# published concordance. They render with the legacy number as primary and the
-# new number flagged. Guessing a citation confidently is exactly the failure
-# mode this project exists to avoid — see CORE-002 in feature.json, which stays
-# `not_started` until every entry is verified.
+# VERIFIED 2026-08-23 against the official CBDT concordance
+# ----------------------------------------------------------
+#   https://www.incometaxindia.gov.in/documents/20117/43138/
+#       new-income-tax-bill-2025-navigator.pdf
 #
-# Verify against:
-#   https://www.incometax.gov.in/iec/foportal/help/all-topics/e-filing-services/objective-and-scope-new-act
-#   https://www.incometaxindia.gov.in/  (Interplay and Transition FAQs)
+# Every entry below was read from that document. A previous attempt used
+# secondary sources (caclubindia, taxgarden) which CONTRADICTED each other and
+# this file — one claimed 87A, 24(b) and 10(13A) were unchanged, another put
+# 80G at 354. The navigator settles all three: 87A is 156, 24(b) sits inside
+# 22, and 10(13A) is not a section at all. That is why the rule was to wait for
+# the primary source rather than average the secondary ones.
+#
+# Three structural facts the navigator makes visible, which a flat
+# old->new dictionary cannot express:
+#
+#   MERGES      44AD and 44ADA both become s.58; 288A and 288B both become
+#               s.516. The mapping is not reversible, so rendering only the
+#               2025 number loses which provision was applied.
+#   SCHEDULES   10(13A) (HRA) is not a section in the 2025 Act — it moved to
+#               Schedule III. Printing a section number for it is wrong.
+#   OMISSIONS   The navigator records no 2025 counterpart for 80TTB. See the
+#               entry, which does NOT infer that the deduction is gone.
 # ═══════════════════════════════════════════════════════════════════════════
 
 meta:
@@ -43,128 +53,157 @@ aliases:
   - legacy: "87A"
     current: "156"
     description: Rebate for resident individuals
-    confidence: unverified
+    confidence: verified
 
   - legacy: "115BAC"
     current: "202"
     description: New tax regime — rates for individuals, HUF, AOP, BOI, AJP
-    confidence: unverified
+    confidence: verified
 
   - legacy: "16(ia)"
     current: "19"
-    description: Standard deduction from salary
-    confidence: unverified
+    description: Standard deduction, within s.19 'Deductions from salaries'
+    confidence: verified
 
   - legacy: "24(b)"
     current: "22"
-    description: Interest on borrowed capital — income from house property
-    confidence: unverified
+    description: Interest on borrowed capital, within s.22 'Deductions from income from house property'
+    confidence: verified
 
   - legacy: "10(13A)"
-    current: "11"
-    description: House rent allowance exemption
-    confidence: unverified
+    current: "Schedule III (Table: S. No. 11)"
+    description: HRA — NOT a section in the 2025 Act; it moved to a Schedule
+    confidence: verified
+    is_schedule_entry: true
+    schedule_note: >
+      Not a section. A renderer that prints "s.11" here — which an
+      earlier version of this file did, from a secondary source —
+      is citing a provision that has nothing to do with HRA.
 
   - legacy: "111A"
     current: "196"
-    description: Short-term capital gains on listed equity (STT paid)
-    confidence: unverified
+    description: Short-term capital gains on listed equity
+    confidence: verified
 
   - legacy: "112"
     current: "197"
     description: Long-term capital gains — general
-    confidence: unverified
+    confidence: verified
 
   - legacy: "112A"
     current: "198"
-    description: Long-term capital gains on listed equity (STT paid)
-    confidence: unverified
+    description: Long-term capital gains on listed equity
+    confidence: verified
 
   - legacy: "80C"
     current: "123"
-    description: Deduction for specified investments and payments
-    confidence: unverified
+    description: Insurance premia, deferred annuity, provident fund etc.
+    confidence: verified
 
   - legacy: "80CCD"
     current: "124"
-    description: Contribution to the National Pension System
-    confidence: unverified
+    description: Pension scheme contributions
+    confidence: verified
 
   - legacy: "80D"
     current: "126"
-    description: Health insurance premium
-    confidence: unverified
+    description: Health insurance premia
+    confidence: verified
 
   - legacy: "80E"
-    current: "128"
-    description: Interest on loan for higher education
-    confidence: unverified
+    current: "129"
+    description: Interest on higher-education loan
+    confidence: verified
 
   - legacy: "80EEB"
-    current: "131"
-    description: Interest on loan for purchase of an electric vehicle
-    confidence: unverified
+    current: "132"
+    description: Interest on an electric vehicle loan
+    confidence: verified
 
   - legacy: "80G"
     current: "133"
-    description: Donations to certain funds and institutions
-    confidence: unverified
+    description: Donations to certain funds and charitable institutions
+    confidence: verified
 
   - legacy: "80TTA"
-    current: "144"
-    description: Interest on savings account
-    confidence: unverified
+    current: "153"
+    description: Interest on deposits
+    confidence: verified
 
   - legacy: "80TTB"
-    current: "145"
-    description: Interest on deposits for senior citizens
-    confidence: unverified
+    current: "OMITTED"
+    description: See the note below — the navigator records no 2025 counterpart
+    confidence: verified
+    # The navigator lists NO 2025 counterpart for 80TTB, while
+    # 80TTA maps to s.153 "Deduction for Interest on Deposits".
+    # The likely reading is that the two merged into s.153 with the
+    # senior-citizen limb inside it, but the navigator does not say
+    # so and this system has not read s.153 of the 2025 Act. The
+    # deduction is therefore still modelled under its 1961 number
+    # and its rule is unchanged; what is recorded here is what the
+    # official document actually says, not an inference from it.
+    needs_human_check: >
+      Read s.153 of the Income-tax Act 2025 and confirm whether the
+      senior-citizen deposit-interest deduction survives inside it.
+      If it does not, backend/core/rules/fy_2026_27.yaml and
+      backend/core/eligibility/rules.yaml both need changing.
 
   - legacy: "44AD"
     current: "58"
-    description: Presumptive taxation for business
-    confidence: unverified
+    description: Presumptive business income — merged with 44ADA into one section
+    confidence: verified
+    merged: true
+    merge_note: >
+      Two 1961 sections collapse into one 2025 section, so the
+      translation is not reversible. Rendering the 2025 number
+      alone would lose which provision was actually applied.
 
   - legacy: "44ADA"
-    current: "59"
-    description: Presumptive taxation for professionals
-    confidence: unverified
+    current: "58"
+    description: Presumptive professional income — merged with 44AD into one section
+    confidence: verified
+    merged: true
+    merge_note: >
+      Two 1961 sections collapse into one 2025 section, so the
+      translation is not reversible. Rendering the 2025 number
+      alone would lose which provision was actually applied.
 
-  # CORRECTED 2026-08-11. These previously read 234B → 425 and 234C → 426,
-  # one out. The 2025 Act runs the interest heads consecutively:
-  #   423  default in furnishing return of income        (was 234A)
-  #   424  default in payment of advance tax             (was 234B)
-  #   425  deferment of advance tax                      (was 234C)
-  #   426  interest on excess refund                     (was 234D)
-  # The off-by-one would have had the product cite "deferment of advance tax"
-  # for a 90%-shortfall charge. Still `unverified`: two secondary sources agree
-  # but this has not been checked against the published concordance.
   - legacy: "234A"
     current: "423"
-    description: Interest for default in furnishing return of income
-    confidence: unverified
+    description: Interest for default in furnishing the return
+    confidence: verified
 
   - legacy: "234B"
     current: "424"
     description: Interest for default in payment of advance tax
-    confidence: unverified
+    confidence: verified
 
   - legacy: "234C"
     current: "425"
     description: Interest for deferment of advance tax
-    confidence: unverified
+    confidence: verified
 
   - legacy: "244A"
     current: "437"
     description: Interest on refunds
-    confidence: unverified
+    confidence: verified
 
   - legacy: "288A"
-    current: "singular"
-    description: Rounding off of total income
-    confidence: unverified
+    current: "516"
+    description: Rounding off of income — merged with 288B
+    confidence: verified
+    merged: true
+    merge_note: >
+      Two 1961 sections collapse into one 2025 section, so the
+      translation is not reversible. Rendering the 2025 number
+      alone would lose which provision was actually applied.
 
   - legacy: "288B"
-    current: "singular"
-    description: Rounding off of tax payable or refundable
-    confidence: unverified
+    current: "516"
+    description: Rounding off of tax payable and refundable — merged with 288A
+    confidence: verified
+    merged: true
+    merge_note: >
+      Two 1961 sections collapse into one 2025 section, so the
+      translation is not reversible. Rendering the 2025 number
+      alone would lose which provision was actually applied.

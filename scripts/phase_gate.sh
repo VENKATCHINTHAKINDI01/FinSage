@@ -36,7 +36,7 @@ run "Ruff lint"                     python3 -m ruff check backend/core backend/e
   backend/agents/analyst.py backend/agents/reviewer_ca.py backend/agents/review_protocol.py \
   backend/agents/pipeline.py backend/agents/reviewer_risk.py backend/agents/tests \
   backend/context.py backend/orchestrator/parallel.py backend/orchestrator/__init__.py \
-  backend/tests/test_context_and_parallel.py backend/tests/test_websocket_auth.py backend/services/parsers backend/services/tests backend/evidence backend/procurement backend/security backend/middleware backend/compliance backend/observability backend/services/evidence_pack_pdf.py backend/vault scripts --output-format=text
+  backend/tests/test_context_and_parallel.py backend/tests/test_orchestrator_concurrency.py backend/tests/test_websocket_auth.py backend/services/parsers backend/services/tests backend/evidence backend/procurement backend/security backend/middleware backend/compliance backend/observability backend/services/evidence_pack_pdf.py backend/vault scripts --output-format=concise
 run "Security & abuse controls"     python3 -m pytest backend/security/tests backend/middleware/tests -q
 run "DPDP & log redaction"          python3 -m pytest backend/compliance backend/observability -q
 run "Import boundaries"             bash -c 'lint-imports --config .importlinter > /dev/null'
@@ -45,7 +45,7 @@ run "Import boundaries"             bash -c 'lint-imports --config .importlinter
 run "Core tests"                    python3 -m pytest backend/core/tests -q --no-header
 run "RAG embedding contract"        python3 -m pytest backend/rag/tests -q --no-header
 run "Analyst/Reviewer pipeline"     python3 -m pytest backend/agents/tests -q --no-header
-run "Context & orchestration"       python3 -m pytest backend/tests/test_context_and_parallel.py -q --no-header
+run "Context & orchestration"       python3 -m pytest backend/tests/test_context_and_parallel.py backend/tests/test_orchestrator_concurrency.py -q --no-header
 run "WebSocket auth"                python3 -m pytest backend/tests/test_websocket_auth.py -q --no-header
 run "Document parsers"              python3 -m pytest backend/services/parsers/tests -q --no-header
 run "Evidence pack rendering"       python3 -m pytest backend/services/tests -q --no-header

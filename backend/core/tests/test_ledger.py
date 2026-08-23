@@ -73,14 +73,17 @@ class TestNumberingSchemes:
         assert e.shows_both_numbering_schemes
         assert "s.202 (formerly s.115BAC)" in e.citation_display
 
-    def test_only_the_legacy_number_where_the_mapping_is_unverified(self) -> None:
-        """`cite()` refuses to assert an unverified 2025-Act number, and the
-        ledger carries that refusal through to what the user reads."""
+    def test_both_numbering_schemes_once_the_mapping_is_verified(self) -> None:
+        """CORE-002, 2026-08-23. Until the official navigator was read this
+        asserted the refusal — legacy number only, 2025 number hedged in a
+        note. Now that every alias is sourced, the ledger shows both, which is
+        the whole point: a CA reading it knows 87A, a departmental notice for
+        FY 2026-27 says 156, and the user needs to recognise their figure in
+        either."""
         e = entry_from_citation("Rebate", rupees(60_000), cite("87A", FY), RS)
-        assert e.section is None
+        assert e.section == "156"
         assert e.legacy_section == "87A"
-        assert not e.shows_both_numbering_schemes
-        assert "provisionally s.156" in e.note
+        assert e.shows_both_numbering_schemes
 
     def test_the_act_name_follows_the_year(self) -> None:
         assert "Income-tax Act, 2025" in entry_from_citation(

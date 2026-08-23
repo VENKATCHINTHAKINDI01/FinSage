@@ -88,7 +88,27 @@ def cite(
     current: str | None = None
     extra = note
     if alias and amap.applies_to(fy) and alias.current != "singular":
-        if alias.verified:
+        if alias.verified and alias.current == "OMITTED":
+            # The official navigator records no 2025 counterpart. Rendering
+            # "s.OMITTED" would be worse than rendering nothing, so the legacy
+            # number stands alone and the absence is stated in words.
+            extra = (
+                f"{note + ' ' if note else ''}"
+                f"The CBDT concordance records no Income-tax Act 2025 "
+                f"counterpart for s.{legacy_section}. It is cited under the "
+                f"1961 numbering until the position is confirmed against the "
+                f"2025 Act itself."
+            ).strip()
+        elif alias.verified and not alias.current.isdigit():
+            # Not a section at all — 10(13A) (HRA) moved to Schedule III. A
+            # renderer that prefixes "s." to this produces a citation to a
+            # provision that does not exist.
+            extra = (
+                f"{note + ' ' if note else ''}"
+                f"Under the Income-tax Act 2025 this is not a section: it is "
+                f"{alias.current}."
+            ).strip()
+        elif alias.verified:
             current = alias.current
         else:
             # Provisional: surfaced as a note, never presented as fact.

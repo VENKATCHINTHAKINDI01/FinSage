@@ -3,12 +3,11 @@ Intent detection - analyze user query and determine which agents to invoke.
 Uses LLM to understand what the user is asking about, with keyword-based fallback.
 """
 
-from enum import Enum
-from pydantic import BaseModel
 import logging
-from typing import Optional
+from enum import Enum
 
-from backend.config import settings
+from pydantic import BaseModel
+
 from backend.llm import get_llm
 from backend.tools.data_validator import LLMResponseValidator
 
@@ -117,11 +116,11 @@ _KEYWORD_INTENT_MAP = {
 def _detect_intent_by_keywords(query: str) -> IntentDetectionResult:
     """Fallback intent detection using keyword matching."""
     query_lower = query.lower()
-    
+
     best_intent = Intent.GENERAL
     best_score = 0
     best_keywords = []
-    
+
     for intent, keywords in _KEYWORD_INTENT_MAP.items():
         matches = [kw for kw in keywords if kw in query_lower]
         score = len(matches)
@@ -129,10 +128,10 @@ def _detect_intent_by_keywords(query: str) -> IntentDetectionResult:
             best_score = score
             best_intent = intent
             best_keywords = matches
-    
+
     confidence = min(0.7, 0.3 + (best_score * 0.15))  # Cap keyword-based confidence at 0.7
     agents = _get_agents_for_intent(best_intent)
-    
+
     return IntentDetectionResult(
         intent=best_intent,
         confidence=confidence,
@@ -157,7 +156,7 @@ async def detect_intent(user_query: str, user_id: str) -> IntentDetectionResult:
     Returns:
         IntentDetectionResult with detected intent and agents to invoke
     """
-    
+
     prompt = f"""Analyze the following user query and determine their intent.
  
 User Query: "{user_query}"
@@ -191,49 +190,49 @@ Important: Respond ONLY with valid JSON, no other text."""
 
     try:
         message = await get_llm().complete(prompt, max_tokens=200)
-        
+
         response_text = message.text.strip()
-        
+
         # Use robust JSON parser
         response_data, parse_report = _llm_validator.parse_json_response(response_text)
-        
+
         if response_data is None:
             # JSON parse failed — fall back to keyword detection
             logger.warning(f"LLM intent JSON parse failed for user {user_id}, using keyword fallback")
             return _detect_intent_by_keywords(user_query)
-        
+
         # Validate the parsed response
         validated_data, validation_report = _llm_validator.validate_intent_response(response_data)
-        
+
         intent_str = validated_data.get("intent", "GENERAL").upper()
         confidence = float(validated_data.get("confidence", 0.5))
         reasoning = validated_data.get("reasoning", "Intent detected")
-        
+
         # If LLM confidence is too low, supplement with keyword detection
         if confidence < 0.5:
             keyword_result = _detect_intent_by_keywords(user_query)
             if keyword_result.confidence > confidence:
                 logger.info(f"LLM confidence low ({confidence}), using keyword result ({keyword_result.confidence})")
                 return keyword_result
-        
+
         # Map intent to agents
         try:
             intent = Intent(intent_str.lower().replace(" ", "_"))
         except ValueError:
             logger.warning(f"Invalid intent value '{intent_str}', defaulting to GENERAL")
             intent = Intent.GENERAL
-            
+
         agents = _get_agents_for_intent(intent)
-        
+
         logger.info(f"Intent detected for user {user_id}: {intent} (confidence: {confidence})")
-        
+
         return IntentDetectionResult(
             intent=intent,
             confidence=confidence,
             agents_to_invoke=agents,
             reasoning=reasoning
         )
-    
+
     except Exception as e:
         logger.error(f"Error detecting intent via LLM: {e}")
         # Fallback to keyword-based detection instead of empty result
@@ -244,7 +243,7 @@ Important: Respond ONLY with valid JSON, no other text."""
 
 def _get_agents_for_intent(intent: Intent) -> list[str]:
     """Map intent to list of agents that should handle it."""
-    
+
     mapping = {
         Intent.TAX_DEDUCTION: ["deduction_hunter_agent", "tax_optimizer_agent"],
         Intent.TAX_SAVINGS: ["tax_optimizer_agent"],
@@ -263,7 +262,7 @@ def _get_agents_for_intent(intent: Intent) -> list[str]:
         Intent.WEALTH_PLANNING: ["wealth_planner_agent"],
         Intent.GENERAL: ["income_classifier_agent"],
     }
-    
+
     return mapping.get(intent, ["income_classifier_agent"])
 
 

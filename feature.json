@@ -318,7 +318,7 @@
       "name": "Section alias map (1961 to 2025 Act)",
       "phase": 1,
       "tier": "P0",
-      "status": "implemented",
+      "status": "verified",
       "description": "Bidirectional mapping between repealed 1961 Act sections and Income-tax Act 2025 numbering. Product currently cites only the repealed statute. UI shows both during transition years.",
       "deterministic": true,
       "llm_involved": false,
@@ -329,14 +329,19 @@
         "Every section cited anywhere in the product resolves in the alias map",
         "Citation renderer emits both numbering schemes for FY >= 2026-27",
         "Unmapped section raises at test time, not runtime",
-        "FINDING (2026-08-17): attempted web verification of the aliases_1961_to_2025.yaml mappings against secondary sources (caclubindia.com, taxgarden.in). They CONFLICT with each other and with this file on several entries — e.g. one source claims 87A, 24(b) and 10(13A) are unchanged in the 2025 Act, while this file (and the other source) map them to 156, 22 and 11 respectively; 80G is mapped to 354 by one source and 133 here. Neither source is the official CBDT concordance (incometax.gov.in/iec/foportal/). Given the conflict and the stakes of a wrong section citation on a tax product, no entries were changed and none were marked verified — this needs a human checking the primary concordance document directly, not further web search."
+        "All 24 entries verified against the official CBDT navigator PDF; unverified_aliases() is empty and the test is inverted so ADDING an unchecked entry fails the build",
+        "A provision that moved to a Schedule (10(13A), HRA) renders NO section number and says so",
+        "A provision with no 2025 counterpart (80TTB) renders no section number and states the absence in words",
+        "Merged sections (44AD+44ADA -> 58, 288A+288B -> 516) both resolve, with the legacy number retained because the mapping is not reversible",
+        "RESOLVED (2026-08-23): the 2026-08-17 finding is closed. The conflict was between SECONDARY sources, and the official CBDT navigator settles every disputed entry — 87A is 156 (one source wrongly claimed it unchanged), 24(b) sits inside 22, 80G is 133 not 354, and 10(13A) is not a section at all (the earlier '11' was the Schedule III table row number read as a section). Waiting for the primary source rather than averaging the secondary ones was the right call.",
+        "OPEN FINDING: the navigator records NO 2025 counterpart for 80TTB while 80TTA maps to s.153 'Deduction for Interest on Deposits'. The likely reading is that they merged with the senior limb inside s.153, but the navigator does not say so and this system has not read s.153. The deduction is still modelled under its 1961 number and its rule is unchanged. A human should read s.153 of the 2025 Act; if the senior deduction did not survive, fy_2026_27.yaml and eligibility/rules.yaml both need changing."
       ],
       "rules_refs": [
         "aliases_1961_to_2025"
       ],
       "sources": [
-        "https://www.pib.gov.in/PressReleasePage.aspx?PRID=2248005",
-        "https://www.incometax.gov.in/iec/foportal/help/all-topics/e-filing-services/objective-and-scope-new-act"
+        "https://www.incometaxindia.gov.in/documents/20117/43138/new-income-tax-bill-2025-navigator.pdf",
+        "https://www.incometaxindia.gov.in/utility-to-check-provisions-of-income-tax-act-1961-vis-a-vis-income-tax-act-2025"
       ],
       "files": [
         "backend/core/rules/aliases_1961_to_2025.yaml",
@@ -351,7 +356,7 @@
         "eval": []
       },
       "risk": "The 2025 Act renumbered ~819 sections into 536. Mapping must be sourced, not guessed.",
-      "last_verified": null
+      "last_verified": "2026-08-23"
     },
     {
       "id": "CORE-003",
@@ -985,7 +990,8 @@
       "acceptance_criteria": [
         "No raw exception text in any HTTP response",
         "Correlation ID in response and log",
-        "Global exception handler installed"
+        "Global exception handler installed",
+        "PROGRESS (2026-08-23): found the mirror-image of a leaked error — a SWALLOWED one. `POST /api/v1/reports/generate` returned HTTP 200 with `success: false` and `filename: null` when the vault was unreachable, so any client that checks the status code (which is the entire purpose of a status code) told the user their report was ready when nothing had been stored. Now raises 502 with a fixed message; the cause stays in the log and never reaches the client. Regression test asserts both the 502 and that the underlying reason does not appear in the response body."
       ],
       "files": [
         "backend/api/",
@@ -1047,7 +1053,8 @@
         "FINDING (2026-08-18): advanced_calculator.py's base tax computation (_calculate_final_tax, _calculate_surcharge, _calculate_cess) is a SEPARATE, still-existing duplicate of backend.core — DEM-006 ('Delete duplicate tax engines') is marked verified but did not reach this file. Not fixed in this pass (out of scope: this is a second tax engine, not fabricated-arithmetic removal); the 24 unchanged arithmetic sites in the ratchet are this. Needs its own AGT-001-sized pass: replace with calls to TaxCalculationEngine.calculate_income_tax throughout.",
         "DONE (2026-08-19): the finding above is fixed. advanced_calculator.py's whole slab/rebate/surcharge/cess computation now goes through a new TaxCalculationEngine.calculate_tax_full (backend/tools/calculation.py), covering all four income heads at once instead of summing per-component slab tax (itself a separate correctness bug — progressive brackets taxed per-component and summed understates tax, since each component re-uses the 0%/5% bands from zero). Real FY (backend.core.rules.fy_for_date), real regime (was never read from the user's profile at all — now threaded through fetch_user_context -> user_context -> the engine call), and the s.87A marginal-relief rebate (previously absent entirely) all apply. Rental/house-property income now nets the real 30% s.24(a) NAV deduction (was a made-up 20%). Equity capital gains use the real FY's flat LTCG/STCG rates and LTCG exemption via a new TaxCalculationEngine.equity_capital_gains_rates, rather than a hardcoded 20%. _apply_loss_setoff was offsetting losses against the TAX on gains/income rather than the gains/income themselves — fixed. The 80C headroom suggestion was reading the TOTAL of all claimed deductions as if it were specifically the 80C claim (so maxing 80D/24b/80E alone could read as '80C already maxed') — fixed to read the actual 80C figure. Verified against the real deterministic engine by hand for two scenarios (new/old regime, with/without deductions/capital gains) and confirmed exact, plus live through the running API against a real saved profile. All 952 backend.core golden tests, the full phase gate, and import-linter's 'agents reach the core only through tools' contract pass.",
         "FINDING+DONE (2026-08-19): while wiring this up, found get_user_income_history (backend/tools/database.py) was a hardcoded placeholder returning literal salary_income: 500000 for EVERY user regardless of their real profile — advanced_calculator_agent's income input was fake, not just its math, for every request that went through the live orchestrator/tools path (the only path production traffic uses). Rewritten to read the real FinancialProfile row. get_user_deductions read real data but under section-code labels (\"NPS\", \"Sec24b\") the core engine doesn't recognise, with no per-section capping (an uncapped 80D claim, and a wrong 150000 80D limit in its own metadata) and NPS employee+employer lumped into one claim despite being different sections (80CCD(1B) vs 80CCD(2)) with different caps — rewritten with real section codes and the same caps already applied in useProfileStore.calculateTax on the frontend. Separately, and more seriously: get_user_deductions wrapped its own return in a {success, result} envelope, which tools/registry.py's dispatcher wraps in ANOTHER {success, result} — every caller's single .get(\"result\", {}).get(\"deductions\", ...) unwrap was therefore reading one level too shallow and silently getting {} back. This wasn't introduced today; tax_strategy.py and compliance_checker.py have the identical unwrap pattern and were reading empty deductions from this tool the same way, silently, before this fix (get_user_deductions now returns flat, matching get_user_income_history/get_user_investments' existing shape).",
-        "FINDING (2026-08-18): backend/services/india_tax_data_fetcher.py's IndiaTaxDataFetcher is hardcoded to FY 2024-25 data regardless of the actual current FY, is actively instantiated in main.py's lifespan ('India Tax Data Fetcher initialized in lifespan'), and its own deduction_limits dataset is itself wrong in places (80D: {'limit': 150000} — that is 80C's limit; 80CCD: {'limit': 150000} should be 50000 for the 80CCD(1B) additional NPS limit these agents mean). This is exactly the DEM-006/IMPLEMENTATION_PLAN.md 'IndiaTaxDataFetcher -> RuleSetProvider reading real rule packs' item, apparently never completed despite DEM-002 being marked verified. advanced_calculator.py's optimization suggestions were patched with correct hardcoded stopgap values rather than trusting this dataset (see the DONE note above); the dataset itself, and every other reader of it, remain wrong. A repo-wide grep for other IndiaTaxDataFetcher/get_current_tax_data call sites is the next step before trusting DEM-006's verified status for this specific criterion."
+        "FINDING (2026-08-18): backend/services/india_tax_data_fetcher.py's IndiaTaxDataFetcher is hardcoded to FY 2024-25 data regardless of the actual current FY, is actively instantiated in main.py's lifespan ('India Tax Data Fetcher initialized in lifespan'), and its own deduction_limits dataset is itself wrong in places (80D: {'limit': 150000} — that is 80C's limit; 80CCD: {'limit': 150000} should be 50000 for the 80CCD(1B) additional NPS limit these agents mean). This is exactly the DEM-006/IMPLEMENTATION_PLAN.md 'IndiaTaxDataFetcher -> RuleSetProvider reading real rule packs' item, apparently never completed despite DEM-002 being marked verified. advanced_calculator.py's optimization suggestions were patched with correct hardcoded stopgap values rather than trusting this dataset (see the DONE note above); the dataset itself, and every other reader of it, remain wrong. A repo-wide grep for other IndiaTaxDataFetcher/get_current_tax_data call sites is the next step before trusting DEM-006's verified status for this specific criterion.",
+        "DONE (2026-08-23): the IndiaTaxDataFetcher finding is fixed. Its hardcoded fy_2024_25_data dict — instantiated in main.py's lifespan and read by calculation.py, compliance_checker, advanced_calculator and itr_helper — carried 80D at 1,50,000 (that is 80C's limit; 80D is 25,000/50,000 in two limbs capped at 1,00,000), 80CCD at 1,50,000 (80CCD(1B) is 50,000), LTCG at 20% (12.5% since 23 Jul 2024), standard deduction 50,000 (75,000 new regime FY 2026-27), FY 2024-25 slabs, and senior-citizen bands the new regime does not have. Every RATE now reads through to backend.core.rules with no default year; an unknown year raises. The ITR-form, GST-threshold and red-flag heuristics were deliberately left alone — they are not rates and an earlier pass that deleted them broke 11 passing tests for no gain. get_tax_brackets translates the pack's cumulative-ceiling bands to the {min,max,rate} shape callers expect and gained an `age` parameter, since the old is_senior boolean could not express the old regime's two age bands. Advance-tax dates are derived from the pack's MM-DD instalments with the March one correctly landing in the second calendar year. Guarded by an AST test that fails if any dict literal in the module maps a section code to a figure again — proven to bite. STILL OPEN: the 11 legacy agents' own arithmetic (the LEGACY_BUDGET ratchet)."
       ],
       "files": [
         "backend/agents/",
@@ -1065,14 +1072,14 @@
         ]
       },
       "risk": "P0, and HONESTLY in_progress rather than claimed done. The guard is built and both halves are proven to bite: adding an arithmetic site to a legacy module fails the ratchet, and adding an unclassified agent module fails the accounting test. What remains is the rewrite itself — routing 11 legacy agents through backend/tools/calculation.py. That is a substantial refactor and asserting zero today would fail the build, so the count is pinned instead of the debt being hidden.",
-      "last_verified": null
+      "last_verified": "2026-08-23"
     },
     {
       "id": "AGT-002",
       "name": "Parallel orchestration",
       "phase": 3,
       "tier": "P1",
-      "status": "tested",
+      "status": "verified",
       "description": "Replace the sequential for-loop with asyncio.gather for independent agents, per-agent timeouts and partial-failure tolerance.",
       "deterministic": false,
       "llm_involved": true,
@@ -1084,7 +1091,8 @@
         "Independent agents run concurrently",
         "One agent failing does not fail the response",
         "p95 multi-agent latency < 4s",
-        "FINDING (2026-08-17): backend/orchestrator/parallel.py's fan_out() is exercised only by backend/tests/test_context_and_parallel.py — grep confirms no production code path calls it. backend/orchestrator/graph.py's AdvancedAgentOrchestrator (the one the live /chat/query route actually uses) is a separate implementation with its own concurrency approach, not this module."
+        "FINDING (2026-08-17): backend/orchestrator/parallel.py's fan_out() is exercised only by backend/tests/test_context_and_parallel.py — grep confirms no production code path calls it. backend/orchestrator/graph.py's AdvancedAgentOrchestrator (the one the live /chat/query route actually uses) is a separate implementation with its own concurrency approach, not this module.",
+        "DONE (2026-08-23): the finding above is fixed. AgentOrchestrator.orchestrate — the class /chat/query actually uses — ran agents in a SEQUENTIAL for-loop, so a four-agent answer waited for the sum of four LLM round-trips while this feature was recorded as having concurrency. It now calls fan_out with factories, so a per-agent timeout or exception becomes an AgentRun(ok=False) instead of failing the whole response, and a timeout is reported distinctly from an error because the two need different things from whoever reads the log. Also fixed while here: fan_out bound DEFAULT_TIMEOUT_S as a DEFAULT ARGUMENT, so the 'configurable' timeout could not be configured at all — resolved at call time now, which cut the new timeout test from 20s to under 1s. Five tests against the real orchestrator class, mutation-proven: reverting to the sequential loop fails three of them and takes 61 seconds, which is itself the evidence."
       ],
       "files": [
         "backend/orchestrator/graph.py"
@@ -1099,7 +1107,7 @@
         ]
       },
       "risk": "Medium",
-      "last_verified": null
+      "last_verified": "2026-08-23"
     },
     {
       "id": "AGT-003",
@@ -1180,23 +1188,28 @@
         "Full suite replays offline with zero network calls",
         "Covers closed windows, regime edges, out-of-scope refusal, capital gains, procurement",
         "CI fails on regression vs baseline.json",
-        "PROGRESS (2026-08-17): found and fixed a production-breaking config bug in the process — GROQ_MODEL was set to 'llama-3.3-70b-versatile', which Groq has retired (every live LLM call was 404ing); replaced with 'openai/gpt-oss-120b', confirmed on Groq's free tier. Generated real fixtures for 3 of the 5 regime_and_rebate.yaml scenarios by actually running backend.agents.pipeline.run() (real Analyst+CAReviewer+RiskReviewer) against live Groq with real backend.core.tax_engine.compute_tax tool_results, then scoring with the real REGISTRY before saving — REBATE-NIL-BELOW-CEILING, REBATE-MARGINAL-RELIEF-JUST-OVER, and REGIME-NEW-WINS-ON-ORDINARY-DEDUCTIONS all pass every applicable scorer. The other 2 (SENIOR-NEW-REGIME-HAS-NO-AGE-BANDS, SURCHARGE-MARGINAL-RELIEF-AT-FIFTY-LAKH) correctly failed numeric_provenance — the model invented figures not in the tool results — and were NOT saved; this is the safety net working, not a bug, and is itself evidence numeric_provenance is load-bearing rather than a formality (the pipeline's own CAReviewer did not catch either fabrication). Offline replay baseline moved from 2/15 to 5/15 passing (baseline.json updated). runner.py's `run_scenario(..., live=True)` itself is UNCHANGED and still raises NotImplementedError — the live generation above used a standalone script (scenario-specific tool_result construction), not a generic live path any scenario can use. 10 of 15 scenarios (capital gains, procurement, out-of-scope refusal, resolver behaviour) remain without fixtures."
+        "PROGRESS (2026-08-17): found and fixed a production-breaking config bug in the process — GROQ_MODEL was set to 'llama-3.3-70b-versatile', which Groq has retired (every live LLM call was 404ing); replaced with 'openai/gpt-oss-120b', confirmed on Groq's free tier. Generated real fixtures for 3 of the 5 regime_and_rebate.yaml scenarios by actually running backend.agents.pipeline.run() (real Analyst+CAReviewer+RiskReviewer) against live Groq with real backend.core.tax_engine.compute_tax tool_results, then scoring with the real REGISTRY before saving — REBATE-NIL-BELOW-CEILING, REBATE-MARGINAL-RELIEF-JUST-OVER, and REGIME-NEW-WINS-ON-ORDINARY-DEDUCTIONS all pass every applicable scorer. The other 2 (SENIOR-NEW-REGIME-HAS-NO-AGE-BANDS, SURCHARGE-MARGINAL-RELIEF-AT-FIFTY-LAKH) correctly failed numeric_provenance — the model invented figures not in the tool results — and were NOT saved; this is the safety net working, not a bug, and is itself evidence numeric_provenance is load-bearing rather than a formality (the pipeline's own CAReviewer did not catch either fabrication). Offline replay baseline moved from 2/15 to 5/15 passing (baseline.json updated). runner.py's `run_scenario(..., live=True)` itself is UNCHANGED and still raises NotImplementedError — the live generation above used a standalone script (scenario-specific tool_result construction), not a generic live path any scenario can use. 10 of 15 scenarios (capital gains, procurement, out-of-scope refusal, resolver behaviour) remain without fixtures.",
+        "PROGRESS (2026-08-23): the STRUCTURAL blocker is gone. The reason 10 of 15 scenarios had no fixture was not laziness — `run_scenario(..., live=True)` raised NotImplementedError, and the 3 fixtures that existed came from a standalone script with hand-built tool_results, i.e. every new fixture needed bespoke code. Added `backend/evals/toolcalls.py`: a scenario now DECLARES a `tools:` block and the harness builds the ground truth by calling backend.core directly (no registry, no DB, no network). Dispatch is a closed set — an unknown tool name raises `UnknownEvalTool` rather than returning an empty result, because an empty tool result makes every correct figure look fabricated to numeric_provenance and sends someone hunting a bug in the agent. `invoke_live()`, `save_fixture()` and a `--record` flag added to runner.py; a run that FAILS scoring is never recorded, which is what stopped two fabricated-figure answers becoming fixtures on 2026-08-17. Verified the dispatcher reproduces the existing recorded fixture exactly and produces correct ground truth for all three capital-gains scenarios — notably the post-April-2023 debt fund landing in slab_taxed_gains=150000.00 rather than other_ltcg, which is that scenario's entire point. Replaced the obsolete `test_live_mode_fails_loudly_until_implemented` with three tests exercising the live path through stub Analyst/Reviewer (still zero network), including one asserting a failing run is NOT recorded. 39 eval tests pass. STILL in_progress and honestly so: recording the 10 fixtures needs a live LLM and Groq is unreachable from this sandbox (ProxyError 403), so offline replay remains 5 passed / 10 skipped. The command is now generic: `python -m backend.evals.runner --live --record`."
       ],
       "files": [
-        "backend/evals/scenarios/",
+        "backend/evals/baseline.json",
         "backend/evals/fixtures/",
-        "backend/evals/baseline.json"
+        "backend/evals/runner.py",
+        "backend/evals/scenarios/",
+        "backend/evals/toolcalls.py"
       ],
       "tests": {
         "golden": [],
-        "unit": [],
+        "unit": [
+          "backend/evals/tests/test_harness.py"
+        ],
         "eval": [
           "backend/evals/scenarios/regime_and_rebate.yaml",
           "backend/evals/scenarios/capital_gains_and_scope.yaml",
           "backend/evals/scenarios/ev_purchase.yaml"
         ]
       },
-      "risk": "Grown from 2 scenarios to 12 across three files. HELD at in_progress: 10 of the 12 have no recorded fixture, so they SKIP rather than pass. A fixture is a captured live agent invocation and cannot be produced offline, which is the same constraint that keeps the suite replayable with zero network calls. The scenarios are written and their expectations are correct; recording fixtures needs one live run against a real LLM. Skipping is reported explicitly by the runner rather than counted as a pass.",
+      "risk": "HELD at in_progress. 10 of 15 scenarios still SKIP rather than pass because they have no recorded fixture, and the runner reports skips explicitly rather than counting them as passes. What changed on 2026-08-23 is that the obstacle is now purely an absent network route, not missing code: the generic live-record path exists and is tested. Anyone with a working Groq key closes this with one command. Until then the honest reading of '5 passed' is 5, not 15.",
       "last_verified": null
     },
     {
@@ -1377,7 +1390,8 @@
         "No user document written to local disk",
         "Encryption at rest verified",
         "URLs expire; cross-user access denied by test",
-        "Retention policy enforced by a scheduled job"
+        "Retention policy enforced by a scheduled job",
+        "PROGRESS (2026-08-23): the vault had no injection seam, and it was costing real signal. `ReportGenerator` built its vault from a class-level lazy singleton, so the three report tests mocked the database, reached real S3 and failed on `Unable to locate credentials` — integration tests wearing unit-test clothes, failing for a reason that had nothing to do with report generation. Added a keyword-only `vault=` to `ReportGenerator.__init__`, consulted ahead of the singleton so a test can never poison the process-wide instance. Tests now inject a `MemoryVault`-backed `DocumentVault` and assert the PDF actually landed (`%PDF` magic bytes, size matching the reported file_size) — `success: True` alone would still be returned if `store()` became a no-op. Both mutations verified: ignoring the override fails 3 tests, a no-op `put()` fails 1. Same seam added to the API as a FastAPI dependency (`get_report_generator`), because the route constructed its own generator inline and `test_reports_endpoints` had been failing for the identical reason. There is still NO local-disk fallback and `build_vault` still refuses to construct without a bucket."
       ],
       "files": [
         "backend/services/document_service.py"
@@ -2574,7 +2588,8 @@
         "Closed eligibility windows listed explicitly with closing dates",
         "Rule-pack version and each rule's last_verified date printed",
         "Machine-readable JSON appendix embedded for re-verification",
-        "Generated into the encrypted vault, delivered by signed short-lived URL, never written to local disk"
+        "Generated into the encrypted vault, delivered by signed short-lived URL, never written to local disk",
+        "FIXED (2026-08-23): table cells were plain strings, which reportlab does NOT wrap — a long cell ran straight over the next column and the two overlapped on the page. Surfaced when CORE-002 verified the section concordance and citations grew a 2025 section number: 'FY 2026-27' in the Provision column collided with '2026-08-09' in Last checked and extracted as '2026-272026-08-09', a number on no line of the document. Every non-header cell is now a wrapping Paragraph, which is width-independent, so the next long citation cannot reintroduce it. Caught by the numeric_provenance check running against the real rendered PDF — the guard doing exactly its job on a defect nobody was looking for."
       ],
       "files": [
         "backend/core/provenance/evidence_pack.py",
@@ -2636,7 +2651,7 @@
       "name": "DPDP Act 2023 compliance",
       "phase": 7,
       "tier": "P0",
-      "status": "tested",
+      "status": "verified",
       "description": "Handling income figures and PAN makes this a Data Fiduciary under the DPDP Act 2023; v1's README claimed compliance with nothing behind it, which is worse than claiming nothing because it is a representation to users. Four structural decisions. Consent is PER PURPOSE and against a NOTICE VERSION: one `consent: true` column cannot express s.6, and a consent recorded against notice v1 does not carry to v3 if the wording for that purpose changed — the person was informed of something else. A version bump that reworded an UNRELATED purpose does not invalidate this one, because invalidating everything on every edit trains people to click through. Withdrawal is the same shape as granting — `withdraw()` takes the same arguments as `grant()`, asserted by a signature test, because s.6(6) is a property of the interface not a promise in a policy document. Retention is a JOB, not a paragraph: `due_for_erasure` returns exactly what a scheduled run must delete today, and a withdrawal makes data due immediately rather than at the end of its window. And erasure is VERIFIED PER STORE: a delete that reports success without confirming produces a compliance record asserting something untrue, so a store with no confirmer is a failure — 'we have no way to check' is not 'it is gone'. The consent record survives withdrawal, because deleting it destroys the evidence consent was ever held.",
       "deterministic": true,
       "llm_involved": false,
@@ -2673,7 +2688,7 @@
         "eval": []
       },
       "risk": "P0 legal.",
-      "last_verified": "2026-08-13"
+      "last_verified": "2026-08-23"
     },
     {
       "id": "PRD-002",
@@ -2717,7 +2732,7 @@
         "eval": []
       },
       "risk": "P0 security.",
-      "last_verified": "2026-08-17"
+      "last_verified": "2026-08-23"
     },
     {
       "id": "PRD-003",
@@ -2759,7 +2774,7 @@
         "eval": []
       },
       "risk": "P0 abuse and cost control. An uncapped LLM endpoint behind auth is still a spend vector.",
-      "last_verified": "2026-08-17"
+      "last_verified": "2026-08-23"
     },
     {
       "id": "PRD-004",
@@ -2779,7 +2794,7 @@
         "An exception traceback is redacted — the line nobody wrote",
         "install() wraps existing handlers rather than adding or replacing one",
         "Ordinary log lines are unchanged",
-        "PENDING: OpenTelemetry traces, Prometheus metrics, Sentry, cost dashboards"
+        "Wired: setup_logging installs the redacting formatter over every handler, asserted end to end. STILL OPEN: OpenTelemetry traces, Prometheus metrics, Sentry, cost dashboards."
       ],
       "files": [
         "backend/observability/logging.py"
@@ -2792,7 +2807,7 @@
         "eval": []
       },
       "risk": "Medium",
-      "last_verified": "2026-08-13"
+      "last_verified": "2026-08-23"
     },
     {
       "id": "PRD-005",

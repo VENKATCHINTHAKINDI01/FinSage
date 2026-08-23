@@ -6,6 +6,9 @@ from datetime import datetime
 from backend.main import app
 from backend.security.dependencies import get_current_user
 from backend.db.postgres import get_session
+from backend.api.reports import get_report_generator
+from backend.services.report_generator import ReportGenerator
+from backend.vault import DocumentVault, MemoryVault
 
 
 class MockUser:
@@ -40,15 +43,29 @@ async def mock_get_session():
     yield mock_session
 
 
+async def mock_get_report_generator():
+    """A generator whose documents go to RAM.
+
+    Without this the route built its own generator, which reached the real
+    document vault, so this test needed AWS credentials to pass and did not
+    have them. The endpoint contract is what is under test here; where the
+    bytes land is DOC-004's business and is tested there.
+    """
+    async for session in mock_get_session():
+        yield ReportGenerator(db=session, vault=DocumentVault(backend=MemoryVault()))
+
+
 @pytest.fixture(autouse=True)
 def setup_overrides():
     # Setup dependency overrides before each test
     app.dependency_overrides[get_current_user] = mock_get_current_user
     app.dependency_overrides[get_session] = mock_get_session
+    app.dependency_overrides[get_report_generator] = mock_get_report_generator
     yield
     # Cleanup overrides after each test
     app.dependency_overrides.pop(get_current_user, None)
     app.dependency_overrides.pop(get_session, None)
+    app.dependency_overrides.pop(get_report_generator, None)
 
 
 def test_reports_endpoints():
@@ -73,6 +90,34 @@ def test_reports_endpoints():
         data = res.json()
         assert data["success"] is True
         assert "reports" in data
+
+
+def test_a_report_that_could_not_be_generated_is_not_a_200():
+    """The failure the vault outage exposed.
+
+    Storage was unreachable, the generator returned `{"success": False}`, and
+    the endpoint passed that through with HTTP 200 and a null filename. Every
+    client that checks the status code — which is the whole point of one —
+    would have told the user their report was ready.
+    """
+    class FailingGenerator:
+        async def generate_tax_summary_report(self, **_):
+            return {"success": False, "error": "vault unreachable"}
+
+    async def _failing():
+        yield FailingGenerator()
+
+    app.dependency_overrides[get_report_generator] = _failing
+    try:
+        with TestClient(app, raise_server_exceptions=False) as client:
+            res = client.post(
+                "/api/v1/reports/generate", json={"report_type": "tax_summary"},
+            )
+        assert res.status_code == 502
+        # The reason is logged, never returned (DEM-008).
+        assert "vault" not in res.text.lower()
+    finally:
+        app.dependency_overrides.pop(get_report_generator, None)
 
 
 def test_notifications_endpoints():

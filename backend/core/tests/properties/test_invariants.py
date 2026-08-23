@@ -34,12 +34,12 @@ import pytest
 
 pytest.importorskip("hypothesis", reason="hypothesis is a dev dependency")
 
-from hypothesis import HealthCheck, given, settings  # noqa: E402
-from hypothesis import strategies as st  # noqa: E402
+from hypothesis import HealthCheck, given, settings
+from hypothesis import strategies as st
 
-from backend.core.provenance.money import ZERO, Money  # noqa: E402
-from backend.core.rules import load_ruleset  # noqa: E402
-from backend.core.tax_engine import TaxInput, compute_tax  # noqa: E402
+from backend.core.provenance.money import ZERO, Money
+from backend.core.rules import load_ruleset
+from backend.core.tax_engine import TaxInput, compute_tax
 
 FY = "2026-27"
 CESS = load_ruleset(FY).cess_rate

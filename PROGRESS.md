@@ -3,11 +3,11 @@
 
 # FinSage AI — Progress
 
-**Generated** 2026-08-20 · **Plan** [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) · **Review** [CODE_REVIEW_2026-08.md](CODE_REVIEW_2026-08.md)
+**Generated** 2026-08-23 · **Plan** [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) · **Review** [CODE_REVIEW_2026-08.md](CODE_REVIEW_2026-08.md)
 
-`█████████████████████░░░` **86%** — 65/76 features verified
+`█████████████████████░░░` **89%** — 68/76 features verified
 
-P0 (release-blocking): **42/47** verified
+P0 (release-blocking): **44/47** verified
 
 > Only `verified` — legal basis confirmed against an official source — counts
 > toward completion. Nothing user-facing ships below `verified`.
@@ -17,13 +17,13 @@ P0 (release-blocking): **42/47** verified
 | # | Phase | Progress | Features | Gate |
 |---|---|---|---|---|
 | 0 | **Foundation & guardrails** | `██████████████` 100% | 6/6 | CI green on empty suite; core boundary rule enforced |
-| 1 | **Deterministic tax core** | `█████████████░` 93% | 13/14 | All golden tests pass; engine coverage >= 95%; zero tax constants outside core/rules |
+| 1 | **Deterministic tax core** | `██████████████` 100% | 14/14 | All golden tests pass; engine coverage >= 95%; zero tax constants outside core/rules |
 | 2 | **Demolition & de-faking** | `█████████████░` 90% | 9/10 | No hardcoded slabs outside core/rules; semantic retrieval verified; p95 < 3s @ 20 concurrent |
-| 3 | **Thin agents & orchestration** | `██████████░░░░` 69% | 9/13 | Zero numeric_provenance failures; reviewer catches all seeded omissions; p95 < 4s single-pass informational and < 9s full three-pass review; scheduler jobs run with a real DB session |
+| 3 | **Thin agents & orchestration** | `███████████░░░` 77% | 10/13 | Zero numeric_provenance failures; reviewer catches all seeded omissions; p95 < 4s single-pass informational and < 9s full three-pass review; scheduler jobs run with a real DB session |
 | 4 | **Document intelligence** | `██████████████` 100% | 4/4 | Parsers fail loudly on malformed input; reconciliation zero false negatives on seeded set |
 | 5 | **Planning features** | `█████████████░` 90% | 9/10 | Golden tests per feature; every output line carries a citation |
 | 6 | **Procurement Intelligence** | `██████████████` 100% | 12/12 | EV worked example correct end-to-end; no Tier-3 source in any cost line; all figures dated |
-| 7 | **Production readiness** | `██████░░░░░░░░` 43% | 3/7 | Security checklist passed; DPDP controls table published; load test at target concurrency |
+| 7 | **Production readiness** | `████████░░░░░░` 57% | 4/7 | Security checklist passed; DPDP controls table published; load test at target concurrency |
 
 ## Status
 
@@ -32,9 +32,9 @@ P0 (release-blocking): **42/47** verified
 | ○ `not_started` | 0 | | `P0` | 47 |
 | ◐ `in_progress` | 2 | | `P1` | 25 |
 | ⊘ `blocked` | 0 | | `P2` | 4 |
-| ◑ `implemented` | 4 | |  |  |
-| ◕ `tested` | 5 | |  |  |
-| ● `verified` | 65 | |  |  |
+| ◑ `implemented` | 3 | |  |  |
+| ◕ `tested` | 3 | |  |  |
+| ● `verified` | 68 | |  |  |
 
 ## Features
 
@@ -51,14 +51,14 @@ P0 (release-blocking): **42/47** verified
 | ● | `FND-005` | Dependency upgrade and audit | P0 | FND-003 | 2026-08-09 |
 | ● | `FND-006` | Agent harness skeleton | P0 | FND-003 | 2026-08-09 |
 
-### Phase 1 — Deterministic tax core  ·  13/14
+### Phase 1 — Deterministic tax core  ·  14/14
 
 **Gate:** All golden tests pass; engine coverage >= 95%; zero tax constants outside core/rules
 
 | | ID | Feature | Tier | Deps | Verified |
 |---|---|---|---|---|---|
 | ● | `CORE-001` | Versioned tax rule packs | P0 | FND-004 | 2026-08-09 |
-| ◑ | `CORE-002` | Section alias map (1961 to 2025 Act) | P0 | CORE-001 | — |
+| ● | `CORE-002` | Section alias map (1961 to 2025 Act) | P0 | CORE-001 | 2026-08-23 |
 | ● | `CORE-003` | Slab engine | P0 | CORE-001 | 2026-08-09 |
 | ● | `CORE-004` | Section 87A rebate with marginal relief | P0 | CORE-003 | 2026-08-09 |
 | ● | `CORE-005` | Surcharge with marginal relief | P0 | CORE-003 | 2026-08-09 |
@@ -89,13 +89,13 @@ P0 (release-blocking): **42/47** verified
 | ● | `DEM-009` | Honest README | P0 | — | 2026-08-09 |
 | ● | `EVD-003` | Purge fabricated confidence scores | P0 | EVD-002, DEM-004 | 2026-08-09 |
 
-### Phase 3 — Thin agents & orchestration  ·  9/13
+### Phase 3 — Thin agents & orchestration  ·  10/13
 
 **Gate:** Zero numeric_provenance failures; reviewer catches all seeded omissions; p95 < 4s single-pass informational and < 9s full three-pass review; scheduler jobs run with a real DB session
 
 | | ID | Feature | Tier | Deps | Verified |
 |---|---|---|---|---|---|
-| ◐ | `AGT-001` | Thin-agent refactor | P0 | CORE-011, DEM-006 | — |
+| ◐ | `AGT-001` | Thin-agent refactor | P0 | CORE-011, DEM-006 | 2026-08-23 |
 | ● | `AGT-003` | RequestContext replaces global state | P0 | AGT-001 | 2026-08-09 |
 | ● | `AGT-004` | Numeric provenance scorer | P0 | FND-006, AGT-001 | 2026-08-09 |
 | ◐ | `AGT-005` | Eval scenario corpus | P0 | AGT-004 | — |
@@ -103,7 +103,7 @@ P0 (release-blocking): **42/47** verified
 | ● | `AGT-008` | Analyst agent (CA standard) | P0 | AGT-001, AGT-003, CORE-011 | 2026-08-09 |
 | ● | `AGT-009` | Reviewer agent — CA file-review pass | P0 | AGT-008, AGT-004 | 2026-08-09 |
 | ● | `AGT-011` | Graded review verdicts (block / amend / flag) | P0 | AGT-009 | 2026-08-09 |
-| ◕ | `AGT-002` | Parallel orchestration | P1 | AGT-001, DEM-005 | — |
+| ● | `AGT-002` | Parallel orchestration | P1 | AGT-001, DEM-005 | 2026-08-23 |
 | ● | `AGT-010` | Reviewer agent — assessment risk pass | P1 | AGT-009 | 2026-08-09 |
 | ● | `AGT-012` | Answer-time source freshness check | P1 | AGT-009, EVD-004 | 2026-08-12 |
 | ● | `EVD-004` | Source archival and access dating | P1 | EVD-002 | 2026-08-12 |
@@ -156,17 +156,17 @@ P0 (release-blocking): **42/47** verified
 | ● | `PRC-008` | Rewrite price_intelligence agent | P1 | CORE-007, PRC-004 | 2026-08-13 |
 | ● | `PRC-009` | SmartSavings and PurchaseAdvisor rebuild | P1 | PRC-003, PRC-004, PRC-005, PRC-006 | 2026-08-13 |
 
-### Phase 7 — Production readiness  ·  3/7
+### Phase 7 — Production readiness  ·  4/7
 
 **Gate:** Security checklist passed; DPDP controls table published; load test at target concurrency
 
 | | ID | Feature | Tier | Deps | Verified |
 |---|---|---|---|---|---|
-| ◕ | `PRD-001` | DPDP Act 2023 compliance | P0 | DOC-004 | 2026-08-13 |
-| ● | `PRD-002` | Auth hardening | P0 | DEM-001 | 2026-08-17 |
-| ● | `PRD-003` | Rate limiting and abuse controls | P0 | PRD-002 | 2026-08-17 |
+| ● | `PRD-001` | DPDP Act 2023 compliance | P0 | DOC-004 | 2026-08-23 |
+| ● | `PRD-002` | Auth hardening | P0 | DEM-001 | 2026-08-23 |
+| ● | `PRD-003` | Rate limiting and abuse controls | P0 | PRD-002 | 2026-08-23 |
 | ● | `PRD-005` | Secrets management | P0 | — | 2026-08-13 |
-| ◕ | `PRD-004` | Observability | P1 | AGT-003 | 2026-08-13 |
+| ◕ | `PRD-004` | Observability | P1 | AGT-003 | 2026-08-23 |
 | ◑ | `PRD-006` | Deployment and operations | P1 | PRD-004, PRD-005 | 2026-08-13 |
 | ◕ | `PRD-007` | Load and resilience testing | P1 | PRD-006 | 2026-08-17 |
 

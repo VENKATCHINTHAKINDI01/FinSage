@@ -21,6 +21,13 @@ from backend.services.alert_service import AlertService
 from backend.services.document_service import DocumentService
 from sqlalchemy import delete
 
+# These talk to a real Postgres: they create a user row, exercise foreign
+# keys and read back what CRUD wrote. Without the marker they errored on
+# `ConnectionRefusedError` in fixture setup, which is indistinguishable from
+# a genuine regression at a glance. See the root `conftest.py`: the marker
+# skips only when nothing is listening, so CI with a database still runs them.
+pytestmark = pytest.mark.integration
+
 # Define a persistent test user ID to avoid violating foreign key constraints
 TEST_USER_ID = "test-user-services-123"
 

@@ -84,3 +84,8 @@ PyYAML~=6.0
 # requests removed: sync HTTP has no place in an async service; the one caller
 # (india_tax_data_fetcher) imported it and never used it.
 # prometheus-client returns with PRD-004 (observability), not before.
+
+# The encrypted document vault (DOC-004) refuses to fall back to local disk
+# without it, so a deployment missing boto3 has a vault that cannot store
+# anything. It was imported and never declared.
+boto3~=1.35

@@ -184,14 +184,59 @@ class TestSectionAliases:
         amap = load_aliases()
         assert amap.applies_to("2026-27") and not amap.applies_to("2025-26")
 
-    def test_unverified_mapping_is_flagged_not_asserted(self) -> None:
-        """Printing a section number nobody checked is exactly the failure this
-        project exists to avoid, so an unverified alias goes in the note rather
-        than the citation."""
+    def test_a_verified_mapping_is_asserted_as_the_section(self) -> None:
+        """CORE-002, 2026-08-23: verified against the official CBDT navigator,
+        so the 2025 number is now the citation rather than a hedge in a note.
+
+        This test previously asserted the OPPOSITE — that s.156 stayed in the
+        note — and it was right to, because at that point nobody had read the
+        primary source. Secondary sources contradicted each other on this exact
+        entry: one claimed 87A was unchanged in the 2025 Act. The navigator
+        says 156.
+        """
         c = cite("87A", "2026-27")
+        assert c.section == "156"
+        assert c.legacy_section == "87A"
+
+    def test_an_unverified_mapping_would_still_be_flagged(self) -> None:
+        """The refusal machinery has to survive the list being empty, because
+        the next Act amendment adds entries nobody has checked yet."""
+        from backend.core.rules.aliases import Alias
+
+        provisional = Alias(
+            legacy="99Z", current="999", description="", verified=False,
+        )
+        assert provisional.verified is False
+        assert Alias(
+            legacy="87A", current="156", description="", verified=True,
+        ).verified is True
+
+    def test_a_provision_that_moved_to_a_schedule_gets_no_section_number(self) -> None:
+        """HRA under 10(13A) is not a section in the 2025 Act — it is
+        Schedule III, Table S.No 11. A renderer that prefixes "s." to that
+        cites a provision which does not exist, and an earlier version of the
+        alias file said "s.11", which is a real but unrelated section."""
+        c = cite("10(13A)", "2026-27")
         assert c.section is None
-        assert "provisionally s.156" in c.note
-        assert "not yet verified" in c.note
+        assert "not a section" in c.note
+        assert "Schedule III" in c.note
+
+    def test_a_provision_with_no_2025_counterpart_says_so_in_words(self) -> None:
+        """The navigator records none for 80TTB. Rendering "s.OMITTED" would
+        be worse than rendering nothing."""
+        c = cite("80TTB", "2026-27")
+        assert c.section is None
+        assert "no Income-tax Act 2025 counterpart" in c.note
+        assert "OMITTED" not in (c.note or "")
+
+    def test_two_sections_that_merged_both_resolve_to_the_same_one(self) -> None:
+        """44AD and 44ADA both became s.58; 288A and 288B both became s.516.
+        The mapping is not reversible, which is why the legacy number is kept
+        alongside rather than replaced."""
+        assert cite("44AD", "2026-27").section == "58"
+        assert cite("44ADA", "2026-27").section == "58"
+        assert cite("288A", "2026-27").section == "516"
+        assert cite("288B", "2026-27").section == "516"
 
     def test_pre_transition_years_use_1961_numbering(self) -> None:
         c = cite("87A", "2025-26")
@@ -202,6 +247,8 @@ class TestSectionAliases:
         c = cite("80ZZZ", "2026-27")
         assert c.legacy_section == "80ZZZ"
 
-    def test_unverified_list_gates_core_002(self) -> None:
-        """CORE-002 cannot move to `verified` while this is non-empty."""
-        assert "87A" in unverified_aliases()
+    def test_every_alias_is_verified_against_the_official_navigator(self) -> None:
+        """The gate this feature was held on. It is now empty, and the check
+        is kept inverted so that ADDING an unchecked entry fails the build
+        rather than quietly shipping a guessed citation."""
+        assert unverified_aliases() == []

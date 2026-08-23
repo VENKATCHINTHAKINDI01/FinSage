@@ -73,8 +73,34 @@ def render_pack_pdf(pack: PackContent) -> bytes:
 
     story: list[Any] = []
 
+    cell_style = ParagraphStyle(
+        "cell", parent=base["Normal"], fontSize=7.5, leading=9,
+        spaceBefore=0, spaceAfter=0,
+    )
+
     def table(rows: list[list[str]], widths: list[float]) -> Table:
-        t = Table(rows, colWidths=widths, repeatRows=1)
+        # Cells WRAP rather than overflow.
+        #
+        # A plain string in a reportlab cell does not wrap: it runs straight
+        # over the next column and the two overlap on the page. That surfaced
+        # when CORE-002 verified the section concordance and citations grew a
+        # 2025 section number — "FY 2026-27" in the Provision column collided
+        # with "2026-08-09" in Last checked, and the text extracted as
+        # "2026-272026-08-09". A reader sees overlapping glyphs; a parser sees
+        # a number that is on no line of the document.
+        #
+        # Wrapping every non-header cell in a Paragraph is the fix, and it is
+        # width-independent — the next long citation cannot reintroduce it.
+        wrapped = [rows[0]] + [
+            [
+                cell if isinstance(cell, Paragraph)
+                else Paragraph(str(cell).replace("&", "&amp;")
+                               .replace("<", "&lt;"), cell_style)
+                for cell in row
+            ]
+            for row in rows[1:]
+        ]
+        t = Table(wrapped, colWidths=widths, repeatRows=1)
         t.setStyle(TableStyle([
             ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
             ("FONTSIZE", (0, 0), (-1, -1), 7.5),

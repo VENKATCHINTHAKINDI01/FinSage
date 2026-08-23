@@ -170,4 +170,4 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
-__all__ = ["RateLimitMiddleware", "DEFAULT_PER_IP", "DEFAULT_PER_USER"]
+__all__ = ["DEFAULT_PER_IP", "DEFAULT_PER_USER", "RateLimitMiddleware"]

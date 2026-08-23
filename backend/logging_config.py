@@ -66,6 +66,20 @@ def setup_logging(log_level_override: Optional[str] = None) -> None:
             # Fallback output to stdout if log file cannot be created/written to
             logging.getLogger(__name__).error(f"Failed to initialize file logger at {log_path}: {e}")
             
+    # PRD-004. Wrap every handler AFTER they are all attached, so the
+    # guarantee covers the file handler, the stream handler and anything a
+    # later edit adds — rather than only whichever ones existed when someone
+    # remembered to call it. PII reaches logs incidentally, through exception
+    # text nobody wrote, so the formatter is the only place that catches it.
+    try:
+        from backend.observability.logging import install as install_redaction
+
+        install_redaction(root_logger)
+    except Exception as exc:  # pragma: no cover - never block startup on this
+        logging.getLogger(__name__).error(
+            "PII log redaction could not be installed: %s", exc,
+        )
+
     # Configure Uvicorn logging handlers to bubble up to root
     for uvicorn_logger_name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
         ulogger = logging.getLogger(uvicorn_logger_name)

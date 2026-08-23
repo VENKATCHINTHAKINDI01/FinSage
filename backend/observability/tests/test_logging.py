@@ -134,3 +134,18 @@ def test_ordinary_text_is_left_alone():
     """A filter that mangles normal lines gets turned off."""
     line = "computed tax of 97500 for FY 2026-27 in 42ms"
     assert redact_pii(line) == line
+
+
+def test_redaction_is_installed_by_the_real_logging_setup():
+    """The wiring, not just the component. A formatter nobody attached
+    protects nothing, and PRD-004 was recorded as unwired until an end-to-end
+    check of the folder found it really was.
+    """
+    import logging as std
+
+    from backend.logging_config import setup_logging
+
+    setup_logging()
+    handlers = std.getLogger().handlers
+    assert handlers
+    assert all(isinstance(h.formatter, RedactingFormatter) for h in handlers)

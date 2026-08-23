@@ -46,6 +46,16 @@ _SECTION = re.compile(
     r"\b\d{1,3}[A-Z]{1,5}(?:\s*\(\s*[0-9ivxa-z]+\s*\))*"   # 80C, 87A, 115BAC
     r"|"
     r"\b\d{1,3}\s*\(\s*[0-9ivxa-z]{1,4}\s*\)"              # 24(b), 10(13A)
+    r"|"
+    # The SERIALISED form: "section": "202" / "legacy_section": "234C".
+    # An Evidence Pack appendix is JSON, and until the 1961->2025 concordance
+    # was verified (CORE-002) `section` was always null, so this never
+    # surfaced. Once real section numbers started rendering, s.202 in a
+    # citation field was read as an unsupported rupee claim and failed the
+    # pack. A section number is a citation, not a figure — but ONLY when it
+    # sits in a section field, which is why this is keyed on the field name
+    # rather than on the number looking sectiony.
+    r'|"(?:legacy_)?section"\s*:\s*"?\d{1,3}[A-Z]{0,4}(?:\([0-9ivxa-z]+\))*"?'
     r")",
     re.IGNORECASE,
 )

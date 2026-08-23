@@ -3,7 +3,7 @@ Pydantic models for data validation and serialization.
 Used for API request/response bodies.
 """
 
-from pydantic import BaseModel, EmailStr, Field, condecimal
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, condecimal
 from datetime import datetime, timezone
 from typing import Optional
 from decimal import Decimal
@@ -41,8 +41,11 @@ class UserResponse(UserBase):
     updated_at: datetime
     is_active: bool = True
     
-    class Config:
-        from_attributes = True  # For SQLAlchemy model conversion
+    # ConfigDict, not the v1 class-based `Config`. The class form is
+    # deprecated in Pydantic 2 and removed in 3, and with warnings raised
+    # as errors it stopped `backend.main` importing at all — which is why
+    # test_step10_endpoints could not even be collected.
+    model_config = ConfigDict(from_attributes=True)  # For SQLAlchemy model conversion
 
 
 # ==================== FINANCIAL PROFILE MODELS ====================
@@ -80,8 +83,11 @@ class FinancialProfileResponse(FinancialProfileBase):
     created_at: datetime
     updated_at: datetime
     
-    class Config:
-        from_attributes = True
+    # ConfigDict, not the v1 class-based `Config`. The class form is
+    # deprecated in Pydantic 2 and removed in 3, and with warnings raised
+    # as errors it stopped `backend.main` importing at all — which is why
+    # test_step10_endpoints could not even be collected.
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ==================== SESSION MODELS ====================
@@ -102,8 +108,11 @@ class SessionResponse(BaseModel):
     created_at: datetime
     ip_address: Optional[str] = None
     
-    class Config:
-        from_attributes = True
+    # ConfigDict, not the v1 class-based `Config`. The class form is
+    # deprecated in Pydantic 2 and removed in 3, and with warnings raised
+    # as errors it stopped `backend.main` importing at all — which is why
+    # test_step10_endpoints could not even be collected.
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ==================== AUTH MODELS ====================

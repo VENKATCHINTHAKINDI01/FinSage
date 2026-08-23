@@ -70,8 +70,23 @@ class TestNoFigureComesFromProse:
             InputRecord("Salary", "₹15,00,000", "Form 16"),
             InputRecord("80C investments", "₹1,50,000", "you stated"),
         ])
+        # Words, joined with spaces — NOT `extract_text()`.
+        #
+        # `extract_text()` runs adjacent TABLE CELLS together when they sit
+        # close: the Provision column ending "FY 2026-27" and the Last-checked
+        # column "2026-08-09" came out as "FY 2026-272026-08-09", and the
+        # scorer then reported 272026 as an invented figure. That number is not
+        # on the page — the extractor made it. This surfaced the moment
+        # CORE-002 verified the section concordance, because the Provision
+        # column got longer once citations carried a 2025 section number.
+        #
+        # Joining words guarantees a separator at every cell boundary, so the
+        # test measures what is on the page rather than what the extractor
+        # concatenated.
         with pdfplumber.open(io.BytesIO(render_pack_pdf(pack))) as pdf:
-            page_text = "\n".join(p.extract_text() or "" for p in pdf.pages)
+            page_text = "\n".join(
+                " ".join(w["text"] for w in p.extract_words()) for p in pdf.pages
+            )
 
         invocation = AgentInvocation(
             agent="evidence_pack",

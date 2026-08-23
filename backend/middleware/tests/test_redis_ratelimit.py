@@ -15,8 +15,8 @@ import pytest
 
 pytest.importorskip("redis")
 
-from backend.middleware.ratelimit import RateLimited  # noqa: E402
-from backend.middleware.redis_ratelimit import RedisLimiter, guard_async  # noqa: E402
+from backend.middleware.ratelimit import RateLimited
+from backend.middleware.redis_ratelimit import RedisLimiter, guard_async
 
 REDIS_URL = "redis://localhost:6379/1"  # db 1: isolated from the app's db 0
 

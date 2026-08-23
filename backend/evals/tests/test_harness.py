@@ -168,9 +168,107 @@ def test_regressions_flags_a_scenario_that_stopped_passing() -> None:
     assert any("GHOST-SCENARIO" in r for r in regs)
 
 
-def test_live_mode_fails_loudly_until_implemented() -> None:
-    with pytest.raises(NotImplementedError):
-        runner.run_scenario({"id": "x"}, live=True)
+def test_the_live_path_runs_the_real_pipeline_with_a_stub_model() -> None:
+    """AGT-005. `run_scenario(live=True)` used to raise NotImplementedError,
+    which is why ten of fifteen scenarios had no fixture — each one needed
+    bespoke code to produce tool results.
+
+    The stubs are the point of this test: without them the only way to know
+    the wiring works is to spend money on a live call and find out. Everything
+    below the model is real — real scenario, real deterministic tool results
+    from `backend.evals.toolcalls`, real review protocol.
+    """
+    scenario = {
+        "id": "LIVE-PATH-SMOKE",
+        "query": "What is my tax?",
+        "profile": {"fy": "2026-27", "regime": "new", "salary": 1275000},
+    }
+
+    class StubAnalyst:
+        async def draft(self, request):
+            from backend.agents.analyst import AnalystDraft
+
+            total = request.tool_results[0]["result"]["total_tax"]
+            return AnalystDraft(
+                text=f"Your tax for FY {request.fy} is Rs {total}.",
+                tool_results=request.tool_results,
+            )
+
+    class StubReviewer:
+        async def review(self, draft):
+            from backend.agents.review_protocol import ReviewOutcome
+
+            return ReviewOutcome(findings=[])
+
+    class StubRiskReviewer:
+        # Returns a LIST of findings, not a ReviewOutcome — the pipeline
+        # extends `outcome.findings` with it. The two reviewer roles have
+        # different contracts and a shared stub hides that.
+        async def review(self, draft):
+            return []
+
+    invocation = runner.invoke_live(
+        scenario, analyst=StubAnalyst(), reviewer=StubReviewer(),
+        risk_reviewer=StubRiskReviewer(),
+    )
+
+    assert invocation.agent == "analyst_reviewer_pipeline"
+    assert invocation.tool_results[0]["tool"] == "compute_tax"
+    # The figure the model saw is the one the engine produced, not a guess.
+    assert invocation.tool_results[0]["result"]["taxable_income"] == "1200000.00"
+    assert isinstance(invocation.output_text, str) and invocation.output_text
+    assert invocation.latency_ms >= 0
+
+
+def test_a_scenario_naming_an_unknown_tool_raises_rather_than_returning_nothing() -> None:
+    """An empty tool result means the scorer sees no grounding, so every
+    correct figure reads as fabricated and someone goes hunting a bug in the
+    agent that is really a typo in the scenario."""
+    from backend.evals.toolcalls import UnknownEvalTool, results_for
+
+    with pytest.raises(UnknownEvalTool, match="cannot produce"):
+        results_for({"id": "X", "tools": [{"tool": "invent_a_number"}]})
+
+
+def test_a_failing_run_is_not_recorded_as_a_fixture(tmp_path, monkeypatch) -> None:
+    """Freezing a run the scorers rejected would make the failure the expected
+    behaviour — that is how a regression corpus starts certifying bugs."""
+    monkeypatch.setattr(runner, "FIXTURES", tmp_path)
+
+    scenario = {
+        "id": "SHOULD-NOT-RECORD",
+        "query": "What is my tax?",
+        "profile": {"fy": "2026-27", "regime": "new", "salary": 1275000},
+        "must_state": [{"rebate_87a": 60000}],
+    }
+
+    class FabricatingAnalyst:
+        async def draft(self, request):
+            from backend.agents.analyst import AnalystDraft
+
+            return AnalystDraft(
+                text="Your tax is Rs 4,73,219 and your rebate is Rs 91,000.",
+                tool_results=request.tool_results,
+            )
+
+    class StubReviewer:
+        async def review(self, draft):
+            from backend.agents.review_protocol import ReviewOutcome
+
+            return ReviewOutcome(findings=[])
+
+    class StubRiskReviewer:
+        async def review(self, draft):
+            return []
+
+    result = runner.run_scenario(
+        scenario, live=True, record=True,
+        analyst=FabricatingAnalyst(), reviewer=StubReviewer(),
+        risk_reviewer=StubRiskReviewer(),
+    )
+
+    assert any(s.verdict is runner.Verdict.FAIL for s in result.scores)
+    assert not (tmp_path / "SHOULD-NOT-RECORD.json").exists()
 
 
 # ═══ the regex bug that made the keystone scorer accuse correct answers ═════
