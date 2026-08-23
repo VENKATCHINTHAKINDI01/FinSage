@@ -115,21 +115,48 @@ class CrossBorderTaxAgent(TaxAgent):
 
             # 4. Formulate DTAA Relief & foreign tax credit recommendations
             dtaa_relief_eligible = False
-            dtaa_relief_amount = 0.0
+            # None, not 0.0. Zero is a claim — "you are entitled to nothing"
+            # — and this agent is not in a position to make it. None means the
+            # figure was not computed, which the UI must render as unknown
+            # rather than as a rupee amount.
+            dtaa_relief_amount = None
             recommendations = []
 
             if foreign_income > 0:
                 dtaa_relief_eligible = True
                 # Unilateral or bilateral relief check
                 if foreign_tax_paid > 0:
-                    # Relief is lower of (foreign tax paid) or (Indian tax rate on that income)
-                    indian_tax_rate = 0.30 # assumed marginal bracket
-                    estimated_indian_tax = foreign_income * indian_tax_rate
-                    dtaa_relief_amount = min(foreign_tax_paid, estimated_indian_tax)
+                    # AGT-001. This quoted a specific rupee FTC entitlement
+                    # derived from `indian_tax_rate = 0.30 # assumed marginal
+                    # bracket`. Three things were wrong with that, in
+                    # increasing order of seriousness:
+                    #
+                    #   1. 30% is not this user's marginal rate. It is not
+                    #      anyone's without computing it.
+                    #   2. The credit is capped by the Indian tax ON THAT
+                    #      INCOME at the taxpayer's own average/marginal rate
+                    #      per Rule 128, not by a flat rate on the gross.
+                    #   3. Rule 128 computes the credit SEPARATELY for each
+                    #      country and each head of income, and the DTAA
+                    #      article for that country may cap it lower still. A
+                    #      single number covering "income from {country}" can
+                    #      therefore be wrong even with the right rate.
+                    #
+                    # A figure carrying "₹" and "under Section 90/91" reads as
+                    # an entitlement. This now states the TEST and the
+                    # procedure, which are both certain, and leaves the amount
+                    # to a computation that has the facts — rather than
+                    # printing a number derived from an assumption.
+                    dtaa_relief_amount = None
 
                     recommendations.append(
-                        f"You are eligible for Foreign Tax Credit (FTC) of ₹{dtaa_relief_amount:,.2f} under Section 90/91 "
-                        f"to avoid double taxation on your income from {foreign_country}."
+                        f"You may be eligible for Foreign Tax Credit under sections 90/91 "
+                        f"on your income from {foreign_country}. The credit is the LOWER of "
+                        f"the foreign tax paid (₹{foreign_tax_paid:,.2f}) and the Indian tax "
+                        f"payable on that same income — computed per country and per head of "
+                        f"income under Rule 128, and capped by the relevant DTAA article. "
+                        f"We have not estimated the amount here because it depends on your "
+                        f"full Indian tax position for the year."
                     )
                     recommendations.append(
                         "You must file Form 67 on or before the due date of filing your ITR to claim this credit."
@@ -168,7 +195,7 @@ class CrossBorderTaxAgent(TaxAgent):
                 "foreign_income_reported": foreign_income,
                 "foreign_tax_paid": foreign_tax_paid,
                 "dtaa_relief_eligible": dtaa_relief_eligible,
-                "estimated_ftc_relief": dtaa_relief_amount,
+                "ftc_relief": dtaa_relief_amount,  # None when not computed; never a guess
                 "schedule_fa_required": schedule_fa_required,
                 "recommendations": recommendations
             }

@@ -251,6 +251,44 @@ class ComplianceCheckerAgent(TaxAgent):
             "status": "✅ Complete" if completeness >= 80 else "⚠️ Incomplete"
         }
 
+    @staticmethod
+    def _estimated_tax(
+        annual_income: float,
+        user_context: dict[str, Any],
+        financial_profile: dict[str, Any],
+    ) -> float:
+        """This user's actual tax, for use as a comparison baseline — AGT-001.
+
+        Only reached when the caller has not already computed the tax. It is a
+        red-flag threshold rather than a figure quoted to the user, but it
+        decides whether the user is TOLD something is wrong, and a warning
+        triggered by an invented number is a false alarm with a compliance
+        officer's tone of voice.
+
+        Falls back to 0 rather than to a rate. If the engine cannot produce a
+        figure, the honest position is that no comparison is possible, so no
+        flag is raised — a missing warning is recoverable, a confident wrong
+        one trains the user to dismiss the next.
+        """
+        try:
+            from backend.tools.calculation import TaxCalculationEngine
+
+            computed = TaxCalculationEngine.calculate_tax_full(
+                salary=annual_income,
+                deductions=user_context.get("deductions_by_section") or {},
+                fy=user_context.get("fy") or None,
+                regime=user_context.get("regime", "new"),
+                age=user_context.get("age") or financial_profile.get("age", 0) or 0,
+            )
+            return float(computed["total_tax_liability"])
+        except Exception:
+            logger.warning(
+                "could not compute a tax baseline for the TDS-mismatch check; "
+                "skipping the flag rather than comparing against a guess.",
+                exc_info=True,
+            )
+            return 0.0
+
     async def _detect_india_red_flags(
         self,
         user_data: dict[str, Any],
@@ -286,7 +324,17 @@ class ComplianceCheckerAgent(TaxAgent):
 
         # Flag 2: TDS mismatch (India-specific)
         tds_paid = user_context.get("tds_paid", 0) or financial_profile.get("tds_paid", 0)
-        calculated_tax = user_context.get("calculated_tax", 0) or annual_income * 0.20
+        # AGT-001. The fallback here was `annual_income * 0.20` — an invented
+        # flat rate standing in for the user's actual tax, used to decide
+        # whether to raise a red flag. It ignores the slabs, the standard
+        # deduction and the s.87A rebate, so a salaried user on ₹6,00,000 with
+        # correctly deducted TDS of nothing was compared against a fabricated
+        # ₹1,20,000 and warned of a "TDS vs 26AS mismatch" that did not exist.
+        # A compliance warning that fires on a number nobody computed is worse
+        # than no warning: it teaches the user to ignore the next one.
+        calculated_tax = user_context.get("calculated_tax", 0) or self._estimated_tax(
+            annual_income, user_context, financial_profile,
+        )
 
         if tds_paid > 0 and abs(tds_paid - calculated_tax) > calculated_tax * 0.15:
             flags.append({

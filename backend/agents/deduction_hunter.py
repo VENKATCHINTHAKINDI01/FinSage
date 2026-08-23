@@ -89,18 +89,62 @@ class DeductionHunterAgent(TaxAgent):
             )
 
             # Integrate HRA Exemption tool
-            rent_paid = float(user_financial_data.get("rent_paid", 0) or user_financial_data.get("investments", {}).get("rent", 0) or 0)
+            # `merged_context`, not `user_financial_data`. These lookups read
+            # only the stored profile, so a user who stated their rent, basic
+            # salary or HRA in the request had it silently ignored — and then
+            # got the invented figures below instead of their own. Merged
+            # context is profile-over-context, so a saved profile still wins;
+            # what changes is that stating a figure now has an effect.
+            rent_paid = float(merged_context.get("rent_paid", 0) or merged_context.get("investments", {}).get("rent", 0) or 0)
             if rent_paid > 0 or "rent" in processed_query or "hra" in processed_query:
-                annual_income = float(user_financial_data.get("annual_income", 0) or 600000.0)
-                basic_salary = float(user_financial_data.get("basic_salary", 0) or (annual_income * 0.40))
-                hra_received = float(user_financial_data.get("hra_received", 0) or (basic_salary * 0.50))
-
-                if self.tools:
+                # AGT-001. This used to invent the user's entire payslip when
+                # it did not know it: annual income defaulted to ₹6,00,000,
+                # basic salary to 40% of that, HRA received to 50% of basic,
+                # and rent to ₹1,20,000. None of those are tax rules — they
+                # are guesses about a document the agent has not seen.
+                #
+                # The result was worse than a bare guess. The s.10(13A)
+                # exemption is the LEAST of three amounts, two of which are
+                # basic-salary-derived, so feeding invented inputs to the real
+                # engine produced an invented answer WITH A WORKSHEET
+                # attached, which reads as more trustworthy than a number
+                # somebody obviously made up.
+                #
+                # So a missing input now produces a stated gap. HRA is the one
+                # deduction where the user always has the figures to hand —
+                # they are on the payslip — so asking is cheap and guessing is
+                # not.
+                basic_salary = float(merged_context.get("basic_salary", 0) or 0)
+                hra_received = float(merged_context.get("hra_received", 0) or 0)
+                missing = [
+                    label for label, value in (
+                        ("basic salary", basic_salary),
+                        ("HRA received", hra_received),
+                        ("rent paid", rent_paid),
+                    ) if not value
+                ]
+                if missing:
+                    deductions.append({
+                        "category": "HRA Exemption",
+                        "scheme_code": "10(13A)",
+                        "amount": None,
+                        "amount_known": False,
+                        "confidence": "unknown",
+                        "description": (
+                            "HRA exemption under s.10(13A) is the least of "
+                            "three amounts, so it cannot be estimated without "
+                            + ", ".join(missing)
+                            + ". These are on your payslip."
+                        ),
+                    })
+                elif self.tools:
                     hra_calc = await self.call_tool(
                         "calculate_hra_exemption",
                         basic_salary=basic_salary,
                         hra_received=hra_received,
-                        rent_paid=rent_paid or 120000.0,
+                        # Reached only when all three inputs are known, so
+                        # there is no `or 120000.0` default left to apply.
+                        rent_paid=rent_paid,
                         is_metro=any(m in processed_query for m in ["metro", "mumbai", "delhi", "bangalore", "chennai", "kolkata"])
                     )
                     if hra_calc.get("success"):

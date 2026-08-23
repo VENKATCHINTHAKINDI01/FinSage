@@ -52,18 +52,47 @@ class TaxDeductionAgent(TaxAgent):
                 user_context
             )
 
-            # Calculate tax savings
-            annual_income = user_context.get("annual_income", 0)
-            tax_bracket = self._estimate_tax_bracket(annual_income)
+            # Tax saving, by recomputing — AGT-001.
+            #
+            # This was `total_deduction * tax_bracket`, against a slab table
+            # written into `_estimate_tax_bracket` whose first threshold was
+            # ₹2,50,000 — the OLD regime's basic exemption, applied to
+            # everybody, when the new regime's is ₹4,00,000 and the new regime
+            # is the default.
+            #
+            # But the deeper problem is the multiplication itself, and the tool
+            # layer already says so in `calculate_deduction_benefit`'s own
+            # docstring: "Never amount × marginal_rate: that estimate is wrong
+            # wherever the deduction crosses a rebate or surcharge boundary,
+            # which is exactly where it matters most." The documented example
+            # is a ₹2.1L employer-NPS contribution worth ₹81,900 that a
+            # marginal-rate estimate values at ₹63,000. The tool computes the
+            # tax twice and subtracts, which is right by construction.
+            annual_income = float(user_context.get("annual_income", 0) or 0)
             total_deduction = sum(d.get("amount", 0) for d in deductions)
-            estimated_savings = total_deduction * tax_bracket
+
+            from backend.tools.calculation import TaxCalculationEngine
+
+            benefit = TaxCalculationEngine.calculate_deduction_benefit(
+                deduction_amount=total_deduction,
+                current_taxable_income=annual_income,
+                fy=user_context.get("fy") or None,
+                regime=user_context.get("regime", "old"),
+                age=int(user_context.get("age", 0) or 0),
+            )
 
             # Postprocess result
             result = {
                 "deductions": deductions,
                 "total_deduction_amount": total_deduction,
-                "estimated_tax_bracket": tax_bracket,
-                "estimated_tax_savings": estimated_savings,
+                # The rate this deduction ACTUALLY achieved, derived from the
+                # two computations, rather than the bracket it was assumed to
+                # sit in. Where a deduction crosses the s.87A rebate the two
+                # differ by a lot, and the true figure is the interesting one.
+                "effective_benefit_rate": benefit["effective_benefit_rate"],
+                "estimated_tax_savings": float(benefit["tax_savings"]),
+                "tax_before": float(benefit["tax_before"]),
+                "tax_after": float(benefit["tax_after"]),
                 "recommendations": await self._get_recommendations(deductions)
             }
 
@@ -170,18 +199,17 @@ Important: Respond ONLY with valid JSON."""
 
         return recommendations
 
-    def _estimate_tax_bracket(self, annual_income: float) -> float:
-        """Estimate user's tax bracket (simplified for India)."""
-
-        if annual_income <= 250000:
-            return 0.0
-        elif annual_income <= 500000:
-            return 0.05
-        elif annual_income <= 750000:
-            return 0.10
-        elif annual_income <= 1000000:
-            return 0.15
-        elif annual_income <= 1250000:
-            return 0.20
-        else:
-            return 0.30
+    # ── AGT-001 (2026-08-23) ─────────────────────────────────────────────────
+    # `_estimate_tax_bracket` deleted. deduction_hunter.py records deleting its
+    # own copy under DEM-006, calling it "a FIFTH private copy of the slab
+    # table". This was a SIXTH, in a file DEM-006 did not reach, and it carried
+    # the same FY 2020-21 values (2.5 / 5 / 7.5 / 10 / 12.5 lakh) into a
+    # product computing FY 2026-27 tax under a regime whose basic exemption is
+    # ₹4,00,000.
+    #
+    # That six copies existed is the argument for the rules-as-data design
+    # rather than a criticism of whoever wrote the sixth: a slab table that can
+    # be typed out is a slab table that will be, and the only durable fix is
+    # that there is one place to read it from and no reason to write another.
+    # Deleted rather than corrected — a correct private copy is still a copy,
+    # and it goes stale the same way in April.

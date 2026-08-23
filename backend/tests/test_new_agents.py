@@ -1,11 +1,11 @@
+
 import pytest
-from typing import Dict, Any
 
 from backend.agents.cross_border_tax import CrossBorderTaxAgent
 from backend.agents.price_intelligence import PriceIntelligenceAgent
 from backend.agents.tax_strategy import TaxStrategyAgent
 from backend.agents.wealth_planner import WealthPlannerAgent
-from backend.orchestrator.intent_detector import _get_agents_for_intent, Intent
+from backend.orchestrator.intent_detector import Intent, _get_agents_for_intent
 
 
 class MockAgentToolExecutor:
@@ -14,10 +14,10 @@ class MockAgentToolExecutor:
         self.income = income
         self.deductions = deductions or []
         self.investments = investments or {}
-        
+
     def list_tools(self):
         return ["get_user_profile", "get_user_deductions", "get_user_investments"]
-        
+
     async def execute_tool(self, name, **kwargs):
         if name == "get_user_profile":
             return {
@@ -55,7 +55,7 @@ async def test_cross_border_tax_agent_resident():
     """Test CrossBorderTaxAgent under Resident stays."""
     agent = CrossBorderTaxAgent()
     mock_tools = MockAgentToolExecutor(income=800000)
-    
+
     # Stay >= 182 days and Ordinarily Resident (ROR)
     user_context = {
         "user_id": "user-123",
@@ -72,13 +72,23 @@ async def test_cross_border_tax_agent_resident():
         user_context=user_context,
         tools=mock_tools
     )
-    
+
     assert output.status == "success"
     assert "Resident" in output.result["residential_status"]
     assert output.result["schedule_fa_required"] is True
     assert output.result["dtaa_relief_eligible"] is True
-    assert output.result["estimated_ftc_relief"] > 0
-    assert any("Schedule FA" in rec for rec in output.result["recommendations"])
+    # AGT-001: this used to assert `estimated_ftc_relief > 0`, which passed
+    # because the agent multiplied foreign income by an assumed 30% marginal
+    # rate. The test was asserting the fabrication. Eligibility is knowable
+    # from the facts given; the AMOUNT is not, because Rule 128 computes the
+    # credit per country and per head of income against the taxpayer's whole
+    # Indian position, so it stays None rather than becoming a guess.
+    assert output.result["ftc_relief"] is None
+    recommendations = output.result["recommendations"]
+    assert any("Schedule FA" in rec for rec in recommendations)
+    # The certain parts are still stated: the test, the cap, and Form 67.
+    assert any("lower of" in rec.lower() for rec in recommendations)
+    assert any("Form 67" in rec for rec in recommendations)
 
 
 @pytest.mark.asyncio
@@ -86,7 +96,7 @@ async def test_cross_border_tax_agent_nri():
     """Test CrossBorderTaxAgent under Non-Resident stays."""
     agent = CrossBorderTaxAgent()
     mock_tools = MockAgentToolExecutor(income=800000)
-    
+
     # Stay < 60 days
     user_context = {
         "user_id": "user-123",
@@ -98,7 +108,7 @@ async def test_cross_border_tax_agent_nri():
         user_context=user_context,
         tools=mock_tools
     )
-    
+
     assert output.status == "success"
     assert "Non-Resident Indian (NRI)" in output.result["residential_status"]
     assert output.result["schedule_fa_required"] is False
@@ -153,14 +163,14 @@ async def test_tax_strategy_agent():
         income=1200000,
         deductions=[{"category": "80C", "amount": 150000}]
     )
-    
+
     user_context = {"user_id": "user-123"}
     output = await agent.execute(
         user_query="Old vs New tax regime projection strategy",
         user_context=user_context,
         tools=mock_tools
     )
-    
+
     assert output.status == "success"
     assert len(output.result["three_year_projections"]) == 3
     assert "old_regime_deductions_applied" in output.result
@@ -175,7 +185,7 @@ async def test_wealth_planner_agent():
         income=1000000,
         investments={"nps": 2000000.0, "ppf": 800000.0}
     )
-    
+
     # Capital gains to reinvest
     user_context = {
         "user_id": "user-123",
@@ -186,7 +196,7 @@ async def test_wealth_planner_agent():
         user_context=user_context,
         tools=mock_tools
     )
-    
+
     assert output.status == "success"
     # NPS Lump sum = 20L * 60% = 12L
     assert output.result["nps_tax_free_lump_sum_60_percent"] == 1200000.0

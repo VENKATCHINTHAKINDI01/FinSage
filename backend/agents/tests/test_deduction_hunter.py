@@ -115,7 +115,12 @@ async def test_hra_branch_does_not_crash_on_the_real_string_typed_tool_result(mo
     )
     agent = DeductionHunterAgent()
     output = await agent.execute(
-        "I pay rent and want to claim HRA", {"user_id": "u1"},
+        "I pay rent and want to claim HRA",
+        # The three inputs are supplied. They used to be invented when absent
+        # — see the next test — so this context is what the agent now
+        # requires before it will compute anything.
+        {"user_id": "u1", "basic_salary": 600000, "hra_received": 300000,
+         "rent_paid": 240000},
         tools=MockTools(),
     )
 
@@ -123,3 +128,35 @@ async def test_hra_branch_does_not_crash_on_the_real_string_typed_tool_result(mo
     hra = next(d for d in output.result["deductions"] if d["category"] == "HRA Exemption")
     assert hra["amount"] == 84000.0
     assert isinstance(hra["tax_savings"], float)
+
+
+@pytest.mark.asyncio
+async def test_hra_is_not_computed_from_an_invented_payslip(monkeypatch):
+    """AGT-001. The version of this that guessed was the dangerous one.
+
+    With no basic salary, HRA or rent on file, the agent used to default
+    annual income to ₹6,00,000, basic to 40% of that, HRA received to 50% of
+    basic and rent to ₹1,20,000 — then feed all four to the real s.10(13A)
+    engine. The exemption is the LEAST of three amounts, two of them
+    basic-derived, so the output was a fabrication WITH A WORKSHEET, which
+    reads as more trustworthy than an obvious guess rather than less.
+    """
+    monkeypatch.setattr(
+        "backend.agents.deduction_hunter.get_llm",
+        lambda: FakeLLM('{"deductions": []}'),
+    )
+    agent = DeductionHunterAgent()
+    output = await agent.execute(
+        "I pay rent and want to claim HRA", {"user_id": "u1"},
+        tools=MockTools(),
+    )
+
+    assert output.status == "success", output.result
+    hra = next(d for d in output.result["deductions"] if d["category"] == "HRA Exemption")
+    assert hra["amount"] is None
+    assert hra["amount_known"] is False
+    # Names what is missing, so the user can supply it rather than being told
+    # a number and left to wonder where it came from.
+    for expected in ("basic salary", "HRA received", "rent paid"):
+        assert expected in hra["description"]
+    assert "payslip" in hra["description"]

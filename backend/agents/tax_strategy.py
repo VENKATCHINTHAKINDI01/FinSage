@@ -71,16 +71,27 @@ class TaxStrategyAgent(TaxAgent):
                 # Fallback to standard assumptions if database has no records
                 total_deductions = float(user_context.get("current_deductions") or 150000.0) # default 80C
 
-            # Add standard deduction (₹50,000 for old, ₹75,000 for new in FY 24-25)
-            old_deductions_total = total_deductions + 50000.0
-            new_deductions_total = 75000.0
-
-            # 1. 3-Year Projection Model
+            # 1. 3-Year Projection Model — AGT-001.
+            #
+            # What was here: the standard deduction hardcoded as ₹50,000 (old)
+            # and ₹75,000 (new), under a comment reading "FY 24-25". Those
+            # happen to still be the FY 2026-27 figures, which is worse than
+            # being wrong — the agent was right by coincidence and would have
+            # gone stale silently the first time a Finance Act moved either
+            # number, with nothing in the codebase to notice. The rule packs
+            # exist precisely so that a figure like this is READ, not restated.
+            #
+            # It was also re-implementing the regime comparison: subtract
+            # deductions by hand, call the engine twice, compare. That is a
+            # second comparison to keep in step with the first, and the tool
+            # layer already has `compare_regimes`, which additionally returns
+            # the exact deduction total at which the answer flips — the thing
+            # a user planning three years ahead actually needs.
             #
             # The financial year is resolved explicitly: backend.core has no
             # default year, which is what stops a projection silently using
             # last year's slabs.
-            from backend.tools.calculation import current_fy
+            from backend.tools.calculation import TaxCalculationEngine, current_fy
             fy = user_context.get("fy") or current_fy()
 
             projections = []
@@ -88,24 +99,30 @@ class TaxStrategyAgent(TaxAgent):
 
             current_income = annual_income
             for year in range(1, 4):
-                # Calculate Old regime tax
-                old_taxable = max(0.0, current_income - old_deductions_total)
-                old_tax = self._regime_tax(old_taxable, "old", fy)
-
-                # Calculate New regime tax
-                new_taxable = max(0.0, current_income - new_deductions_total)
-                new_tax = self._regime_tax(new_taxable, "new", fy)
-
-                better_regime = "New Regime" if new_tax < old_tax else "Old Regime"
-                savings = abs(old_tax - new_tax)
+                comparison = TaxCalculationEngine.compare_regimes(
+                    gross_income=current_income,
+                    deductions={"total": total_deductions},
+                    fy=fy,
+                    age=int(user_context.get("age", 0) or 0),
+                    is_salary=True,
+                )
+                old_tax = float(comparison["old"]["total_tax"])
+                new_tax = float(comparison["new"]["total_tax"])
 
                 projections.append({
                     "year": f"Year {year}",
                     "projected_income": current_income,
                     "old_regime_tax": old_tax,
                     "new_regime_tax": new_tax,
-                    "recommended_regime": better_regime,
-                    "annual_savings": savings
+                    "recommended_regime": (
+                        "New Regime" if comparison["better_regime"] == "new"
+                        else "Old Regime"
+                    ),
+                    "annual_savings": float(comparison["saving"]),
+                    # The engine's own explanation, so the projection carries
+                    # the reasoning rather than only the answer.
+                    "summary": comparison.get("summary"),
+                    "breakeven_deductions": comparison.get("breakeven_deductions"),
                 })
 
                 current_income *= (1.0 + growth_rate)
@@ -140,7 +157,11 @@ class TaxStrategyAgent(TaxAgent):
             result = {
                 "base_annual_income": annual_income,
                 "assumed_annual_growth_rate": f"{growth_rate*100:.0f}%",
-                "old_regime_deductions_applied": old_deductions_total,
+                # The user's OWN deductions. The standard deduction is no
+                # longer added in here — each regime's is applied by the engine
+                # from the rule pack, and reporting a combined figure invited
+                # exactly the hardcoding this change removed.
+                "old_regime_deductions_applied": total_deductions,
                 "three_year_projections": projections,
                 "recommendations": recommendations
             }
@@ -173,10 +194,10 @@ class TaxStrategyAgent(TaxAgent):
     # rupee of income added about Rs 26,000 of tax. Both regimes now come from
     # one engine and one rule pack, so the comparison is internally consistent.
 
-    @staticmethod
-    def _regime_tax(taxable_income: float, regime: str, fy: str, age: int = 0) -> float:
-        from backend.tools.calculation import TaxCalculationEngine
-        result = TaxCalculationEngine.calculate_income_tax(
-            taxable_income, fy=fy, regime=regime, age=age
-        )
-        return float(result["total_tax"])
+    # AGT-001 (2026-08-23): `_regime_tax` deleted along with its callers. The
+    # projection now uses `TaxCalculationEngine.compare_regimes`, which applies
+    # each regime's standard deduction from the rule pack instead of having
+    # this agent subtract a hardcoded one first. Deleted rather than kept
+    # "in case": an unused helper that computes tax is exactly the thing
+    # someone reaches for next time, and it takes a TAXABLE income, so calling
+    # it with a gross one silently skips the standard deduction.

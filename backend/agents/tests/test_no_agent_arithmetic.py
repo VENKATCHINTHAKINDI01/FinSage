@@ -55,6 +55,33 @@ THIN_AGENTS = {
     # multiplier. Strategies with no fixed limit to test against (no
     # scheme_code) carry savings=None rather than a fabricated number.
     "tax_optimizer.py",
+    # AGT-001 (2026-08-23): reached zero, so promoted out of LEGACY_BUDGET —
+    # the ratchet is only meaningful if a module that gets fixed graduates to
+    # the no-tolerance list rather than sitting on a budget of 0.
+    #
+    # tax_strategy: the 3-year projection subtracted a HARDCODED standard
+    # deduction (₹50,000 old / ₹75,000 new, under a comment reading
+    # "FY 24-25") and then compared the regimes by hand. Those figures are
+    # still correct for FY 2026-27, which made this worse than a wrong value:
+    # right by coincidence, and silently stale the first time a Finance Act
+    # moves either one. Now uses TaxCalculationEngine.compare_regimes.
+    "tax_strategy.py",
+    # tax_agent: `total_deduction * tax_bracket` against a private slab table
+    # whose first threshold was ₹2,50,000 — the OLD regime's basic exemption
+    # applied to everyone, when the new regime's is ₹4,00,000 and the new
+    # regime is the default. It was the SIXTH private copy of the slab table
+    # in this codebase. Now uses calculate_deduction_benefit, which recomputes
+    # the tax both ways rather than multiplying by a marginal rate.
+    "tax_agent.py",
+    # cross_border_tax: quoted a specific rupee Foreign Tax Credit
+    # entitlement "under Section 90/91", derived from
+    # `indian_tax_rate = 0.30 # assumed marginal bracket`. Rule 128 computes
+    # the credit per country and per head of income against the taxpayer's
+    # whole Indian position, so a single flat-rate figure can be wrong even
+    # with the right rate. States the test and Form 67 now; the amount is
+    # None, and None is not 0.0 — zero would be the claim "you are entitled
+    # to nothing", which this agent is not in a position to make.
+    "cross_border_tax.py",
 }
 
 # v1 modules awaiting the AGT-001 rewrite, with today's count. RATCHET: these
@@ -70,13 +97,30 @@ LEGACY_BUDGET = {
     # not tax knowledge invented in the agent.
     "advanced_calculator.py": 18,
     "tools.py": 13,
-    "compliance_checker.py": 6,
+    # AGT-001 (2026-08-23): 6 -> 5. The removed site was
+    # `calculated_tax = ... or annual_income * 0.20`, an invented flat rate
+    # standing in for the user's real tax and used to decide whether to RAISE
+    # A RED FLAG. A salaried user on ₹6,00,000 with correctly deducted nil TDS
+    # was compared against a fabricated ₹1,20,000 and warned of a "TDS vs 26AS
+    # mismatch" that did not exist. The five that remain are threshold
+    # heuristics — a 5% deductions-to-income ratio, a 15% TDS tolerance, a 10%
+    # Form-16 tolerance — which decide whether to LOOK at something, and are
+    # not figures presented to anyone as tax.
+    "compliance_checker.py": 5,
     "income_classifier.py": 6,
-    "itr_helper.py": 6,
-    "tax_strategy.py": 4,
+    # AGT-001 (2026-08-23): 6 -> 2. Removed `annual_income * 0.20` as the
+    # user's estimated tax and the advance-tax instalments at 25/50/75, which
+    # are not the statutory percentages — s.211 of the 1961 Act and s.404 of
+    # the 2025 Act both say 15/45/75/100. Both now come from
+    # TaxCalculationEngine, which reads the schedule from the rule pack.
+    #
+    # The 2 remaining are FALSE POSITIVES: `base_requirements["documents"] +
+    # [...]`, list concatenation whose source text happens to mention a money
+    # word. Left in the budget rather than fixed by loosening the detector —
+    # the detector over-reports on purpose (see `money_arithmetic_sites`), and
+    # a guard tuned to make a number look good is not a guard.
+    "itr_helper.py": 2,
     "deduction_hunter.py": 2,
-    "cross_border_tax.py": 1,
-    "tax_agent.py": 1,
 }
 
 MONEY_WORDS = (

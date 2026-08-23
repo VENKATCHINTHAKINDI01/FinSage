@@ -399,28 +399,82 @@ class ITRHelperAgent(TaxAgent):
         user_context: dict[str, Any],
         tax_data: dict[str, Any]
     ) -> dict[str, Any]:
-        """Validate advance tax payments (India-specific)."""
+        """Advance tax position, from the engine — AGT-001.
+
+        What this replaced, and why it mattered
+        ----------------------------------------
+        Two independent inventions, both shown to the user as fact.
+
+        `estimated_tax = annual_income * 0.20` is not an Indian tax rate. It
+        ignores the slabs, the standard deduction, the regime and the s.87A
+        rebate, so someone earning ₹6,00,000 under the new regime — who owes
+        NOTHING — was told ₹1,20,000 and that advance tax was due. The error
+        runs in both directions: it also understates a high earner, who then
+        underpays and is charged interest for it.
+
+        The instalment percentages were **25 / 50 / 75 / 100**. The statute
+        (s.211 of the 1961 Act, s.404 of the 2025 Act, confirmed against the
+        department's own advance-tax page) is **15 / 45 / 75 / 100**. So the
+        first two instalments were OVERSTATED by ten and five points — this
+        one errs toward telling people to pay early, but it is still a figure
+        an agent made up, and the same code shipping the reverse error is a
+        one-character change away.
+
+        Both now come from `TaxCalculationEngine`, which reads the percentages
+        out of the versioned rule pack rather than restating them. The engine
+        also applies the first-two-instalment tolerance (12% and 36%), which
+        no hand-rolled version of this has ever remembered and which is the
+        single most common way an advance-tax calculator overcharges.
+        """
+        from backend.tools.calculation import TaxCalculationEngine
 
         annual_income = user_context.get("annual_income", 0)
         advance_tax_paid = user_context.get("advance_tax_paid", 0)
+        fy = user_context.get("fy") or None
 
-        # Advance tax required if estimated tax > ₹10,000
-        estimated_tax = annual_income * 0.20
-        advance_tax_required = estimated_tax > 10000
+        computed = TaxCalculationEngine.calculate_tax_full(
+            salary=annual_income,
+            deductions=user_context.get("deductions") or {},
+            fy=fy,
+            regime=user_context.get("regime", "new"),
+            age=user_context.get("age", 0),
+        )
+        estimated_tax = float(computed["total_tax_liability"])
 
-        status = "✅ DONE" if advance_tax_paid > 0 or not advance_tax_required else "⚠️ NOT PAID"
+        plan = TaxCalculationEngine.plan_advance_tax(
+            total_tax=estimated_tax,
+            fy=computed["fy"],
+            taxes_deducted=user_context.get("tds_paid", 0) or 0,
+            age=user_context.get("age", 0),
+            has_business_income=bool(user_context.get("business_income")),
+        )
+
+        # The engine decides whether advance tax is due at all: the ₹10,000
+        # threshold is in the rule pack, and the senior-citizen exemption for a
+        # taxpayer with no business income is a condition this agent used to
+        # not know about.
+        advance_tax_required = bool(plan.get("is_liable"))
+        status = (
+            "✅ DONE" if advance_tax_paid > 0 or not advance_tax_required
+            else "⚠️ NOT PAID"
+        )
 
         return {
             "estimated_tax": estimated_tax,
             "advance_tax_required": advance_tax_required,
             "advance_tax_paid": advance_tax_paid,
             "status": status,
+            # The engine's own schedule, dates and cumulative amounts included,
+            # rather than four f-strings restating percentages.
+            "schedule": plan.get("schedule", []),
             "due_dates": [
-                f"Q1 (Jun 15): ₹{estimated_tax * 0.25:,.0f}",
-                f"Q2 (Sep 15): ₹{estimated_tax * 0.50:,.0f}",
-                f"Q3 (Dec 15): ₹{estimated_tax * 0.75:,.0f}",
-                f"Q4 (Mar 15): ₹{estimated_tax:,.0f}"
+                f"{row.get('due_on')}: ₹{float(row.get('required', 0)):,.0f} "
+                f"cumulative ({row.get('cumulative_percent')})"
+                for row in plan.get("schedule", [])
             ],
+            "interest_234b": plan.get("interest_234b"),
+            "interest_234c": plan.get("interest_234c"),
+            "worksheet": computed.get("worksheet"),
             "action": "Pay remaining advance tax if due dates passed"
         }
 
