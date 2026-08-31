@@ -202,7 +202,7 @@ jobs:
     steps:
       - name: Require all required jobs to have passed
         run: |
-          results='${{ join(needs.*.result, " ") }}'
+          results='${{ join(needs.*.result, ' ') }}'
           echo "Job results: $results"
           for r in $results; do
             if [ "$r" != "success" ]; then
