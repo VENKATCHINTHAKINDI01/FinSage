@@ -20,6 +20,7 @@ export default function Topbar({ title, subtitle }: TopbarProps) {
 
   const quickLinks = [
     { label: 'Dashboard', path: '/dashboard' },
+    { label: 'AI Assistant', path: '/assistant' },
     { label: 'Tax Analysis', path: '/tax-analysis' },
     { label: 'Smart Savings', path: '/smart-savings' },
     { label: 'Benefits & Schemes', path: '/benefits' },

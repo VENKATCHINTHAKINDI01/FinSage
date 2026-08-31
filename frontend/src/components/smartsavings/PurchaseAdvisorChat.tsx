@@ -4,6 +4,7 @@ import { Send, Sparkles, CheckCircle, AlertTriangle, XCircle, RefreshCw, Shoppin
 import { useProfileStore, buildAIContext, calculateTax, marginalRateAt, profileCompleteness, TAX_YEAR } from '../../store/useProfileStore';
 import type { FinancialProfile } from '../../store/useProfileStore';
 import { sendChatQuery } from '../../api/services';
+import { formatChatAnswer } from '../../utils/chatResponse';
 import { formatINR } from '../../utils/format';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -288,7 +289,7 @@ Keep your response concise, structured, and specific to my numbers.
       let aiResponse = '';
       try {
         const res = await sendChatQuery(fullQuery, conversationId);
-        aiResponse = res?.response || res?.message || res?.content || JSON.stringify(res);
+        aiResponse = formatChatAnswer(res);
       } catch {
         aiResponse = `Based on your profile and this ${category.label.split(' ').slice(1).join(' ')} purchase, here's my analysis:\n\n**Key consideration:** Your gross income is ${profile.salaryCtc > 0 ? formatINR(profile.salaryCtc) : 'not yet set in your profile'}. Make sure to complete your profile for personalized affordability calculations.\n\nFor the best buying strategy and tax optimization, check the Smart Savings strategies panel on the left.`;
       }
@@ -314,7 +315,7 @@ Keep your response concise, structured, and specific to my numbers.
       await showTyping(1000);
       try {
         const res = await sendChatQuery(text, conversationId);
-        addMessage({ role: 'ai', text: res?.response || res?.message || 'Let me know if you have more questions about this purchase!' });
+        addMessage({ role: 'ai', text: formatChatAnswer(res) });
       } catch {
         addMessage({ role: 'ai', text: 'I\'m here to help! Ask me anything else about optimizing this purchase.' });
       }
