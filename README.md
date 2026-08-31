@@ -2,7 +2,7 @@
 
 **Deterministic tax computation, AI-assisted tax planning, and major-purchase cost intelligence for India — FY 2024-25 through FY 2026-27, under the Income-tax Act, 2025 (in force 2026-04-01) and the Income-tax Act, 1961 for prior years.**
 
-`████████████████████░░` **91%** — 69/76 tracked features verified · full ledger in [`PROGRESS.md`](PROGRESS.md), generated from [`feature.json`](feature.json)
+Development is tracked against an internal feature registry gated on `verified` status — legal basis confirmed against an official source, not just "the code merged." See [Project status & roadmap](#project-status--roadmap).
 
 ---
 
@@ -305,10 +305,10 @@ finsage_ai/
 │       └── hooks/           useApiData — per-endpoint data fetching
 ├── docs/                  DPDP register/controls, deployment runbook, plan
 ├── scripts/               phase_gate.sh, gen_progress.py, verify_freshness.py
-├── docker/                 Dockerfiles for backend + frontend
-├── feature.json           source of truth for what's built and verified
-└── PROGRESS.md            generated from feature.json — never hand-edited
+└── docker/                 Dockerfiles for backend + frontend
 ```
+
+`feature.json` (the source of truth for what's built and verified) and its generated `PROGRESS.md` are kept locally and are not part of this repository — see [Project status & roadmap](#project-status--roadmap).
 
 ---
 
@@ -474,28 +474,26 @@ Interactive OpenAPI docs are served at `/docs` (Swagger UI) and `/redoc` when th
 
 ## Project status & roadmap
 
-`feature.json` is the single source of truth for what exists; `PROGRESS.md` is generated from it and should never be hand-edited. A feature counts as complete only at status `verified` — its legal basis confirmed against an official source, with the date recorded. Anything below that is work in flight, and the README does not claim it.
+Development is tracked against an internal feature registry (`feature.json`, generating `PROGRESS.md`) — deliberately **not** part of this public repository, so it's kept locally rather than linked here. A feature counts as complete only at status `verified` — its legal basis confirmed against an official source, with the date recorded. Anything below that is work in flight, and this README does not claim it as done.
 
 ```bash
-python scripts/gen_progress.py            # regenerate PROGRESS.md
-python scripts/gen_progress.py --check    # CI: fail if stale or invalid
-python scripts/verify_freshness.py        # CI: fail if a shipped tax rule has decayed
+python scripts/gen_progress.py            # regenerate PROGRESS.md from feature.json
+python scripts/gen_progress.py --check    # fail if stale or invalid
+python scripts/verify_freshness.py        # fail if a shipped tax rule has decayed
 ```
 
-**Tax rules are perishable.** `verify_freshness.py` fails the build when a rule pack backing a shipped feature is more than 180 days past its last verification date — an earlier version of this codebase went two years stale in seven files at once with nothing objecting.
+**Tax rules are perishable.** `verify_freshness.py` fails the build when a rule pack backing a shipped feature is more than 180 days past its last verification date — an earlier version of this codebase went two years stale in seven files at once with nothing objecting. These two scripts are meant to be run locally (or wired into a private CI job that has access to the registry) before a release, not against this public repository, which doesn't carry `feature.json`.
 
-As of this writing: **91% (69/76) verified**, **44/47 P0 (release-blocking) features verified**. What's still in flight:
+What's still openly in flight, independent of the private ledger's exact numbers:
 
 | Item | State |
 |---|---|
-| `AGT-001` Thin-agent refactor | in progress — 5 legacy agent modules still carry a shrinking, CI-enforced budget of money-arithmetic sites rather than zero |
-| `AGT-005` Eval scenario corpus | in progress |
-| `AGT-007` Real WebSocket token-level agent streaming | implemented at the transport level; agents don't yet emit token-level reasoning into it |
-| `DEM-005` Async LLM client | implemented (`AsyncGroq`, no blocking calls); not yet verified against the p95-under-load acceptance criterion |
-| `PRD-006` Deployment & operations | implemented; not yet verified |
-| `PRD-007` Load & resilience testing | tested; not yet verified at target concurrency |
-
-Full detail, including every verified feature's legal source and verification date, is in [`PROGRESS.md`](PROGRESS.md).
+| Thin-agent refactor (routing every agent's arithmetic through `backend/core`) | in progress — a handful of legacy agent modules still carry a shrinking, CI-enforced budget of money-arithmetic sites rather than zero (`backend/agents/tests/test_no_agent_arithmetic.py`) |
+| Agent eval scenario corpus | in progress |
+| Real WebSocket token-level agent streaming | transport exists; agents don't yet emit token-level reasoning into it |
+| Async LLM client | implemented (`AsyncGroq`, no blocking calls); not yet verified against a p95-under-load acceptance criterion |
+| Deployment & operations hardening | implemented; not yet verified |
+| Load & resilience testing | tested; not yet verified at target concurrency |
 
 ---
 
@@ -513,8 +511,8 @@ Full detail, including every verified feature's legal source and verification da
 - **Adding a financial year** is data, not code: one new `backend/core/rules/fy_YYYY_YY.yaml` plus a golden-test file. No Python changes.
 - **Layering is enforced, not advisory.** `api → orchestrator → agents → tools → core`, checked by `lint-imports --config .importlinter` in CI and locally.
 - **No agent computes tax arithmetic.** Route through `backend/tools/calculation.py` (which itself is a thin adapter over `backend/core`). `test_no_agent_arithmetic.py` catches a regression before review does.
-- **`feature.json` before code.** A feature is `verified` only once its legal basis is confirmed against an official source and the date is recorded — not once the code merges.
-- Run `./scripts/phase_gate.sh` before opening a PR; it's the same gate CI runs.
+- **`feature.json` before code.** A feature is `verified` only once its legal basis is confirmed against an official source and the date is recorded — not once the code merges. The registry itself is kept local (see [Project status & roadmap](#project-status--roadmap)).
+- Run `./scripts/phase_gate.sh` before opening a PR — it runs everything CI runs, plus the local-only registry and freshness checks.
 
 ---
 
