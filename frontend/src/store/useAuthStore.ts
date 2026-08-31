@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { login as apiLogin, register as apiRegister } from '../api/services';
+import { login as apiLogin, register as apiRegister, logoutSession } from '../api/services';
 import { checkPasswordStrength } from '../utils/password';
 
 /**
@@ -29,6 +29,7 @@ export interface User {
 export interface AuthState {
   user: User | null;
   token: string | null;
+  refreshToken: string | null;
   isAuthenticated: boolean;
   authError: string | null;
   isSubmitting: boolean;
@@ -49,9 +50,10 @@ function describe(err: unknown): string {
 
 export const useAuthStore = create<AuthState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       user: null,
       token: null,
+      refreshToken: null,
       isAuthenticated: false,
       authError: null,
       isSubmitting: false,
@@ -63,6 +65,7 @@ export const useAuthStore = create<AuthState>()(
           set({
             user: { name: res.name || email.split('@')[0], email },
             token: res.access_token,
+            refreshToken: res.refresh_token,
             isAuthenticated: true,
             authError: null,
             isSubmitting: false,
@@ -71,7 +74,7 @@ export const useAuthStore = create<AuthState>()(
         } catch (err) {
           // No fallback. A failed login is a failed login.
           const error = describe(err);
-          set({ authError: error, isAuthenticated: false, token: null, isSubmitting: false });
+          set({ authError: error, isAuthenticated: false, token: null, refreshToken: null, isSubmitting: false });
           return { success: false, error };
         }
       },
@@ -91,6 +94,7 @@ export const useAuthStore = create<AuthState>()(
           set({
             user: { name, email },
             token: res.access_token,
+            refreshToken: res.refresh_token,
             isAuthenticated: true,
             authError: null,
             isSubmitting: false,
@@ -98,13 +102,26 @@ export const useAuthStore = create<AuthState>()(
           return { success: true };
         } catch (err) {
           const error = describe(err);
-          set({ authError: error, isAuthenticated: false, token: null, isSubmitting: false });
+          set({ authError: error, isAuthenticated: false, token: null, refreshToken: null, isSubmitting: false });
           return { success: false, error };
         }
       },
 
       logout: () => {
-        set({ user: null, token: null, isAuthenticated: false, authError: null });
+        // Best-effort: revoke the session family server-side so the refresh
+        // token can't still be used after logout. Was pure local state
+        // clearing before — the token stayed valid on the backend until its
+        // natural expiry regardless of "logging out" in the UI. Fire it
+        // without awaiting; the local session ends immediately either way.
+        const rt = get().refreshToken;
+        if (rt) {
+          logoutSession(rt).catch(() => {
+            /* already-invalid or unreachable — nothing to react to, this
+               was PURELY to revoke the token, the client's own state is
+               cleared unconditionally below */
+          });
+        }
+        set({ user: null, token: null, refreshToken: null, isAuthenticated: false, authError: null });
       },
 
       clearError: () => set({ authError: null }),
@@ -116,12 +133,13 @@ export const useAuthStore = create<AuthState>()(
       partialize: (state) => ({
         user: state.user,
         token: state.token,
+        refreshToken: state.refreshToken,
         isAuthenticated: state.isAuthenticated,
       }),
       version: 2,
       // Clear any credentials the previous build left in this browser.
       migrate: (persisted, version) => {
-        const empty = { user: null, token: null, isAuthenticated: false };
+        const empty = { user: null, token: null, refreshToken: null, isAuthenticated: false };
         if (version < 2) {
           // Purge credentials the previous build stored in this browser.
           try {
@@ -135,9 +153,34 @@ export const useAuthStore = create<AuthState>()(
         return {
           user: s?.user ?? null,
           token: s?.token ?? null,
+          // Sessions persisted before refresh support simply never had this
+          // key — falls back to null, which correctly forces a real login
+          // rather than a synthesized token.
+          refreshToken: s?.refreshToken ?? null,
           isAuthenticated: s?.isAuthenticated ?? false,
         };
       },
     }
   )
 );
+
+// Wired up to events client.ts already dispatched but that nothing listened
+// for, so a 401 never actually ended the session — every open page just
+// broke into generic error states while isAuthenticated stayed true.
+if (typeof window !== 'undefined') {
+  // client.ts refreshed silently and rewrote localStorage directly (it
+  // cannot import this store — this store imports the API layer that
+  // imports client.ts, and that would be a cycle). Mirror the new tokens
+  // into in-memory state so a component reading `token` isn't stale.
+  window.addEventListener('auth-tokens-refreshed', (e) => {
+    const detail = (e as CustomEvent<{ token: string; refreshToken: string }>).detail;
+    if (detail) useAuthStore.setState({ token: detail.token, refreshToken: detail.refreshToken });
+  });
+
+  // Refresh was attempted and failed (no refresh token, or it was rejected)
+  // — the session is genuinely over. Clearing isAuthenticated here is what
+  // makes ProtectedRoute actually redirect to /login.
+  window.addEventListener('auth-unauthorized', () => {
+    useAuthStore.setState({ user: null, token: null, refreshToken: null, isAuthenticated: false });
+  });
+}

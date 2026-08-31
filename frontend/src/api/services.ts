@@ -4,9 +4,11 @@ import api from './client';
 
 export async function login(email: string, password: string) {
   const res = await api.post('/api/v1/auth/login', { email, password });
-  // Fetch user profile with the new token (inject it first)
   return {
     access_token: res.access_token,
+    // Was dropped here — the access token expires in 15 minutes and
+    // nothing else can renew it without this.
+    refresh_token: res.refresh_token,
     name: email.split('@')[0],
     email,
   };
@@ -21,9 +23,14 @@ export async function register(params: { name: string; email: string; password: 
   });
   return {
     access_token: res.access_token,
+    refresh_token: res.refresh_token,
     name: params.name,
     email: params.email,
   };
+}
+
+export async function logoutSession(refreshToken: string) {
+  return api.post('/api/v1/auth/logout', { refresh_token: refreshToken });
 }
 
 export async function getMe() {

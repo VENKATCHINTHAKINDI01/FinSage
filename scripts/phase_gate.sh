@@ -36,7 +36,7 @@ run "Ruff lint"                     python3 -m ruff check backend/core backend/e
   backend/agents/analyst.py backend/agents/reviewer_ca.py backend/agents/review_protocol.py \
   backend/agents/pipeline.py backend/agents/reviewer_risk.py backend/agents/tests \
   backend/context.py backend/orchestrator/parallel.py backend/orchestrator/__init__.py \
-  backend/tests/test_context_and_parallel.py backend/tests/test_orchestrator_concurrency.py backend/tests/test_websocket_auth.py backend/services/parsers backend/services/tests backend/evidence backend/procurement backend/security backend/middleware backend/compliance backend/observability backend/services/evidence_pack_pdf.py backend/vault scripts --output-format=concise
+  backend/tests/test_context_and_parallel.py backend/tests/test_orchestrator_concurrency.py backend/tests/test_websocket_auth.py backend/services/parsers backend/services/tests backend/evidence backend/procurement backend/security backend/middleware backend/compliance backend/observability backend/services/evidence_pack_pdf.py backend/vault scripts --output-format=text
 run "Security & abuse controls"     python3 -m pytest backend/security/tests backend/middleware/tests -q
 run "DPDP & log redaction"          python3 -m pytest backend/compliance backend/observability -q
 run "Import boundaries"             bash -c 'lint-imports --config .importlinter > /dev/null'

@@ -19,6 +19,7 @@ from backend.models import (
     UserResponse,
     UserLogin,
     AuthTokenResponse,
+    RefreshTokenRequest,
 )
 from backend.security.password import hash_password, verify_password, is_password_strong
 from backend.security.jwt_handler import (
@@ -246,24 +247,24 @@ async def login(
 
 @router.post("/refresh", response_model=AuthTokenResponse)
 async def refresh_token(
-    refresh_token: str,
+    body: RefreshTokenRequest,
     session: AsyncSession = Depends(get_session),
 ) -> AuthTokenResponse:
     """
     Get a new access token using a refresh token.
-    
+
     Parameters:
-    - refresh_token: Valid refresh token from login
-    
+    - refresh_token: Valid refresh token from login (JSON body)
+
     Returns:
     - New access_token
     - refresh_token (same one)
     - token_type
     - expires_in
-    
+
     Errors:
     - 401: Invalid or expired refresh token
-    
+
     Example:
         POST /api/v1/auth/refresh
         {
@@ -284,7 +285,7 @@ async def refresh_token(
     the thief.
     """
     # Verify refresh token
-    payload = verify_token(refresh_token, token_type="refresh")
+    payload = verify_token(body.refresh_token, token_type="refresh")
     if not payload:
         logger.warning("Token refresh failed: invalid refresh token")
         raise HTTPException(
@@ -342,7 +343,7 @@ async def refresh_token(
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 async def logout(
-    refresh_token: str,
+    body: RefreshTokenRequest,
     session: AsyncSession = Depends(get_session),
 ) -> None:
     """
@@ -352,7 +353,7 @@ async def logout(
     client that logs out after refreshing should not leave the rotated-out
     predecessor's family alive.
     """
-    payload = verify_token(refresh_token, token_type="refresh")
+    payload = verify_token(body.refresh_token, token_type="refresh")
     jti = payload.get("jti") if payload else None
     if not jti:
         # Nothing to revoke. Logging out with an already-invalid token is a

@@ -125,6 +125,18 @@ class AuthTokenResponse(BaseModel):
     expires_in: int  # seconds
 
 
+class RefreshTokenRequest(BaseModel):
+    """Model for the token-refresh request.
+
+    /auth/refresh previously took `refresh_token` as a bare `str` parameter,
+    which FastAPI treats as a QUERY parameter absent a body model — despite
+    the endpoint's own docstring showing a JSON body. A refresh token in the
+    URL ends up in server access logs, proxy logs and browser history; a
+    body does not.
+    """
+    refresh_token: str
+
+
 class TokenPayload(BaseModel):
     """Model for JWT token payload."""
     user_id: str

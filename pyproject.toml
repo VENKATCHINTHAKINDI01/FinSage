@@ -62,7 +62,12 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"**/tests/**" = ["S101"]            # assert is the point
+# assert is the point (S101); E402 is `pytest.importorskip("optional_dep")`
+# followed by the import it guards — the standard pytest idiom for a test
+# module that should skip cleanly rather than fail collection when an
+# optional dev dependency (hypothesis, redis, ...) isn't installed. The
+# import cannot be at the top of the file without defeating the guard.
+"**/tests/**" = ["S101", "E402"]
 "backend/evals/**" = ["S101"]
 # `token_type="access"` is a discriminator, not a credential. S105/S106/S107
 # key off the variable NAME containing "token", so every JWT claim name in the
