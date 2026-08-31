@@ -47,6 +47,41 @@ _PIPELINE_INTENTS = frozenset({
 # result in the ``{tool, success, result}`` shape the Analyst expects.
 
 
+# fetch_user_context() (backend/services/user_context.py) nests deductions
+# under ctx["deductions"] keyed by profile field name, not by section code —
+# a shape mismatch with the flat ctx["80C"]/ctx["deduction_80C"] this module
+# used to look for exclusively, which meant every pipeline-routed answer
+# silently computed against deductions=None regardless of what the user's
+# saved profile actually claimed.
+_DEDUCTION_SECTION_MAP = {
+    "80c": "80C",
+    "80d": "80D",
+    "nps": "80CCD_1B",
+    "home_loan_interest": "24b",
+    "donations": "80G",
+    "education_loan_interest": "80E",
+    "savings_interest": "80TTA",
+}
+
+
+def _deductions_from_context(ctx: dict[str, Any]) -> dict[str, float]:
+    deductions: dict[str, float] = {}
+    for key in ("80C", "80D", "80CCD_1B", "24b", "10_13A", "80E", "80G", "80TTA"):
+        val = ctx.get(f"deduction_{key}") or ctx.get(key)
+        if val:
+            deductions[key] = float(val)
+    nested = ctx.get("deductions") or {}
+    for src_key, section in _DEDUCTION_SECTION_MAP.items():
+        val = nested.get(src_key)
+        if val and section not in deductions:
+            deductions[section] = float(val)
+    return deductions
+
+
+def _regime_from_context(ctx: dict[str, Any]) -> str:
+    return ctx.get("tax_regime") or ctx.get("regime") or "new"
+
+
 def _compute_tax(ctx: dict[str, Any], fy: str) -> dict[str, Any]:
     """Basic income-tax computation via the core engine."""
     income = float(ctx.get("annual_income", 0))
@@ -54,17 +89,13 @@ def _compute_tax(ctx: dict[str, Any], fy: str) -> dict[str, Any]:
         return {"tool": "compute_tax", "success": False, "error": "no income provided"}
 
     age = int(ctx.get("age", 35))
-    deductions = {}
-    for key in ("80C", "80D", "80CCD_1B", "24b", "10_13A", "80E", "80G", "80TTA"):
-        val = ctx.get(f"deduction_{key}") or ctx.get(key)
-        if val:
-            deductions[key] = float(val)
+    deductions = _deductions_from_context(ctx)
 
     result = TaxCalculationEngine.calculate_tax_with_deductions(
         gross_income=income,
         deductions=deductions or None,
         fy=fy,
-        regime=ctx.get("regime", "new"),
+        regime=_regime_from_context(ctx),
         age=age,
         is_salary=ctx.get("employment_type", "salaried") in ("salaried", "individual"),
     )
@@ -78,11 +109,7 @@ def _compare_regimes(ctx: dict[str, Any], fy: str) -> dict[str, Any]:
         return {"tool": "compare_regimes", "success": False, "error": "no income provided"}
 
     age = int(ctx.get("age", 35))
-    deductions = {}
-    for key in ("80C", "80D", "80CCD_1B", "24b", "10_13A"):
-        val = ctx.get(f"deduction_{key}") or ctx.get(key)
-        if val:
-            deductions[key] = float(val)
+    deductions = _deductions_from_context(ctx)
 
     result = TaxCalculationEngine.compare_regimes(
         gross_income=income,
@@ -144,7 +171,7 @@ async def run_for_intent(
     Returns a dict compatible with the chat endpoint's expected format.
     """
     fy = fy or current_fy()
-    regime = user_context.get("regime", "new")
+    regime = _regime_from_context(user_context)
 
     # 1. Run the appropriate core engine computations
     tool_fns = _INTENT_TOOLS.get(intent, [_compute_tax])
@@ -185,7 +212,7 @@ async def run_for_intent(
                     "reviewed": True,
                     "withheld": answer.withheld,
                     "redrafted": answer.redrafted,
-                    "caveats": answer.caveats,
+                    "caveats": answer.notes,
                 },
                 "confidence": 0.0 if answer.withheld else 0.9,
                 "status": "withheld" if answer.withheld else "success",

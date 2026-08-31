@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 from typing import Dict, Any, List, Optional
 
-from backend.api.compliance import fetch_user_context
+from backend.services.user_context import fetch_user_context
 from backend.db.postgres import get_session
 from backend.security.dependencies import get_current_user
 from backend.orchestrator.graph import get_orchestrator, db_session_var

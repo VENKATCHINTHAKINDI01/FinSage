@@ -5,7 +5,7 @@ User sends query, gets full response synchronously.
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Dict, Any, Optional
+from typing import Optional
 from pydantic import BaseModel
 import logging
 
@@ -15,6 +15,7 @@ from backend.orchestrator.memory import get_or_create_memory
 from backend.orchestrator import AdvancedAgentOrchestrator, run_workflow
 from backend.orchestrator.intent_detector import IntentDetector
 from backend.tools import ToolExecutor
+from backend.services.user_context import fetch_user_context
 
 from backend.agents.income_classifier import IncomeClassifierAgent
 from backend.agents.deduction_hunter import DeductionHunterAgent
@@ -58,44 +59,6 @@ def get_db():
 
 
 
-async def get_user_context(user_id: str, session: AsyncSession) -> Dict[str, Any]:
-    """Helper to fetch user financial profile and build query context."""
-    from sqlalchemy import select
-    from sqlalchemy.orm import selectinload
-    from backend.db.orm_models import User
-    
-    try:
-        result = await session.execute(
-            select(User)
-            .options(selectinload(User.financial_profile))
-            .where(User.id == user_id)
-        )
-        user_obj = result.scalar_one_or_none()
-        
-        user_context = {
-            "user_id": user_id,
-            "email": user_obj.email if user_obj else "",
-            "full_name": user_obj.full_name if user_obj else "",
-            "annual_income": 0,
-            "employment_type": "individual",
-        }
-        
-        if user_obj and user_obj.financial_profile:
-            user_context["annual_income"] = float(user_obj.financial_profile.annual_income)
-            user_context["employment_type"] = user_obj.financial_profile.employment_type
-            
-        return user_context
-    except Exception as e:
-        logger.error(f"Error fetching user context: {e}")
-        return {
-            "user_id": user_id,
-            "email": "",
-            "full_name": "",
-            "annual_income": 0,
-            "employment_type": "individual",
-        }
-
-
 @router.post("/query")
 async def chat_query(
     request: ChatQueryRequest,
@@ -116,8 +79,14 @@ async def chat_query(
     try:
         logger.info(f"Chat query from user {current_user.id}")
 
-        # Get user context
-        context_data = await get_user_context(current_user.id, session)
+        # Get user context from the real saved profile — previously a
+        # thinner, independent implementation that only read
+        # annual_income/employment_type and faked age via
+        # getattr(current_user, 'age', 35) (current_user has no such
+        # attribute, so every chat-routed agent always got age=35 and no
+        # tax_regime/deductions). Now shares the same builder every other
+        # agent-invoking endpoint uses.
+        context_data = await fetch_user_context(current_user.id, current_user.email, session)
 
         # Detect intent
         intent_result = await intent_detector.detect_intent(request.query)
@@ -125,11 +94,7 @@ async def chat_query(
 
         user_context = {
             "user_id": current_user.id,
-            "email": current_user.email,
-            "annual_income": context_data.get("annual_income", 0.0),
-            "employment_type": context_data.get("employment_type", "individual"),
-            "age": getattr(current_user, 'age', 35),
-            **context_data
+            **context_data,
         }
 
         # ── New pipeline path (AGT-001) ──────────────────────────────────
