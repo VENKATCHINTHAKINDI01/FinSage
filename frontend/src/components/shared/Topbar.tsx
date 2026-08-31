@@ -22,6 +22,7 @@ export default function Topbar({ title, subtitle }: TopbarProps) {
     { label: 'Dashboard', path: '/dashboard' },
     { label: 'Tax Analysis', path: '/tax-analysis' },
     { label: 'Smart Savings', path: '/smart-savings' },
+    { label: 'Benefits & Schemes', path: '/benefits' },
     { label: 'Compliance', path: '/compliance' },
     { label: 'ITR Filing Guide', path: '/itr-guide' },
     { label: 'Health Score', path: '/health-score' },

@@ -8,6 +8,7 @@ import Reports from './pages/Reports';
 import Settings from './pages/Settings';
 import Profile from './pages/Profile';
 import SmartSavings from './pages/SmartSavings';
+import Benefits from './pages/Benefits';
 import Login from './pages/Login';
 import Signup from './pages/Register';
 import ForgotPassword from './pages/ForgotPassword';
@@ -40,6 +41,7 @@ export default function App() {
         {/* Feature Pages */}
         <Route path="/tax-analysis" element={<ProtectedRoute><PageTransition variant="warp"><TaxAnalysis /></PageTransition></ProtectedRoute>} />
         <Route path="/smart-savings" element={<ProtectedRoute><PageTransition variant="warp"><SmartSavings /></PageTransition></ProtectedRoute>} />
+        <Route path="/benefits" element={<ProtectedRoute><PageTransition variant="warp"><Benefits /></PageTransition></ProtectedRoute>} />
         <Route path="/compliance" element={<ProtectedRoute><PageTransition variant="warp"><Compliance /></PageTransition></ProtectedRoute>} />
         <Route path="/itr-guide" element={<ProtectedRoute><PageTransition variant="warp"><ITRGuide /></PageTransition></ProtectedRoute>} />
         <Route path="/health-score" element={<ProtectedRoute><PageTransition variant="warp"><HealthScore /></PageTransition></ProtectedRoute>} />

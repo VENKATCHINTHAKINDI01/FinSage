@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, Calculator, ShieldCheck, FileStack,
-  Activity, FileSignature, Bell, UserCircle, IndianRupee, Zap,
+  Activity, FileSignature, Bell, UserCircle, IndianRupee, Zap, Landmark,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useUIStore } from '../../store/useUIStore';
@@ -20,6 +20,7 @@ const NAV: NavItem[] = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/tax-analysis', label: 'Tax Analysis', icon: Calculator },
   { to: '/smart-savings', label: 'Smart Savings', icon: Zap, badge: 'AI' },
+  { to: '/benefits', label: 'Benefits & Schemes', icon: Landmark, badge: 'AI' },
   { to: '/compliance', label: 'Compliance', icon: ShieldCheck },
   { to: '/itr-guide', label: 'ITR Filing Guide', icon: FileSignature },
   { to: '/health-score', label: 'Health Score', icon: Activity },
