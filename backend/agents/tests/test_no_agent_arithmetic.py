@@ -96,7 +96,12 @@ LEGACY_BUDGET = {
     # but the multiplication itself still trips the arithmetic scanner) —
     # not tax knowledge invented in the agent.
     "advanced_calculator.py": 18,
-    "tools.py": 13,
+    # tools.py — deleted (repo-cleanup pass, 2026-08-31). A parallel BaseTool/
+    # tool-registry implementation that predated backend/tools/ (the one
+    # actually wired into ToolExecutor and used everywhere). Nothing in
+    # backend/agents/__init__.py or elsewhere ever imported it, so its 13
+    # arithmetic sites never reached a user — this wasn't a rewrite, it was
+    # confirming the module was dead and removing it.
     # AGT-001 (2026-08-23): 6 -> 5. The removed site was
     # `calculated_tax = ... or annual_income * 0.20`, an invented flat rate
     # standing in for the user's real tax and used to decide whether to RAISE

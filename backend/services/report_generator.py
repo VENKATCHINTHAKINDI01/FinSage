@@ -14,10 +14,7 @@ from io import BytesIO
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from sqlalchemy.ext.asyncio import AsyncSession
-try:
-    from backend.db.orm_models_step9_10 import Report
-except ImportError:
-    from backend.db.orm_models import Report
+from backend.db.orm_models import Report
 
 logger = logging.getLogger(__name__)
 

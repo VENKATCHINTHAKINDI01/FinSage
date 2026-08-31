@@ -14,10 +14,7 @@ from backend.db.postgres import get_session
 from backend.security.dependencies import get_current_user
 from backend.orchestrator.graph import get_orchestrator, db_session_var
 from backend.services.user_context import fetch_user_context
-try:
-    from backend.db.orm_models_step9_10 import ComplianceReport, ITRFiling, TaxCalculation
-except ImportError:
-    from backend.db.orm_models import ComplianceReport, ITRFiling, TaxCalculation
+from backend.db.orm_models import ComplianceReport, ITRFiling, TaxCalculation
 
 router = APIRouter(prefix="/api/v1/compliance", tags=["compliance"])
 

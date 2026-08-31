@@ -14,10 +14,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-try:
-    from backend.db.orm_models_step9_10 import TaxCalculation
-except ImportError:
-    from backend.db.orm_models import TaxCalculation
+from backend.db.orm_models import TaxCalculation
 from backend.agents.base_agent import AgentOutput, TaxAgent, confidence_score, derive_confidence
 from backend.services.india_tax_data_fetcher import india_tax_data
 from backend.tools.calculation import TaxCalculationEngine, current_fy
