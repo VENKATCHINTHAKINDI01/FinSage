@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 from typing import Dict, Any, List, Optional
 
+from backend.api.compliance import fetch_user_context
 from backend.db.postgres import get_session
 from backend.security.dependencies import get_current_user
 from backend.orchestrator.graph import get_orchestrator, db_session_var
@@ -43,15 +44,15 @@ async def discover_benefits(
     token = db_session_var.set(session)
     
     try:
-        # Get user context
-        user_context = {
-            "user_id": current_user.id,
-            "age": getattr(current_user, "age", 35),
-            "employment_type": getattr(current_user, "employment_type", "salaried"),
-            "annual_income": getattr(current_user, "annual_income", 0),
-            "health_insurance": getattr(current_user, "health_insurance", False)
-        }
-        
+        # Was getattr(current_user, "age", 35) etc. — current_user is the
+        # bare auth/User record (email, name, password hash), which has
+        # none of these attributes, so every field silently fell back to
+        # its default on every single call: age 35, salaried, ₹0 income,
+        # no health insurance, for every user regardless of their real
+        # profile. fetch_user_context reads the actual saved profile_data,
+        # same as the /calculator and /suggestions endpoints.
+        user_context = await fetch_user_context(current_user.id, current_user.email, session)
+
         # Run orchestration
         result = await orchestrator.orchestrate(
             user_query=request.query or "What government schemes am I eligible for?",
@@ -112,16 +113,12 @@ async def verify_eligibility(
     token = db_session_var.set(session)
     
     try:
-        # Get user context
-        user_context = {
-            "user_id": current_user.id,
-            "age": getattr(current_user, "age", 35),
-            "employment_type": getattr(current_user, "employment_type", "salaried"),
-            "annual_income": getattr(current_user, "annual_income", 0),
-            "health_insurance": getattr(current_user, "health_insurance", False),
-            "education_loan": getattr(current_user, "education_loan", False)
-        }
-        
+        # Same fix as discover_benefits above — current_user has none of
+        # these attributes, so every check ran against a fabricated
+        # age-35/salaried/₹0-income/no-insurance profile regardless of who
+        # was actually asking.
+        user_context = await fetch_user_context(current_user.id, current_user.email, session)
+
         # Run orchestration
         query = f"Am I eligible for scheme {request.scheme_code}?"
         
@@ -169,69 +166,28 @@ async def list_all_schemes(
 ):
     """
     List all available government schemes.
-    
+
     • 9 major tax schemes
     • Descriptions + limits
     • Eligibility summary
     """
-    
+    # Was its own separate hardcoded list — a THIRD independent copy of the
+    # same 80D/80CCD-limit bug already fixed in tools/schemes_search.py's
+    # GovernmentSchemesDatabase.SCHEMES (150000 for both, one of them 80C's
+    # limit copy-pasted). Deriving from that single corrected source instead
+    # of maintaining a second one that can drift out of sync with it again.
+    from backend.tools.schemes_search import GovernmentSchemesDatabase
+
     schemes_list = [
         {
-            "code": "80C",
-            "name": "Life Insurance, Investments & Savings",
-            "limit": 150000,
-            "category": "Tax Deduction"
-        },
-        {
-            "code": "80D",
-            "name": "Health Insurance Premium",
-            "limit": 150000,
-            "category": "Health Protection"
-        },
-        {
-            "code": "80E",
-            "name": "Education Loan Interest",
-            "limit": None,
-            "category": "Education"
-        },
-        {
-            "code": "80TTA",
-            "name": "Savings Account Interest",
-            "limit": 10000,
-            "category": "Savings"
-        },
-        {
-            "code": "80TTB",
-            "name": "Senior Citizen Interest",
-            "limit": 50000,
-            "category": "Senior Citizens"
-        },
-        {
-            "code": "80CCD",
-            "name": "National Pension Scheme",
-            "limit": 150000,
-            "category": "Retirement"
-        },
-        {
-            "code": "80DDB",
-            "name": "Medical Treatment",
-            "limit": 100000,
-            "category": "Health"
-        },
-        {
-            "code": "80G",
-            "name": "Charitable Donations",
-            "limit": None,
-            "category": "Charity"
-        },
-        {
-            "code": "80U",
-            "name": "Disability Benefits",
-            "limit": 75000,
-            "category": "Disability"
+            "code": code,
+            "name": details["name"],
+            "limit": details["limit"],
+            "category": details["category"],
         }
+        for code, details in GovernmentSchemesDatabase.SCHEMES.items()
     ]
-    
+
     return {
         "success": True,
         "total_schemes": len(schemes_list),

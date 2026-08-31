@@ -107,15 +107,28 @@ class BenefitsDiscoveryAgent(TaxAgent):
                         "get_scheme_details",
                         scheme_code=scheme.get("code", "")
                     )
+                    # get_scheme_details (tools/schemes_search.py) returns
+                    # {"result": {"details": {...the actual scheme...}}} —
+                    # one level deeper than this was reading
+                    # (.get("result", {}).get("description", "")), so
+                    # description/benefits/documents_needed silently came
+                    # back empty for every single scheme, always. The
+                    # correct nesting is already used correctly by
+                    # tax_optimizer.py's identical call.
+                    scheme_full = details.get("result", {}).get("details", {})
+                    benefits = scheme_full.get("benefits", [])
 
                     scheme_info = {
                         "code": scheme.get("code"),
                         "name": scheme.get("name"),
                         "limit": scheme.get("limit"),
-                        "description": details.get("result", {}).get("description", ""),
-                        "benefits": details.get("result", {}).get("benefits", []),
+                        "description": scheme_full.get("description", ""),
+                        # A few SCHEMES entries store this as a single
+                        # string rather than a list — normalized so callers
+                        # can always treat it as a list.
+                        "benefits": benefits if isinstance(benefits, list) else [benefits] if benefits else [],
                         "eligibility": scheme.get("recommendation_strength"),
-                        "documents_needed": details.get("result", {}).get("documents_needed", [])
+                        "documents_needed": scheme_full.get("documents_needed", [])
                     }
                     scheme_details.append(scheme_info)
 
@@ -220,13 +233,32 @@ class BenefitsDiscoveryAgent(TaxAgent):
         return categories
 
     def _rank_schemes(self, schemes: list[dict]) -> list[dict]:
-        """Rank schemes by potential benefit."""
-        # Sort by limit (potential benefit)
-        ranked = sorted(
-            schemes,
-            key=lambda x: x.get("limit", 0),
-            reverse=True
-        )
+        """Rank schemes by potential benefit.
+
+        Crashed on any scheme with a null limit (80E, 80G genuinely have no
+        statutory limit) — `.get("limit", 0)`'s default only applies when
+        the key is missing, not when it's present and None, so comparing a
+        real int against that None during sort raised TypeError. Caught by
+        execute()'s outer exception handler, which silently discarded every
+        already-found scheme and returned an all-empty result instead —
+        this agent had no code path that could ever complete successfully
+        for a profile including an unlimited scheme, i.e. most real ones.
+
+        Prefers the real computed `potential_savings` (from
+        calculate_deduction_impact) when available, which is a better
+        ranking signal than the raw statutory limit — a higher limit isn't
+        necessarily worth more to a given user. Falls back to `limit` only
+        for schemes that don't have a computed figure (non-Chapter-VI-A
+        schemes, e.g. loans/insurance).
+        """
+        def rank_key(scheme: dict) -> float:
+            savings = scheme.get("potential_savings")
+            if isinstance(savings, (int, float)):
+                return float(savings)
+            limit = scheme.get("limit")
+            return float(limit) if isinstance(limit, (int, float)) else 0.0
+
+        ranked = sorted(schemes, key=rank_key, reverse=True)
 
         return ranked
 
@@ -234,8 +266,11 @@ class BenefitsDiscoveryAgent(TaxAgent):
         """Generate action items."""
         actions = []
 
-        # High priority schemes
-        high_priority = [s for s in schemes if s.get("limit", 0) > 100000]
+        # High priority schemes. Same None-vs-int footgun as _rank_schemes
+        # above — a scheme with no statutory limit (80E, 80G) has
+        # limit=None, not a missing key, so the `.get(..., 0)` default
+        # never applied and `None > 100000` raised.
+        high_priority = [s for s in schemes if isinstance(s.get("limit"), (int, float)) and s.get("limit") > 100000]
         if high_priority:
             actions.append(f"Apply for {len(high_priority)} high-benefit schemes immediately")
 

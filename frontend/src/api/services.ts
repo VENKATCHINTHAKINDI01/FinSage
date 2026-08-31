@@ -117,7 +117,14 @@ export async function getBenefits(params: Record<string, unknown> = {}) {
 }
 
 export async function checkEligibility(params: Record<string, unknown> = {}) {
-  return api.post('/api/v1/benefits/eligibility', params);
+  // Was '/api/v1/benefits/eligibility' — the real route is
+  // '/verify-eligibility' (backend/api/benefits.py). A 404 that nothing
+  // ever surfaced, since nothing called this function either.
+  return api.post('/api/v1/benefits/verify-eligibility', params);
+}
+
+export async function listSchemes() {
+  return api.get('/api/v1/benefits/schemes');
 }
 
 // ── Profile Sync ──────────────────────────────────────────────────────────────
