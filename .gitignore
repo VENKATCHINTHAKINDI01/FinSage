@@ -134,7 +134,16 @@ exports/
 tests/fixtures/**/*.real.*
 backend/**/tests/fixtures/**/*.real.*
 
-# ── Misc ─────────────────────────────────────────────────
+# ── AI Tool Configs ───────────────────────────
+.claude/
+.agents/
+
+# ── Generated Docs & Data ────────────────────
+CODE_REVIEW*.md
+PROGRESS.md
+feature.json
+
+# ── Misc ─────────────────────────────────────
 *.bak
 *.tmp
 *.orig
