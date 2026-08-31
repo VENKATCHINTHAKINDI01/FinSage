@@ -98,6 +98,12 @@ export async function getNotificationHistory() {
   return api.get('/api/v1/notifications/history');
 }
 
+// ── Suggestions ───────────────────────────────────────────────────────────────
+
+export async function getSuggestions() {
+  return api.post('/api/v1/suggestions');
+}
+
 // ── Chat ──────────────────────────────────────────────────────────────────────
 
 export async function sendChatQuery(query: string, conversation_id?: string) {

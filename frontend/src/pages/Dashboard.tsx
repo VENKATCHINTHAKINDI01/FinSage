@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { IndianRupee, Percent, ShieldCheck, Wallet, Sparkles, ArrowRight, Zap, UserCircle, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import AppLayout from '../components/shared/AppLayout';
 import StatCard from '../components/ui/StatCard';
@@ -5,7 +6,7 @@ import ScoreGauge from '../components/ui/ScoreGauge';
 import { Card, SectionHeading, Badge } from '../components/ui/Primitives';
 import { useApiData } from '../hooks/useApiData';
 import { EmptyState } from '../components/shared/DataState';
-import { getHealthScore, calculateAdvancedTax } from '../api/services';
+import { getHealthScore, calculateAdvancedTax, getSuggestions } from '../api/services';
 import { formatINR, formatCompactINR, formatPercent } from '../utils/format';
 import { Link } from 'react-router-dom';
 import { useProfileStore, calculateTax, marginalRateAt, TAX_YEAR, ASSESSMENT_YEAR, FY_END_DATE } from '../store/useProfileStore';
@@ -91,13 +92,26 @@ function getProfileSuggestions(profile: FinancialProfile, tax: ReturnType<typeof
 export default function Dashboard() {
   const healthState = useApiData<any>(getHealthScore, []);
   const taxState = useApiData<any>(() => calculateAdvancedTax({}), []);
+  // Independent hook, deliberately — tax_optimizer_agent is LLM-backed and
+  // noticeably slower than the deterministic calculator above; keeping it
+  // on its own fetch means the rest of the dashboard renders as soon as
+  // ITS data is ready instead of waiting on this one too.
+  const suggestionsState = useApiData<any>(getSuggestions, []);
 
   // No fabricated fallback (DEM-002). Where the API has not returned, the
   // figure is absent and the card renders an em dash rather than an invention.
   const h: any = healthState.data?.result ?? {};
   const t: any = taxState.data ?? {};
 
-  const { profile, completeness } = useProfileStore();
+  const { profile, completeness, fetchProfile } = useProfileStore();
+  // Was missing here — Dashboard is the post-login redirect target, so a
+  // returning user with a browser whose persisted profile cache is stale
+  // or empty (fresh device, cleared storage, first load after registering)
+  // would see "0% complete" and the generic-tips banner on the very first
+  // page they land on, even though their real saved profile is complete.
+  useEffect(() => {
+    fetchProfile();
+  }, [fetchProfile]);
   const user = useAuthStore((s) => s.user);
   const profileTax = calculateTax(profile);
   const hasProfile = profileTax.grossIncome > 0;
@@ -118,19 +132,37 @@ export default function Dashboard() {
   const displayRate: number | undefined = apiTaxReady ? t.effective_tax_rate : (hasProfile ? profileTax.effectiveRate : undefined);
   const displayTaxable = apiTaxReady ? t.taxable_income : (hasProfile ? profileTax.taxableIncome : undefined);
 
-  // Suggestions: prefer the backend's (grounded in real tool results, per
-  // AGT-001 — see backend/agents/tax_optimizer.py) whenever it has real
-  // figures to offer; the client estimate fills in only while that has not
-  // loaded, or offers nothing of its own.
-  const apiSuggestions = (t.optimization_suggestions ?? []).filter((s: any) => s?.savings != null);
+  // Suggestions: prefer tax_optimizer_agent's (LLM-generated candidates,
+  // cross-checked against real scheme eligibility, priced from real
+  // statutory limits — see backend/agents/tax_optimizer.py) whenever it has
+  // real figures to offer. This used to read `t.optimization_suggestions`
+  // from the CALCULATOR response instead — advanced_calculator_agent's own
+  // bolted-on suggestion method, a fixed catalog of exactly five possible
+  // strategies that never actually reasoned about the user's situation.
+  // The client estimate below fills in only while the real call hasn't
+  // loaded yet, or has nothing of its own.
+  const suggestionsData = suggestionsState.data as any;
+  const suggestionsReady = !suggestionsState.loading && !suggestionsState.error
+    && Array.isArray(suggestionsData?.strategies);
+  const apiSuggestions = suggestionsReady
+    ? (suggestionsData.strategies as any[])
+        .filter((s) => s?.savings != null)
+        .sort((a, b) => b.savings - a.savings)
+        .map((s) => ({
+          strategy: s.name,
+          action: s.action,
+          potential_savings: s.savings,
+          difficulty: s.difficulty,
+        }))
+    : [];
   const profileSuggestions = hasProfile ? getProfileSuggestions(profile, profileTax) : [];
-  const suggestionsToShow = apiTaxReady && apiSuggestions.length > 0
+  const suggestionsToShow = apiSuggestions.length > 0
     ? apiSuggestions.slice(0, 4)
     : profileSuggestions;
-  const suggestionsAreEstimate = !(apiTaxReady && apiSuggestions.length > 0) && suggestionsToShow.length > 0;
+  const suggestionsAreEstimate = apiSuggestions.length === 0 && suggestionsToShow.length > 0;
 
-  const totalPotentialSavings = apiTaxReady && t.total_potential_savings != null
-    ? t.total_potential_savings
+  const totalPotentialSavings = suggestionsReady && suggestionsData.total_estimated_savings != null
+    ? suggestionsData.total_estimated_savings
     : (hasProfile ? profileSuggestions.reduce((a, s) => a + s.potential_savings, 0) : undefined);
 
   return (
@@ -316,7 +348,14 @@ export default function Dashboard() {
                     {i + 1}
                   </span>
                   <div>
-                    <p className="text-[13.5px] font-medium text-ink">{s.strategy}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-[13.5px] font-medium text-ink">{s.strategy}</p>
+                      {s.difficulty && (
+                        <span className="text-[9.5px] font-semibold px-1.5 py-0.5 rounded-md bg-line/60 text-ink-soft">
+                          {s.difficulty}
+                        </span>
+                      )}
+                    </div>
                     <p className="text-[12px] text-ink-soft">{s.action}</p>
                   </div>
                 </div>

@@ -3,12 +3,15 @@ Tax Optimizer Agent - suggests tax optimization strategies and planning.
 Recommends timing, filing approaches, and strategic decisions.
 """
 
+import asyncio
 import logging
 import time
+from datetime import date
 from typing import Any
 
 from backend.agents.base_agent import AgentOutput, TaxAgent, confidence_score, derive_confidence
 from backend.llm import get_llm
+from backend.tools.calculation import current_fy
 
 logger = logging.getLogger(__name__)
 
@@ -111,69 +114,84 @@ class TaxOptimizerAgent(TaxAgent):
                 if deadlines_res.get("success"):
                     upcoming_deadlines = deadlines_res.get("result", {}).get("deadlines", [])
 
-            # For each strategy, verify eligibility and calculate impact
-            validated_strategies = []
-            for strategy in strategies:
+            # For each strategy, verify eligibility and calculate impact.
+            # Each strategy's checks (eligibility, then scheme details, then
+            # deduction impact) are still sequential — the second and third
+            # depend on the first two's results — but strategies are
+            # independent OF EACH OTHER, and this used to await them one
+            # strategy at a time. With up to eight strategies each making
+            # two or three tool round-trips, that sequential sum was the
+            # dominant cost in this agent timing out in practice at the
+            # orchestrator's 20s default (see api/suggestions.py). Running
+            # them concurrently turns that sum into roughly the cost of the
+            # single slowest strategy instead.
+            annual_income = float(user_financial_data.get("annual_income", 0) or user_context.get("annual_income", 0))
+
+            async def _validate(strategy: dict[str, Any]) -> dict[str, Any] | None:
                 is_eligible = True
                 if self.tools and strategy.get("scheme_code"):
-                    # Check if user is eligible
                     eligibility = await self.call_tool(
                         "check_scheme_eligibility",
                         scheme_code=strategy.get("scheme_code"),
                         user_age=int(user_context.get("age", 35)),
-                        user_income=float(user_financial_data.get("annual_income", 0) or user_context.get("annual_income", 0)),
+                        user_income=annual_income,
                         has_health_insurance=bool(user_financial_data.get("health_insurance", False)),
                         has_education_loan=bool(user_financial_data.get("education_loan", False))
                     )
                     is_eligible = eligibility.get("success") and eligibility.get("result", {}).get("eligible", True)
 
-                if is_eligible:
-                    # AGT-001 bugfix. This used to feed `calculate_deduction_impact`
-                    # (a genuinely deterministic tool — it recomputes tax before/after
-                    # via backend.core rather than a marginal-rate guess) with
-                    # `strategy.get("estimated_savings")`: a number the LLM had
-                    # invented three steps earlier in `_generate_strategies`. A real
-                    # tool call downstream of a fabricated input is still a
-                    # fabricated result — it just looks computed. The only honest
-                    # amount to test is the scheme's actual statutory limit, read
-                    # from `get_scheme_details`, never from what the model guessed.
-                    scheme_limit: float | None = None
-                    if self.tools and strategy.get("scheme_code"):
-                        details = await self.call_tool(
-                            "get_scheme_details",
-                            scheme_code=strategy.get("scheme_code")
-                        )
-                        if details.get("success"):
-                            scheme_details = details.get("result", {}).get("details", {})
-                            strategy["details"] = scheme_details
-                            limit = scheme_details.get("limit")
-                            if isinstance(limit, (int, float)):
-                                scheme_limit = float(limit)
+                if not is_eligible:
+                    return None
 
-                    if self.tools and scheme_limit is not None:
-                        savings = await self.call_tool(
-                            "calculate_deduction_impact",
-                            deduction_amount=scheme_limit,
-                            current_taxable_income=float(user_financial_data.get("annual_income", 0) or user_context.get("annual_income", 0))
-                        )
-                        if savings.get("success"):
-                            # tax_savings is a decimal STRING (Money.to_json()),
-                            # never a JSON number — see benefits_discovery.py's
-                            # identical note.
-                            strategy["savings"] = float(savings.get("result", {}).get("tax_savings", 0))
-                            strategy["savings_basis"] = f"full statutory limit for {strategy.get('scheme_code')}"
-                        else:
-                            strategy["savings"] = None
+                # AGT-001 bugfix. This used to feed `calculate_deduction_impact`
+                # (a genuinely deterministic tool — it recomputes tax before/after
+                # via backend.core rather than a marginal-rate guess) with
+                # `strategy.get("estimated_savings")`: a number the LLM had
+                # invented three steps earlier in `_generate_strategies`. A real
+                # tool call downstream of a fabricated input is still a
+                # fabricated result — it just looks computed. The only honest
+                # amount to test is the scheme's actual statutory limit, read
+                # from `get_scheme_details`, never from what the model guessed.
+                scheme_limit: float | None = None
+                if self.tools and strategy.get("scheme_code"):
+                    details = await self.call_tool(
+                        "get_scheme_details",
+                        scheme_code=strategy.get("scheme_code")
+                    )
+                    if details.get("success"):
+                        scheme_details = details.get("result", {}).get("details", {})
+                        strategy["details"] = scheme_details
+                        limit = scheme_details.get("limit")
+                        if isinstance(limit, (int, float)):
+                            scheme_limit = float(limit)
+
+                if self.tools and scheme_limit is not None:
+                    savings = await self.call_tool(
+                        "calculate_deduction_impact",
+                        deduction_amount=scheme_limit,
+                        current_taxable_income=annual_income
+                    )
+                    if savings.get("success"):
+                        # tax_savings is a decimal STRING (Money.to_json()),
+                        # never a JSON number — see benefits_discovery.py's
+                        # identical note.
+                        strategy["savings"] = float(savings.get("result", {}).get("tax_savings", 0))
+                        strategy["savings_basis"] = f"full statutory limit for {strategy.get('scheme_code')}"
                     else:
-                        # No scheme_code, or the scheme has no fixed statutory
-                        # limit to test against (e.g. a home-office deduction,
-                        # which scales with actual expenses nobody has stated
-                        # yet). Left unset rather than defaulted to 0, which
-                        # would read as "no benefit" instead of "not yet known".
                         strategy["savings"] = None
+                else:
+                    # No scheme_code, or the scheme has no fixed statutory
+                    # limit to test against (e.g. a home-office deduction,
+                    # which scales with actual expenses nobody has stated
+                    # yet). Left unset rather than defaulted to 0, which
+                    # would read as "no benefit" instead of "not yet known".
+                    strategy["savings"] = None
 
-                    strategy["eligible"] = True
-                    validated_strategies.append(strategy)
+                strategy["eligible"] = True
+                return strategy
+
+            validated_results = await asyncio.gather(*(_validate(s) for s in strategies))
+            validated_strategies = [s for s in validated_results if s is not None]
 
             # Sum only strategies with a real, tool-computed figure. A
             # strategy with savings=None contributed nothing here before too
@@ -183,8 +201,14 @@ class TaxOptimizerAgent(TaxAgent):
             uncomputed_strategies = [s for s in validated_strategies if s.get("savings") is None]
             potential_savings = sum(s["savings"] for s in computed_strategies)
 
-            # Create reminders
+            # Create reminders. Two weeks before the real FY-end (31 March,
+            # not 31 December) — was hardcoded to "2024-12-15": the wrong
+            # month for the Indian tax year AND, by the time this agent was
+            # actually wired to any UI, already years in the past.
             if self.tools:
+                fy = current_fy()
+                fy_end_year = int(fy.split("-")[0]) + 1
+                reminder_date = date(fy_end_year, 3, 15).isoformat()
                 for strategy in validated_strategies:
                     timeline_str = str(strategy.get("timeline", "")).lower()
                     if "year-end" in timeline_str or "this year" in timeline_str:
@@ -192,7 +216,7 @@ class TaxOptimizerAgent(TaxAgent):
                             "create_reminder",
                             user_id=user_context.get("user_id", "unknown"),
                             reminder_text=f"Implement: {strategy.get('name', strategy.get('strategy_name', 'Strategy'))}",
-                            reminder_date="2024-12-15"
+                            reminder_date=reminder_date
                         )
 
             # Postprocess

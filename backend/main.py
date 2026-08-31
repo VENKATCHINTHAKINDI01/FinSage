@@ -307,7 +307,7 @@ app.add_middleware(
 )
 
 # Include routes
-from backend.api import auth, benefits, chat, compliance, consent, notifications, profile, reports, websocket
+from backend.api import auth, benefits, chat, compliance, consent, notifications, profile, reports, suggestions, websocket
 
 app.include_router(auth.router, tags=["Authentication"])
 app.include_router(chat.router, tags=["Chat"])
@@ -319,6 +319,7 @@ app.include_router(consent.router)
 app.include_router(reports.router)
 app.include_router(notifications.router)
 app.include_router(profile.router)
+app.include_router(suggestions.router, tags=["Suggestions"])
 
 
 # Health check endpoint

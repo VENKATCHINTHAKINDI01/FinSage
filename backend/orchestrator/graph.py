@@ -59,6 +59,7 @@ class AgentOrchestrator:
         intent: str = "general",
         agents_to_invoke: list[str] | None = None,
         conversation_id: str | None = None,
+        timeout_s: float | None = None,
         **kwargs
     ) -> dict[str, Any]:
         """
@@ -104,7 +105,7 @@ class AgentOrchestrator:
             for missing in set(agents_to_invoke) - set(factories):
                 logger.warning(f"Agent {missing} not found")
 
-            fan = await fan_out(factories)
+            fan = await fan_out(factories, timeout_s=timeout_s)
             logger.info(
                 "%d agent(s) in %.0fms wall clock (sequential would have been "
                 "the sum, not the max)", len(fan.runs), fan.wall_ms,

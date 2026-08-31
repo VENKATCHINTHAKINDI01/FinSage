@@ -50,10 +50,17 @@ class GovernmentSchemesDatabase:
         "80D": {
             "name": "Health Insurance Premium",
             "section": "Section 80D",
-            "limit": 150000,
+            # Was 150000 — 80C's limit, copy-pasted (the same bug documented
+            # in feature.json against IndiaTaxDataFetcher's now-fixed copy of
+            # this figure). 25000 is the general self/family limit — the
+            # senior-citizen and parents enhancements are in `limits` below,
+            # matching the figures already used and tested in
+            # tools/database.py's get_user_deductions and the frontend's
+            # SECTION_80D_SELF_LIMIT/SECTION_80D_SENIOR_PARENTS_LIMIT.
+            "limit": 25000,
             "category": "deduction",
             "applicable_to": ["individual", "huf"],
-            "description": "Deduction on health insurance premiums for self, spouse, children, and parents.",
+            "description": "Deduction on health insurance premiums for self, spouse, children, and parents. Self/family limit doubles if the policyholder is a senior citizen; the parents limit is separate and also doubles if the parents are senior citizens.",
             "eligible_policies": [
                 "Health Insurance",
                 "Critical Illness Insurance",
@@ -66,10 +73,16 @@ class GovernmentSchemesDatabase:
                 "Children (dependent or not)",
                 "Parents (dependent or not)"
             ],
+            # Was {self_spouse_children: 75000, parents: 75000, total: 150000}
+            # — not derivable from any real 80D figure (looks like 80C's
+            # 150000 arbitrarily halved). These are the real limbs; there is
+            # no single "total" because which limbs apply depends on age.
             "limits": {
-                "self_spouse_children": 75000,
-                "parents": 75000,
-                "total": 150000
+                "self_family": 25000,
+                "self_family_senior": 50000,
+                "parents": 25000,
+                "parents_senior": 50000,
+                "preventive_checkup": 5000
             },
             "benefits": "Tax deduction on insurance premiums",
             "documents_needed": ["Insurance policy", "Premium receipts", "Proof of payment"],
@@ -137,12 +150,19 @@ class GovernmentSchemesDatabase:
         },
 
         "80CCD": {
-            "name": "National Pension Scheme (NPS)",
-            "section": "Section 80CCD",
-            "limit": 150000,
+            "name": "National Pension Scheme (NPS) — Additional Contribution, Section 80CCD(1B)",
+            "section": "Section 80CCD(1B)",
+            # Was 150000 — 80C's limit, copy-pasted (same bug as 80D above).
+            # 50000 is the real 80CCD(1B) additional-voluntary-contribution
+            # limit, matching SECTION_80CCD_1B_LIMIT on the frontend and
+            # get_user_deductions' "80CCD_1B" cap. This is distinct from
+            # 80CCD(2) employer contributions, which are capped as a % of
+            # salary rather than a flat rupee amount and are not modeled by
+            # this entry.
+            "limit": 50000,
             "category": "deduction",
             "applicable_to": ["individual"],
-            "description": "Deduction on contributions to National Pension Scheme.",
+            "description": "Additional deduction on voluntary contributions to the National Pension Scheme, over and above the Section 80C limit.",
             "benefits": [
                 "Tax deduction on NPS contributions",
                 "Monthly pension after retirement",

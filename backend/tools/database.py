@@ -428,11 +428,22 @@ class AnalysisStorageTool:
             Saved analysis record
         """
         try:
+            # Every real caller passes a plain str (agents call this tool
+            # with analysis_type="tax_optimization" etc., not an actual
+            # AnalysisType member — the tool-call layer doesn't construct
+            # one) even though the signature is typed as the enum. `.value`
+            # on a plain str raised AttributeError every single time this
+            # ran, silently: caught by the except below and logged as an
+            # error, so no caller ever actually got a saved analysis.
+            # getattr(..., "value", ...) handles either a real enum member
+            # or the plain string every caller actually sends.
+            analysis_type_str = getattr(analysis_type, "value", analysis_type)
+
             # TODO: Save to database
             analysis_record = {
                 "analysis_id": f"analysis_{user_id}_{int(datetime.now(timezone.utc).timestamp() * 1000)}",
                 "user_id": user_id,
-                "type": analysis_type.value,
+                "type": analysis_type_str,
                 "agent": agent_name,
                 "data": analysis_data,
                 "conversation_id": conversation_id,
@@ -440,7 +451,7 @@ class AnalysisStorageTool:
                 "status": "saved"
             }
 
-            self.logger.info(f"Saved {analysis_type.value} analysis for user {user_id}")
+            self.logger.info(f"Saved {analysis_type_str} analysis for user {user_id}")
 
             return analysis_record
 
